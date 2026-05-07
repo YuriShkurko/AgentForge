@@ -33,12 +33,14 @@ playwright-report/
 .env.*
 !.env.example
 
-# Scribe MCP local state — database and snapshots
-# scribe.yaml and scribe-local.cmd are safe to commit (no secrets)
+# Scribe MCP — local dev tooling, not needed by contributors
 .scribe/
+scribe.yaml
+scribe-local.cmd
 
-# Claude Code IDE local settings (contains machine-local paths and permissions)
+# Claude Code IDE local settings and MCP config
 .claude/
+.mcp.json
 
 # Temporary scratch directories
 .tmp*/
