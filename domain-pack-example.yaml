@@ -1,0 +1,125 @@
+name: business-insight
+display_name: Business Insight
+app_type: agentic_dashboard
+target_users:
+  - local_smb_owner
+  - business_manager
+
+description: >
+  AI business copilot for local SMBs that turns reviews,
+  competitor context, and business signals into dashboards,
+  opportunities, and action plans.
+
+goals:
+  - understand_customer_feedback
+  - monitor_business_health
+  - compare_competitors
+  - explain_business_changes
+  - visualize_money_flow
+  - create_action_plans
+  - build_presentation_dashboard
+
+agent_shell_requirements:
+  chat: true
+  streaming: true
+  tool_calling: true
+  persistent_conversations: true
+  persistent_widgets: true
+  dashboard_workspace: true
+  scripted_llm_tests: true
+
+tools:
+  - name: get_business_health
+    purpose: Compute business health score and sub-scores.
+    mutates_state: false
+    data_mode: demo_or_real
+    allowed_widgets:
+      - health_score
+    section: overview
+
+  - name: get_signal_timeline
+    purpose: Explain meaningful business events over time.
+    mutates_state: false
+    data_mode: demo_or_real
+    allowed_widgets:
+      - signal_timeline
+    section: trends
+
+  - name: get_financial_flow
+    purpose: Show revenue to profit flow.
+    mutates_state: false
+    data_mode: demo
+    allowed_widgets:
+      - money_flow
+    section: finance
+
+  - name: pin_widget
+    purpose: Persist a tool result as a dashboard widget.
+    mutates_state: true
+    allowed_widgets: []
+    section: workspace
+
+widgets:
+  - type: health_score
+    renderer: HealthScore
+    compatible_tools:
+      - get_business_health
+    section: overview
+
+  - type: signal_timeline
+    renderer: SignalTimeline
+    compatible_tools:
+      - get_signal_timeline
+    section: trends
+
+  - type: money_flow
+    renderer: MoneyFlow
+    compatible_tools:
+      - get_financial_flow
+    section: finance
+
+workflows:
+  - name: build_demo_dashboard
+    description: Create a presentation-ready dashboard.
+    preferred_tools:
+      - get_business_health
+      - get_signal_timeline
+      - get_financial_flow
+      - get_top_issues
+      - get_opportunities
+      - get_action_plan
+    expected_widgets:
+      - health_score
+      - signal_timeline
+      - money_flow
+      - horizontal_bar_chart
+      - opportunity_list
+      - action_plan
+
+adapters:
+  - name: demo_business_signals
+    kind: demo
+    provides:
+      - sales
+      - operations
+      - local_presence
+      - social
+      - financial_flow
+
+  - name: review_provider
+    kind: real_or_mock
+    provides:
+      - reviews
+
+testing:
+  no_live_llm_in_ci: true
+  scripted_llm_provider: true
+  deterministic_demo_data: true
+  playwright_e2e: true
+
+future_extensions:
+  providers:
+    - google_business_profile
+    - square_pos
+    - toast_pos
+    - social_import

@@ -1,0 +1,324 @@
+name: hybrid-scoring-demo
+display_name: Hybrid Scoring Demo
+version: 0.1.0
+
+domain:
+  domain_name: Hybrid Scoring Demo
+  app_type: ingestion_scoring_pipeline
+  target_users:
+    - developer
+    - agentforge_evaluator
+  product_purpose: >
+    Demonstrate the reusable Product Shell modules shared by Business Insight and
+    AI Job Radar: provider/adapter interfaces, run history, deterministic
+    scoring/explanation, operations UI, and a notification/action loop stub — all
+    without live LLM or paid API dependency.
+  main_user_goals:
+    - ingest_fixture_records_through_provider_interface
+    - normalize_raw_records_into_stable_dto
+    - score_records_deterministically_with_explanation
+    - view_run_history_and_scored_results
+    - record_an_action_decision_without_external_delivery
+
+app_archetype: ingestion_scoring_pipeline
+
+required_shell_modules:
+  - pipeline
+  - provider_adapter
+  - scoring_explanation
+  - operations_ui
+  - persistence
+  - test
+
+optional_shell_modules:
+  - notification_action
+  - agent_runtime   # command-panel stub only; no live LLM required
+
+# ---------------------------------------------------------------------------
+# Capabilities
+# ---------------------------------------------------------------------------
+
+capabilities:
+  - name: ingest_records
+    purpose: Load fixture records through the provider interface and normalize them into the domain DTO.
+    input_summary: POST /ingest — no request body; uses configured provider (fixture by default).
+    output_shape:
+      fields: [raw_records_inserted, normalized_inserted, run_id]
+    mutates_state: true
+    data_mode: fixture_provider
+    deterministic_test_safe: true
+    implementation_status: planned
+
+  - name: list_normalized_records
+    purpose: Return recently normalized records for operational inspection.
+    input_summary: GET /records — optional limit query parameter.
+    output_shape:
+      fields: [id, external_id, source, title, category, value, ingested_at, raw_payload]
+    mutates_state: false
+    data_mode: database
+    deterministic_test_safe: true_with_seeded_db
+    implementation_status: planned
+
+  - name: score_records
+    purpose: Score normalized records using deterministic heuristics and write explanation output.
+    input_summary: POST /score — optional rescore boolean.
+    output_shape:
+      fields: [scores_written, rescore]
+    mutates_state: true
+    data_mode: deterministic_heuristics
+    deterministic_test_safe: true
+    implementation_status: planned
+
+  - name: list_scored_records
+    purpose: Return records with their latest score, ordered by score descending.
+    input_summary: GET /records/scored — optional limit and undecided boolean filter.
+    output_shape:
+      fields: [record, score]
+      record_fields: [id, external_id, source, title, category, ingested_at]
+      score_fields: [fit, label, recommendation, explanation]
+      explanation_fields: [fit_score, summary, drivers, risks, recommendation]
+    mutates_state: false
+    data_mode: database
+    deterministic_test_safe: true_with_seeded_db
+    implementation_status: planned
+
+  - name: list_runs
+    purpose: Return provider run history with status, stats, and errors.
+    input_summary: GET /runs — optional limit query parameter.
+    output_shape:
+      fields: [id, provider_name, started_at, finished_at, status, stats, error]
+    mutates_state: false
+    data_mode: database
+    deterministic_test_safe: true_with_seeded_db
+    implementation_status: planned
+
+  - name: record_action
+    purpose: Record a user action decision for a scored record without external delivery.
+    input_summary: POST /records/{record_id}/action — body with action_type enum (accept/skip/save).
+    output_shape:
+      fields: [ok, record_id, action_type, status]
+    mutates_state: true
+    data_mode: database
+    deterministic_test_safe: true_with_seeded_db
+    implementation_status: planned
+
+# ---------------------------------------------------------------------------
+# UI Surfaces
+# ---------------------------------------------------------------------------
+
+ui_surfaces:
+  - surface_type: run_history_table
+    renderer: RunHistoryTable
+    data_source: list_runs
+    section: operations
+    expected_data_shape: ProviderRun rows with provider_name, status, started_at, finished_at, stats, error.
+    empty_state: No runs yet. Use the Ingest button to start.
+
+  - surface_type: scored_records_table
+    renderer: ScoredRecordsTable
+    data_source: list_scored_records
+    section: results
+    expected_data_shape: ScoredRecord rows with title, category, fit score, label, recommendation summary.
+    empty_state: No scored records. Run ingest then score.
+
+  - surface_type: action_status_column
+    renderer: ActionStatusBadge
+    data_source: record_action
+    section: results
+    expected_data_shape: action_type and status (pending/accepted/skipped/saved).
+    empty_state: No action taken.
+
+  - surface_type: operations_panel
+    renderer: OpsPanel
+    data_source: ingest_records, score_records
+    section: operations
+    expected_data_shape: Trigger buttons for ingest and score; activity log strings.
+    empty_state: Ready. No recent operations.
+
+# ---------------------------------------------------------------------------
+# Providers
+# ---------------------------------------------------------------------------
+
+providers:
+  record_sources:
+    - name: fixture
+      class: FixtureRecordProvider
+      interface: RecordProvider
+      source: deterministic in-code fixture list (no external calls)
+      current_status: planned
+      notes: >
+        Returns a fixed set of demo records on every call. Used by default in CI and
+        local dev. Proves the provider interface without real data sources.
+
+  persistence:
+    - name: postgres_sqlalchemy
+      current_status: planned
+      tables:
+        - provider_runs
+        - raw_records
+        - normalized_records
+        - record_scores
+        - record_actions
+
+# ---------------------------------------------------------------------------
+# Adapters
+# ---------------------------------------------------------------------------
+
+adapters:
+  - name: normalized_dto_from_raw
+    purpose: Convert raw provider record payload into the stable NormalizedRecordDTO shape.
+    normalized_shape:
+      - external_id
+      - source
+      - title
+      - category
+      - value
+      - ingested_at
+      - raw_payload
+
+  - name: scoring_adapter
+    purpose: Convert NormalizedRecordDTO into ScoredRecordDTO with fit score, label, drivers, risks, and recommendation.
+    output_shape:
+      - fit         # float 0..1
+      - label       # high / medium / low
+      - recommendation  # accept / review / skip
+      - explanation:
+          - fit_score
+          - summary
+          - drivers    # list[str]
+          - risks      # list[str]
+
+# ---------------------------------------------------------------------------
+# Run History
+# ---------------------------------------------------------------------------
+
+run_history:
+  enabled: true
+  table_name: provider_runs
+  tracked_fields:
+    - provider_name
+    - started_at
+    - finished_at
+    - status       # running / complete / error
+    - stats        # JSON: raw_inserted, normalized_inserted
+    - error        # nullable string
+  frontend_surface: run_history_table
+
+# ---------------------------------------------------------------------------
+# Notification / Action Loop
+# ---------------------------------------------------------------------------
+
+notification_actions:
+  - name: record_decision
+    trigger: user clicks Accept / Skip / Save on a scored record
+    delivery_channel: none_stub  # records status only; no external send
+    decision_states:
+      - pending
+      - accepted
+      - skipped
+      - saved
+    dedupe_key: record_id + action_type
+    persistence_table: record_actions
+
+# ---------------------------------------------------------------------------
+# Workflows
+# ---------------------------------------------------------------------------
+
+workflows:
+  - name: ingest_and_score
+    trigger_examples:
+      - Click Ingest button in ops panel
+      - POST /ingest then POST /score
+    steps:
+      - call FixtureRecordProvider.fetch()
+      - write provider_runs row (running)
+      - insert raw_records
+      - normalize raw_records -> normalized_records via normalized_dto_from_raw
+      - update provider_runs row (complete, stats)
+      - call scoring_adapter on each normalized record
+      - write record_scores
+    mutation_behavior: writes provider_runs, raw_records, normalized_records, record_scores
+    current_status: planned
+
+  - name: view_results
+    trigger_examples:
+      - Load /records/scored in browser
+      - GET /records/scored
+    steps:
+      - fetch list_scored_records ordered by fit desc
+      - render scored_records_table with action_status_column
+    mutation_behavior: read_only
+    current_status: planned
+
+  - name: record_action_decision
+    trigger_examples:
+      - Click Accept / Skip / Save on a scored record row
+      - POST /records/{id}/action
+    steps:
+      - validate action_type enum
+      - upsert record_actions row with dedupe_key
+      - return updated status
+    mutation_behavior: writes record_actions
+    current_status: planned
+
+# ---------------------------------------------------------------------------
+# Seed Data
+# ---------------------------------------------------------------------------
+
+seed_data:
+  fixture_provider_records: backend/app/providers/fixture/records.py
+  notes: >
+    The FixtureRecordProvider returns a hardcoded list of demo records.
+    No JSON seed files required — records live in code so tests are fully
+    self-contained.
+
+# ---------------------------------------------------------------------------
+# Tests
+# ---------------------------------------------------------------------------
+
+tests:
+  backend:
+    unit:
+      - backend/tests/test_fixture_provider.py    # provider returns expected records
+      - backend/tests/test_adapter.py              # raw -> normalized DTO correctness
+      - backend/tests/test_scoring.py              # deterministic score output for known inputs
+      - backend/tests/test_run_history.py          # run row created on ingest call
+      - backend/tests/test_action_persistence.py   # pending/accepted/skipped/saved transitions
+    integration:
+      - backend/tests/integration/test_ingest_flow.py   # full ingest: provider -> normalize -> run row
+      - backend/tests/integration/test_score_flow.py    # full score: normalized -> scored output
+  frontend:
+    playwright:
+      - frontend/e2e/ingest-and-score.spec.ts  # trigger ingest -> run row appears -> trigger score -> scored record appears
+  expectations:
+    no_live_provider_in_tests: true
+    no_live_llm_in_tests: true
+    deterministic_fixture_data: true
+    all_tests_runnable_with_docker_compose_db: true
+  commands:
+    backend: pytest
+    frontend_build: npm run build
+    frontend_lint: npm run lint
+    e2e: npm run test:e2e
+
+# ---------------------------------------------------------------------------
+# Future Extensions
+# ---------------------------------------------------------------------------
+
+future_extensions:
+  providers:
+    - real_http_source_provider
+    - csv_import_provider
+  shell_modules:
+    - agent_runtime_full   # full chat facade over scoring capabilities
+    - observability_debug  # Prometheus metrics + read-only debug MCP
+  features:
+    - bulk_rescore_with_diff
+    - action_export_csv
+    - second_domain_pack_generation_dry_run
+
+compatibility_gaps:
+  - FixtureRecordProvider is in-code only; no offline JSON directory yet.
+  - ScoredRecordDTO explanation shape is minimal compared to AIJobRadar; can be extended.
+  - No real delivery channel for notification_actions — stub only.
+  - Frontend tests are Playwright only; no unit test suite planned for v0.1.

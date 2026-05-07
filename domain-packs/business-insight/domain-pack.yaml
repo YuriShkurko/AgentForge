@@ -1,0 +1,780 @@
+name: business-insight
+display_name: Business Insight
+version: 0.1.0
+extracted_from:
+  repo: MicroSaas
+  date: 2026-05-05
+  sources:
+    - backend/app/agent/tools.py
+    - backend/app/agent/system_prompt.py
+    - backend/app/providers/*
+    - backend/app/llm/*
+    - backend/app/services/*
+    - backend/app/schemas/*
+    - frontend/src/components/agent/WidgetRenderer.tsx
+    - frontend/src/lib/dashboardSections.ts
+    - backend/tests
+    - frontend/e2e
+
+app_archetype: agent_dashboard_app
+
+required_shell_modules:
+  - agent
+  - workspace
+  - provider_adapter
+  - test
+
+optional_shell_modules:
+  - notification_action
+  - observability_debug
+  - pipeline
+
+domain:
+  domain_name: Business Insight
+  app_type: agentic_business_dashboard
+  target_users:
+    - local_smb_owner
+    - local_smb_manager
+  product_purpose: >
+    Help SMBs turn reviews, competitor context, and business signals into dashboards,
+    explanations, opportunities, and action plans.
+  main_user_goals:
+    - understand_customer_feedback
+    - compare_competitors
+    - monitor_business_health
+    - understand_signal_timeline
+    - inspect_money_flow
+    - find_opportunities
+    - create_action_plans
+    - build_present_dashboards
+
+agent_shell_contract:
+  chat: true
+  streaming_sse: true
+  tool_calling: true
+  persistent_conversations: true
+  persistent_workspace_widgets: true
+  workspace_events:
+    - widget_added
+    - widget_removed
+    - dashboard_cleared
+    - widget_reordered
+  dashboard_layout:
+    sections:
+      - overview
+      - trends
+      - issues
+      - evidence
+      - actions
+    supports_reorder: true
+    supports_presentation_mode: true
+  guardrails: true
+  scripted_llm_testing: true
+
+tools:
+  - name: get_dashboard
+    purpose: Get overview KPIs, AI summary, top complaints, top praise, risks, and actions.
+    input_summary: No arguments.
+    output_shape:
+      fields: [place_id, business_name, business_type, address, avg_rating, total_reviews, top_complaints, top_praise, ai_summary, action_items, risk_areas, recommended_focus, analysis_created_at, last_updated_at]
+    allowed_widget_types: [summary_card, metric_card]
+    mutates_state: false
+    data_mode: real_or_mock
+    deterministic_test_safe: true
+    implementation_status: implemented
+
+  - name: query_reviews
+    purpose: Retrieve customer reviews with optional rating, keyword, date, and limit filters.
+    input_summary: min_rating, max_rating, keyword, date_from, date_to, limit.
+    output_shape:
+      fields: [count, reviews]
+      review_fields: [id, rating, text, author, published_at]
+    allowed_widget_types: [review_list]
+    mutates_state: false
+    data_mode: real_mock_or_offline
+    deterministic_test_safe: true
+    implementation_status: implemented
+
+  - name: run_analysis
+    purpose: Run AI analysis on current reviews and return the normalized result.
+    input_summary: No arguments.
+    output_shape:
+      fields: [summary, top_complaints, top_praise, action_items, risk_areas, recommended_focus]
+    allowed_widget_types: [insight_list, summary_card]
+    mutates_state: true
+    data_mode: real_or_mock_llm
+    deterministic_test_safe: true_with_mock_or_scripted_provider
+    implementation_status: implemented
+
+  - name: compare_competitors
+    purpose: Generate comparison of current business against linked competitors.
+    input_summary: No arguments; uses linked competitors for current business/user.
+    output_shape:
+      fields: [target, competitors, comparison_summary, strengths, weaknesses, opportunities]
+    allowed_widget_types: [comparison_card, comparison_chart]
+    mutates_state: true
+    data_mode: real_or_mock_llm
+    deterministic_test_safe: true_with_mock_or_scripted_provider
+    implementation_status: implemented
+
+  - name: get_review_trends
+    purpose: Compare review count and average rating for a current period versus prior period.
+    input_summary: period enum 7d, 14d, 30d.
+    output_shape:
+      fields: [period, current, previous, change_pct]
+    allowed_widget_types: [trend_indicator, metric_card]
+    mutates_state: false
+    data_mode: real_mock_or_offline
+    deterministic_test_safe: true
+    implementation_status: implemented
+
+  - name: get_review_series
+    purpose: Return chart-ready daily review series for count, average rating, or both.
+    input_summary: days enum 3, 7, 14, 30; metric enum count, avg_rating, both.
+    output_shape:
+      fields: [period, days, group_by, metric, from, to, series, summary]
+      series_fields: [date, count, avg_rating]
+    allowed_widget_types: [line_chart]
+    mutates_state: false
+    data_mode: real_mock_or_offline
+    deterministic_test_safe: true
+    implementation_status: implemented
+
+  - name: get_rating_distribution
+    purpose: Return star-rating counts and percentages for recent reviews.
+    input_summary: days clamped to 7-90.
+    output_shape:
+      fields: [period, days, bars, slices, total]
+    allowed_widget_types: [bar_chart, donut_chart, pie_chart]
+    mutates_state: false
+    data_mode: real_mock_or_offline
+    deterministic_test_safe: true
+    implementation_status: implemented
+
+  - name: get_top_issues
+    purpose: Return ranked review issues with severity and representative quote.
+    input_summary: limit clamped 1-10; days clamped 7-90.
+    output_shape:
+      fields: [issues, bars, period, total_reviews_analyzed]
+      issue_fields: [theme, count, avg_rating, severity, representative_quote]
+    allowed_widget_types: [horizontal_bar_chart, bar_chart, insight_list]
+    mutates_state: false
+    data_mode: real_mock_or_offline
+    deterministic_test_safe: true
+    implementation_status: implemented
+
+  - name: get_review_insights
+    purpose: Return synthesized review themes for positive, negative, or balanced questions.
+    input_summary: focus enum negative, positive, balanced; period enum this_week, this_month, last_month, past_7d, past_30d, past_90d; limit.
+    output_shape:
+      fields: [summary, period, focus, review_count, avg_rating, themes, bars, examples, reviews, limitation, recommended_focus]
+      conditional_fields: [top_praise, top_complaints, issues]
+    allowed_widget_types: [summary_card, insight_list]
+    mutates_state: false
+    data_mode: real_mock_or_offline
+    deterministic_test_safe: true
+    implementation_status: implemented
+
+  - name: get_review_change_summary
+    purpose: Compare two review windows for rating/count deltas and theme shifts.
+    input_summary: current_period and previous_period enums.
+    output_shape:
+      fields: [summary, current_period, previous_period, current, previous, rating_delta, count_delta, current_themes, previous_themes, limitation, recommended_focus]
+    allowed_widget_types: [comparison_chart, comparison_card]
+    mutates_state: false
+    data_mode: real_mock_or_offline
+    deterministic_test_safe: true
+    implementation_status: implemented
+
+  - name: get_business_health
+    purpose: Compute Business Insight health score from reviews, analysis, momentum, local readiness baseline, and cached competitor comparison.
+    input_summary: No arguments.
+    output_shape:
+      fields: [score, label, summary, sub_scores, drivers, risks, opportunities, source, is_demo, freshness, confidence, limitations]
+    allowed_widget_types: [health_score, summary_card]
+    mutates_state: false
+    data_mode: real_review_analysis_plus_baselines
+    deterministic_test_safe: true
+    implementation_status: implemented
+
+  - name: get_signal_timeline
+    purpose: Build a timeline of review volume, rating, and theme shifts.
+    input_summary: days enum 7, 14, 30, 60, 90.
+    output_shape:
+      fields: [period, events, summary, source, is_demo, freshness, confidence, limitations]
+      event_fields: [id, date, type, severity, title, summary, impact, evidence]
+    allowed_widget_types: [signal_timeline, summary_card]
+    mutates_state: false
+    data_mode: real_review_data
+    deterministic_test_safe: true
+    implementation_status: implemented
+
+  - name: get_sales_summary
+    purpose: Return deterministic demo POS-lite sales signals.
+    input_summary: No arguments.
+    output_shape:
+      fields: [label, summary, metrics, items, recommendation, source, is_demo, freshness, confidence, limitations]
+    allowed_widget_types: [sales_summary, summary_card]
+    mutates_state: false
+    data_mode: demo_offline
+    deterministic_test_safe: true
+    implementation_status: implemented_demo_provider
+
+  - name: get_financial_flow
+    purpose: Return deterministic demo revenue-to-profit money flow.
+    input_summary: No arguments.
+    output_shape:
+      fields: [label, period, currency, revenue, cogs, gross_profit, operating_expenses, net_profit, gross_margin_pct, net_margin_pct, summary, source, is_demo, freshness, confidence, limitations]
+    allowed_widget_types: [money_flow, summary_card]
+    mutates_state: false
+    data_mode: demo_offline
+    deterministic_test_safe: true
+    implementation_status: implemented_demo_provider
+
+  - name: get_operations_summary
+    purpose: Return deterministic demo operations risk signals.
+    input_summary: No arguments.
+    output_shape:
+      fields: [label, score, summary, metrics, items, recommendation, source, is_demo, freshness, confidence, limitations]
+    allowed_widget_types: [operations_risk, summary_card]
+    mutates_state: false
+    data_mode: demo_offline
+    deterministic_test_safe: true
+    implementation_status: implemented_demo_provider
+
+  - name: get_local_presence_summary
+    purpose: Return deterministic demo local presence and listing readiness signals.
+    input_summary: No arguments.
+    output_shape:
+      fields: [label, score, summary, metrics, items, recommendation, source, is_demo, freshness, confidence, limitations]
+    allowed_widget_types: [local_presence_card, summary_card]
+    mutates_state: false
+    data_mode: demo_offline
+    deterministic_test_safe: true
+    implementation_status: implemented_demo_provider
+
+  - name: get_social_signal_summary
+    purpose: Return deterministic demo social/content signal summary.
+    input_summary: No arguments.
+    output_shape:
+      fields: [label, summary, metrics, items, recommendation, source, is_demo, freshness, confidence, limitations]
+    allowed_widget_types: [social_signal, summary_card]
+    mutates_state: false
+    data_mode: demo_offline
+    deterministic_test_safe: true
+    implementation_status: implemented_demo_provider
+
+  - name: get_opportunities
+    purpose: Return prioritized opportunities from review evidence, analysis, and enabled demo signals.
+    input_summary: No arguments.
+    output_shape:
+      fields: [summary, opportunities, source, is_demo, freshness, confidence, limitations, review_count, recent_review_count]
+    allowed_widget_types: [opportunity_list, insight_list, summary_card]
+    mutates_state: false
+    data_mode: real_review_analysis_plus_demo_signals
+    deterministic_test_safe: true
+    implementation_status: implemented
+
+  - name: get_action_plan
+    purpose: Return ranked actions from top opportunities with owners and metrics to watch.
+    input_summary: No arguments.
+    output_shape:
+      fields: [summary, actions, weekly_priorities, source, is_demo, freshness, confidence, limitations]
+      action_fields: [id, rank, issue_or_opportunity, evidence, likely_cause, recommended_action, effort, impact, suggested_owner, metric_to_watch, example_response, source, is_demo]
+    allowed_widget_types: [action_plan, insight_list, summary_card]
+    mutates_state: false
+    data_mode: real_review_analysis_plus_demo_signals
+    deterministic_test_safe: true
+    implementation_status: implemented
+
+  - name: create_custom_chart_data
+    purpose: Validate and package agent-derived chart/list data when no fixed tool covers the requested segmentation.
+    input_summary: widget_type, labels, values, items, title_hint, notes, source_summary, uncertainty_note.
+    output_shape:
+      fields: [widget_type, labels, values, bars, slices, total, items, source_summary, notes, title_hint, uncertainty_note]
+      error_fields: [error, message, redirect_tool, redirect_widget_type]
+    allowed_widget_types: [bar_chart, horizontal_bar_chart, pie_chart, donut_chart, insight_list]
+    mutates_state: false
+    data_mode: derived_from_prior_tool_results
+    deterministic_test_safe: true
+    implementation_status: implemented
+    guardrails:
+      - requires_uncertainty_note_for_inferred_demographic_or_name_based_segments
+      - redirects_money_flow_like_bar_charts_to_get_financial_flow
+
+  - name: pin_widget
+    purpose: Persist a compatible tool result as a workspace widget.
+    input_summary: widget_type, title, source_tool, optional data.
+    output_shape:
+      fields: [pinned, widget_id, widget]
+      error_fields: [pinned, error, allowed_widget_types, redirect_tool, redirect_widget_type]
+    allowed_widget_types: []
+    mutates_state: true
+    data_mode: workspace_persistence
+    deterministic_test_safe: true
+    implementation_status: implemented
+
+  - name: get_workspace
+    purpose: List current workspace widgets and IDs.
+    input_summary: No arguments.
+    output_shape:
+      fields: [widgets, widget_ids]
+    allowed_widget_types: []
+    mutates_state: false
+    data_mode: workspace_persistence
+    deterministic_test_safe: true
+    implementation_status: implemented
+
+  - name: remove_widget
+    purpose: Remove one workspace widget by exact UUID.
+    input_summary: widget_id UUID.
+    output_shape:
+      fields: [removed, widget_id, error]
+    allowed_widget_types: []
+    mutates_state: true
+    data_mode: workspace_persistence
+    deterministic_test_safe: true
+    implementation_status: implemented
+
+  - name: clear_dashboard
+    purpose: Remove all workspace widgets for the current business/user.
+    input_summary: No arguments.
+    output_shape:
+      fields: [cleared, removed_count, widget_ids]
+    allowed_widget_types: []
+    mutates_state: true
+    data_mode: workspace_persistence
+    deterministic_test_safe: true
+    implementation_status: implemented
+
+  - name: duplicate_widget
+    purpose: Copy an existing workspace widget row directly.
+    input_summary: widget_id UUID.
+    output_shape:
+      fields: [duplicated, widget_id, source_widget_id, widget, error]
+    allowed_widget_types: []
+    mutates_state: true
+    data_mode: workspace_persistence
+    deterministic_test_safe: true
+    implementation_status: implemented
+
+  - name: set_dashboard_order
+    purpose: Set exact dashboard widget order using all current widget IDs.
+    input_summary: widget_ids array of UUIDs.
+    output_shape:
+      fields: [reordered, widget_ids, widgets, error, missing_widget_ids, omitted_widget_ids, current_widget_ids]
+    allowed_widget_types: []
+    mutates_state: true
+    data_mode: workspace_persistence
+    deterministic_test_safe: true
+    implementation_status: implemented
+
+tool_widget_compatibility:
+  get_dashboard: [summary_card, metric_card]
+  query_reviews: [review_list]
+  run_analysis: [insight_list, summary_card]
+  compare_competitors: [comparison_card, comparison_chart]
+  get_review_trends: [trend_indicator, metric_card]
+  get_review_series: [line_chart]
+  get_rating_distribution: [bar_chart, donut_chart, pie_chart]
+  get_top_issues: [horizontal_bar_chart, bar_chart, insight_list]
+  get_review_insights: [summary_card, insight_list]
+  get_review_change_summary: [comparison_chart, comparison_card]
+  get_business_health: [health_score, summary_card]
+  get_signal_timeline: [signal_timeline, summary_card]
+  get_sales_summary: [sales_summary, summary_card]
+  get_financial_flow: [money_flow, summary_card]
+  get_operations_summary: [operations_risk, summary_card]
+  get_local_presence_summary: [local_presence_card, summary_card]
+  get_social_signal_summary: [social_signal, summary_card]
+  get_opportunities: [opportunity_list, insight_list, summary_card]
+  get_action_plan: [action_plan, insight_list, summary_card]
+  create_custom_chart_data: [bar_chart, horizontal_bar_chart, pie_chart, donut_chart, insight_list]
+
+widgets:
+  - widget_type: metric_card
+    renderer: MetricCard
+    compatible_source_tools: [get_dashboard, get_review_trends]
+    section: overview
+    expected_data_shape: Metric-like data; renderer accepts generic record.
+    empty_state: Renderer-level fallback, needs_verification for exact text.
+    implementation_status: implemented
+  - widget_type: summary_card
+    renderer: SummaryCard
+    compatible_source_tools: [get_dashboard, run_analysis, get_review_insights, get_business_health, get_signal_timeline, get_sales_summary, get_financial_flow, get_operations_summary, get_local_presence_summary, get_social_signal_summary, get_opportunities, get_action_plan]
+    section: overview_or_actions
+    expected_data_shape: summary plus optional issues, praise, opportunities, action_items, recommended_focus, limitation.
+    empty_state: "No summary data available."
+    implementation_status: implemented
+  - widget_type: insight_list
+    renderer: SummaryCard
+    compatible_source_tools: [run_analysis, get_top_issues, get_review_insights, get_opportunities, get_action_plan, create_custom_chart_data]
+    section: issues_or_actions
+    expected_data_shape: themes/items/issues/action-oriented lists.
+    empty_state: SummaryCard fallback.
+    implementation_status: implemented
+  - widget_type: review_list
+    renderer: ReviewListWidget
+    compatible_source_tools: [query_reviews]
+    section: evidence
+    expected_data_shape: reviews array with id, rating, text, author, published_at.
+    empty_state: "No reviews found."
+    implementation_status: implemented
+  - widget_type: comparison_card
+    renderer: ComparisonWidget
+    compatible_source_tools: [compare_competitors, get_review_change_summary]
+    section: trends
+    expected_data_shape: comparison_summary/summary, strengths, weaknesses, opportunities, or current/previous period stats.
+    empty_state: "No comparison data available."
+    implementation_status: implemented
+  - widget_type: trend_indicator
+    renderer: TrendIndicator
+    compatible_source_tools: [get_review_trends]
+    section: overview
+    expected_data_shape: period, current, previous, change_pct.
+    empty_state: Renderer-level fallback, needs_verification for exact text.
+    implementation_status: implemented
+  - widget_type: line_chart
+    renderer: LineChart
+    compatible_source_tools: [get_review_series]
+    section: trends
+    expected_data_shape: series array with date, count, avg_rating.
+    empty_state: "No chart data available."
+    implementation_status: implemented
+  - widget_type: bar_chart
+    renderer: BarChart
+    compatible_source_tools: [get_rating_distribution, get_top_issues, create_custom_chart_data]
+    section: trends
+    expected_data_shape: bars or labels/values.
+    empty_state: "No chart data available."
+    implementation_status: implemented
+  - widget_type: horizontal_bar_chart
+    renderer: HorizontalBarChart
+    compatible_source_tools: [get_top_issues, create_custom_chart_data]
+    section: trends
+    expected_data_shape: bars with label/value.
+    empty_state: "No chart data available."
+    implementation_status: implemented
+  - widget_type: pie_chart
+    renderer: DonutChart
+    compatible_source_tools: [get_rating_distribution, create_custom_chart_data]
+    section: issues
+    expected_data_shape: slices or labels/values.
+    empty_state: "No chart data available."
+    implementation_status: implemented
+  - widget_type: donut_chart
+    renderer: DonutChart
+    compatible_source_tools: [get_rating_distribution, create_custom_chart_data]
+    section: issues
+    expected_data_shape: slices or labels/values.
+    empty_state: "No chart data available."
+    implementation_status: implemented
+  - widget_type: comparison_chart
+    renderer: ComparisonChart
+    compatible_source_tools: [compare_competitors, get_review_change_summary]
+    section: trends
+    expected_data_shape: comparison or current-vs-previous data.
+    empty_state: Renderer-level fallback, needs_verification for exact text.
+    implementation_status: implemented
+  - widget_type: health_score
+    renderer: HealthScore
+    compatible_source_tools: [get_business_health]
+    section: overview
+    expected_data_shape: score, sub_scores, drivers, risks, opportunities, confidence, limitations.
+    empty_state: Renderer-level fallback, needs_verification for exact text.
+    implementation_status: implemented
+  - widget_type: signal_timeline
+    renderer: SignalTimeline
+    compatible_source_tools: [get_signal_timeline]
+    section: trends
+    expected_data_shape: period, events, summary, confidence, limitations.
+    empty_state: Renderer-level fallback, needs_verification for exact text.
+    implementation_status: implemented
+  - widget_type: sales_summary
+    renderer: SignalSummary
+    compatible_source_tools: [get_sales_summary]
+    section: overview
+    expected_data_shape: label, summary, metrics, items, recommendation, is_demo.
+    empty_state: "No signal data available."
+    implementation_status: implemented
+  - widget_type: operations_risk
+    renderer: SignalSummary
+    compatible_source_tools: [get_operations_summary]
+    section: issues
+    expected_data_shape: label, score, summary, metrics, items, recommendation, is_demo.
+    empty_state: "No signal data available."
+    implementation_status: implemented
+  - widget_type: local_presence_card
+    renderer: SignalSummary
+    compatible_source_tools: [get_local_presence_summary]
+    section: overview
+    expected_data_shape: label, score, summary, metrics, items, recommendation, is_demo.
+    empty_state: "No signal data available."
+    implementation_status: implemented
+  - widget_type: social_signal
+    renderer: SignalSummary
+    compatible_source_tools: [get_social_signal_summary]
+    section: overview
+    expected_data_shape: label, summary, metrics, items, recommendation, is_demo.
+    empty_state: "No signal data available."
+    implementation_status: implemented
+  - widget_type: opportunity_list
+    renderer: ActionPlan
+    compatible_source_tools: [get_opportunities]
+    section: actions
+    expected_data_shape: opportunities array plus summary, confidence, limitations.
+    empty_state: ActionPlan fallback, needs_verification for exact text.
+    implementation_status: implemented
+  - widget_type: action_plan
+    renderer: ActionPlan
+    compatible_source_tools: [get_action_plan]
+    section: actions
+    expected_data_shape: actions array plus weekly_priorities, confidence, limitations.
+    empty_state: ActionPlan fallback, needs_verification for exact text.
+    implementation_status: implemented
+  - widget_type: money_flow
+    renderer: MoneyFlow
+    compatible_source_tools: [get_financial_flow]
+    section: trends
+    expected_data_shape: revenue, cogs, gross_profit, operating_expenses, net_profit, margins, currency, period, is_demo.
+    empty_state: MoneyFlow fallback, needs_verification for exact text.
+    implementation_status: implemented
+
+providers:
+  review_providers:
+    - name: mock
+      class: MockProvider
+      source: app.mock.reviews.generate_mock_reviews
+      data_mode: deterministic_mock
+      current_status: implemented
+    - name: offline
+      class: OfflineProvider
+      source: backend/data/offline/*.json plus manifest.json
+      data_mode: offline_demo
+      current_status: implemented
+    - name: outscraper
+      class: OutscraperProvider
+      source: Outscraper maps/reviews-v3 API
+      data_mode: real_provider
+      current_status: implemented_requires_api_key
+    - name: simulation
+      class: SimulationProvider
+      source: sim_reviews table seeded by living demo scripts
+      data_mode: deterministic_simulation_or_mock_fallback
+      current_status: implemented
+  competitor_data_path:
+    source: linked businesses via CompetitorLink, analyses via Analysis table, comparison cache via MongoDB
+    provider_type: internal_service_plus_llm
+    current_status: implemented
+  business_signal_demo_providers:
+    - get_sales_summary
+    - get_financial_flow
+    - get_operations_summary
+    - get_local_presence_summary
+    - get_social_signal_summary
+  llm_providers:
+    - name: openai
+      class: OpenAICompatProvider
+      current_status: implemented_requires_openai_api_key
+    - name: openrouter
+      class: OpenAICompatProvider
+      current_status: implemented_requires_openrouter_api_key
+    - name: scripted
+      class: ScriptedProvider
+      current_status: implemented_test_only_requires_testing_true
+    - name: none_mock_path
+      current_status: implemented_fallback_when_no_api_key
+
+adapters:
+  - name: ReviewProvider
+    purpose: Normalize review providers into a stable NormalizedReview shape.
+    normalized_shape: [external_id, source, author, rating, text, published_at]
+  - name: dashboard_tool_adapters
+    purpose: Convert stored reviews, analysis, comparison, and demo signals into widget-ready JSON payloads.
+  - name: llm_openai_compat_adapter
+    purpose: Expose OpenAI and OpenRouter through the same LLMProvider interface.
+
+terminology:
+  provider: Where data or capability comes from.
+  adapter: Normalization layer that makes providers fit stable domain interfaces.
+  agent: Mediator/proxy UX layer that routes user intent through tools and widgets.
+  domain_pack: Tools, schemas, widgets, workflows, prompts, adapters, seed data, and tests for one app domain.
+
+workflows:
+  - name: build_demo_dashboard
+    trigger_examples: ["fill the dashboard", "build a full dashboard", "generate a new dashboard"]
+    steps:
+      - get_dashboard -> pin_widget(summary_card)
+      - get_business_health -> pin_widget(health_score)
+      - get_signal_timeline -> pin_widget(signal_timeline)
+      - get_sales_summary -> pin_widget(sales_summary)
+      - get_financial_flow -> pin_widget(money_flow)
+      - get_action_plan -> pin_widget(action_plan)
+      - get_review_series -> pin_widget(line_chart)
+      - get_rating_distribution -> pin_widget(donut_chart)
+      - get_top_issues -> pin_widget(horizontal_bar_chart)
+      - get_review_insights -> pin_widget(summary_card)
+      - query_reviews -> pin_widget(review_list)
+    current_status: implemented_prompted_workflow
+  - name: ask_analytics_question
+    trigger_examples: ["what are customers complaining about?", "what changed compared to last month?", "what did people like?"]
+    steps:
+      - route to get_review_insights, get_review_change_summary, get_top_issues, query_reviews, or get_review_series
+    current_status: implemented
+  - name: pin_widget
+    steps:
+      - call data tool
+      - call pin_widget with source_tool and compatible widget_type
+      - emit workspace_event widget_added
+    current_status: implemented
+  - name: remove_widget
+    steps:
+      - call get_workspace if widget ID is unknown
+      - call remove_widget with exact UUID
+      - emit workspace_event widget_removed
+    current_status: implemented
+  - name: reorder_clean_layout
+    steps:
+      - call get_workspace
+      - group widgets into overview, trends, issues, evidence, actions
+      - call set_dashboard_order with every current widget ID
+    current_status: implemented
+  - name: presentation_mode
+    steps:
+      - render existing workspace widgets in presentation-oriented layout
+    current_status: implemented_frontend
+  - name: compare_competitors
+    steps:
+      - ensure linked competitor analyses exist
+      - call compare_competitors
+      - pin comparison_card or comparison_chart
+      - refresh health_score if present
+    current_status: implemented
+  - name: money_flow_request
+    steps:
+      - call get_financial_flow
+      - pin_widget with widget_type money_flow
+      - disclose demo data
+    current_status: implemented
+  - name: business_health_request
+    steps:
+      - call get_business_health
+      - pin_widget with widget_type health_score when dashboard output is requested
+    current_status: implemented
+  - name: signal_timeline_request
+    steps:
+      - call get_signal_timeline
+      - pin_widget with widget_type signal_timeline when dashboard output is requested
+    current_status: implemented
+  - name: action_plan_or_opportunity_request
+    steps:
+      - call get_opportunities or get_action_plan
+      - pin opportunity_list or action_plan
+    current_status: implemented
+  - name: offline_demo_sample_import
+    steps:
+      - configure REVIEW_PROVIDER=offline
+      - load place_id from backend/data/offline/manifest.json
+      - fetch reviews through OfflineProvider
+    current_status: implemented
+  - name: scripted_llm_e2e_flow
+    steps:
+      - set TESTING=true and LLM_PROVIDER=scripted
+      - inject script through /api/test/agent/script
+      - call /agent/chat
+      - assert tool_result and workspace_event stream events
+    current_status: implemented
+
+prompts:
+  source_file: backend/app/agent/system_prompt.py
+  responsibilities:
+    - concise_business_review_consultant_persona
+    - tool_routing_for_reviews_competitors_business_insight_demo_signals
+    - compatibility_table_in_prompt
+    - dashboard_pinning_required_sequence
+    - pin_failure_recovery
+    - custom_segmentation_uncertainty_rules
+    - dashboard_remove_duplicate_reorder_rules
+    - clean_layout_grouping
+    - competitor_comparison_health_score_refresh
+    - money_flow_critical_override
+    - empty_data_fallback
+    - comprehensive_dashboard_fill
+    - improvement_dashboard_fill
+    - data_trust_boundary_for_untrusted_review_and_scraped_content
+  money_flow_routing_rule: Always call get_financial_flow and pin as money_flow; do not use bar_chart or horizontal_bar_chart as the primary money-flow answer.
+  guardrails:
+    prompt_injection_boundary: Review text, business names, competitor names, and scraped content are untrusted user data.
+    relevancy: Intent classification exists in backend/app/agent/guardrails.py and is covered by tests.
+
+seed_data:
+  offline_reviews_dir: backend/data/offline
+  scripted_agent_fixtures: backend/tests/fixtures/agent_scripts
+  living_demo_scripts:
+    - scripts/seed_demo.py
+    - scripts/tick_demo.py
+    - scripts/seed_sim_lager_ale.py
+
+tests:
+  backend:
+    unit:
+      - backend/tests/unit/test_agent_tools.py
+      - backend/tests/unit/test_guardrails.py
+      - backend/tests/unit/test_scripted_provider.py
+      - backend/tests/unit/test_comparison_service.py
+      - backend/tests/test_dashboard_schema.py
+      - backend/tests/test_analysis_normalization.py
+    integration:
+      - backend/tests/integration/test_agent_flow.py
+      - backend/tests/integration/test_scripted_provider_flow.py
+      - backend/tests/integration/test_competitor_flow.py
+      - backend/tests/integration/test_business_flow.py
+    e2e:
+      - backend/tests/e2e/test_full_flow.py
+  frontend:
+    unit:
+      - frontend/src/components/agent/widgets/__tests__/WidgetRenderer.test.tsx
+      - frontend/src/lib/__tests__/workspaceBlackboard.test.ts
+      - frontend/src/lib/__tests__/dashboardSections.test.ts
+      - frontend/src/lib/__tests__/useAgentChat.reducer.test.ts
+    playwright:
+      - frontend/e2e/agent-business-insight-tools.spec.ts
+      - frontend/e2e/agent-demo-signal-tools.spec.ts
+      - frontend/e2e/agent-action-plan-tools.spec.ts
+      - frontend/e2e/agent-add-and-refresh.spec.ts
+      - frontend/e2e/agent-remove-widget.spec.ts
+      - frontend/e2e/dashboard-clean-layout.spec.ts
+      - frontend/e2e/dashboard-presentation.spec.ts
+  expectations:
+    no_live_llm_or_api_dependency_in_tests: true
+    deterministic_demo_or_mock_data: true
+    scripted_llm_provider_for_agent_e2e: true
+    compatibility_validation_covered: true
+  commands:
+    backend: pytest
+    frontend_unit: npm run test
+    frontend_e2e: npm run test:e2e
+    frontend_format_check: npm run format:check
+
+compatibility_gaps:
+  - Locus scan and impact currently fail on backend/tmp_pytest_run access denied; targeted search was used instead.
+  - Some widget empty-state exact strings need verification from individual renderer files.
+  - The Domain Pack is documentation only; runtime still uses Python/TypeScript registries as source of truth.
+  - Demo business signal tools are implemented as deterministic functions, not separate provider classes.
+  - Business health local presence and competitive position include baselines until real local/competitor provider data is connected.
+  - Money-flow is demo/offline only in current implementation.
+
+future_extensions:
+  providers:
+    - google_business_profile_local_presence
+    - square_pos
+    - toast_pos
+    - social_import_provider
+    - csv_manual_import_adapters
+  packs:
+    - deploy_planner_deployer_agent_pack
+    - ai_job_radar_domain_pack_extraction
+  scaffolder:
+    - generate_agent_shell_from_domain_pack
+    - generate_tool_widget_compatibility_tests
+    - generate_provider_adapter_stubs

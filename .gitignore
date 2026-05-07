@@ -1,0 +1,60 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+dist/
+build/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# Node
+node_modules/
+dist/
+.vite/
+*.tsbuildinfo
+
+# Test / E2E artifacts
+test-results/
+playwright-report/
+
+# Databases
+*.db
+*.sqlite
+*.sqlite3
+
+# Environment — never commit real .env; .env.example is safe to commit
+.env
+.env.*
+!.env.example
+
+# Scribe MCP local state — database and snapshots
+# scribe.yaml and scribe-local.cmd are safe to commit (no secrets)
+.scribe/
+
+# Claude Code IDE local settings (contains machine-local paths and permissions)
+.claude/
+
+# Temporary scratch directories
+.tmp*/
+
+# Task files (working notes, not project artifacts)
+temp.txt
+
+# Generated output — regenerate with: agentforge generate <pack>
+# examples/ is committed as a snapshot but is fully disposable.
+# Uncomment the line below to stop tracking generated output:
+# examples/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo

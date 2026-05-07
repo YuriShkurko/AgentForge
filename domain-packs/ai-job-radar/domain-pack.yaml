@@ -1,0 +1,611 @@
+name: ai-job-radar
+display_name: AI Job Radar
+version: 0.1.0
+extracted_from:
+  repo: AIJobRadar
+  path: ../AIJobRadar
+  date: 2026-05-05
+  sources:
+    - README.md
+    - Makefile
+    - backend/src/ai_job_radar/interfaces/api/routers/*
+    - backend/src/ai_job_radar/interfaces/api/deps.py
+    - backend/src/ai_job_radar/application/services/*
+    - backend/src/ai_job_radar/application/dto/normalized_job.py
+    - backend/src/ai_job_radar/domain/enums.py
+    - backend/src/ai_job_radar/infrastructure/providers/*
+    - backend/src/ai_job_radar/infrastructure/strategies/*
+    - backend/src/ai_job_radar/infrastructure/rendering/card_renderer.py
+    - backend/src/ai_job_radar/infrastructure/observability/metrics.py
+    - backend/src/ai_job_radar/interfaces/debug_mcp.py
+    - frontend/src/routes/*
+    - frontend/src/components/*
+    - backend/tests
+
+app_archetype: ingestion_scoring_pipeline
+
+required_shell_modules:
+  - pipeline
+  - provider_adapter
+  - scoring_explanation
+  - operations_ui
+  - persistence
+  - test
+  - notification_action
+  - observability_debug
+
+optional_shell_modules:
+  - agent_runtime   # command facade only; no active chat/tool-calling path currently
+
+# Note: this pack uses "tools" for operational capabilities (no agent runtime exists).
+# In a future schema migration these would be renamed to "capabilities" per the updated
+# Domain Pack Spec. The content is accurate; only the field name predates the spec update.
+
+domain:
+  domain_name: AI Job Radar
+  app_type: job_discovery_and_triage_pipeline
+  target_users:
+    - job_seeker
+    - developer_looking_for_relevant_jobs
+  product_purpose: >
+    Ingest job postings, normalize messy sources, deduplicate postings, score fit
+    against a candidate technical profile, and help the user triage or apply faster.
+  main_user_goals:
+    - discover_relevant_jobs
+    - ingest_jobs_from_email_web_and_source_adapters
+    - normalize_and_deduplicate_postings
+    - score_jobs_against_candidate_profile
+    - understand_fit_and_strictness_reasons
+    - triage_jobs_quickly
+    - receive_telegram_alerts
+    - track_provider_runs
+    - tune_or_replay_scoring_over_time
+
+agent_shell_contract:
+  chat: false
+  streaming_sse: false
+  tool_calling: false
+  persistent_conversations: false
+  persistent_workspace_widgets: false
+  operational_api: true
+  react_operations_ui: true
+  background_worker: true
+  provider_run_history: true
+  database_persistence: true
+  notification_action_loop: true
+  observability:
+    prometheus_metrics: true
+    grafana_dashboard: true
+    read_only_debug_mcp: true
+  deterministic_tests: true
+
+tools:
+  - name: run_pull
+    purpose: Fetch pull-based job sources and normalize the new raw jobs.
+    input_summary: POST /ingestion/pull; no request body.
+    output_shape:
+      fields: [raw_jobs_inserted, normalized_inserted]
+    mutates_state: true
+    data_mode: real_or_mock_sources
+    deterministic_test_safe: true_with_mock_or_parser_fixtures
+    implementation_status: implemented
+    source_files:
+      - backend/src/ai_job_radar/interfaces/api/routers/ingestion.py
+      - backend/src/ai_job_radar/application/services/ingest_jobs.py
+      - backend/src/ai_job_radar/application/services/normalize_jobs.py
+
+  - name: ingest_linkedin_email
+    purpose: Parse pasted or uploaded LinkedIn alert email content into raw jobs, then normalize.
+    input_summary: raw_email JSON field, multipart raw_email/file, or raw text body.
+    output_shape:
+      fields: [raw_jobs_inserted, normalized_inserted]
+    mutates_state: true
+    data_mode: user_supplied_email
+    deterministic_test_safe: true_with_parser_fixtures
+    implementation_status: implemented
+    source_files:
+      - backend/src/ai_job_radar/interfaces/api/routers/ingestion.py
+      - backend/src/ai_job_radar/infrastructure/providers/linkedin_alert_email/provider.py
+      - backend/src/ai_job_radar/infrastructure/providers/linkedin_alert_email/parser.py
+
+  - name: imap_sync
+    purpose: Fetch LinkedIn alert emails from configured IMAP mailbox and ingest them.
+    input_summary: include_read boolean and optional max_messages query parameter.
+    output_shape:
+      fields: [raw_jobs_inserted, emails_fetched, normalized_inserted]
+    mutates_state: true
+    data_mode: real_email_provider
+    deterministic_test_safe: false_requires_imap_credentials
+    implementation_status: implemented_optional_configuration
+    source_files:
+      - backend/src/ai_job_radar/interfaces/api/routers/ingestion.py
+      - backend/src/ai_job_radar/infrastructure/providers/linkedin_imap/provider.py
+
+  - name: list_normalized_jobs
+    purpose: Return recently normalized jobs for operational inspection.
+    input_summary: limit query parameter.
+    output_shape:
+      fields: [id, external_id, source, source_type, title, company_name, url, location, work_model, employment_type, description_raw, requirements_raw, responsibilities_raw, posted_at, ingested_at, technologies_detected, seniority_detected, language_detected, has_easy_apply, raw_payload]
+    mutates_state: false
+    data_mode: database
+    deterministic_test_safe: true_with_seeded_db
+    implementation_status: implemented
+    source_files:
+      - backend/src/ai_job_radar/interfaces/api/routers/jobs.py
+      - backend/src/ai_job_radar/application/dto/normalized_job.py
+
+  - name: score_jobs
+    purpose: Score normalized jobs by candidate profile fit, strictness, location filters, and recommendation.
+    input_summary: rescore boolean and limit query parameter.
+    output_shape:
+      fields: [scores_written, rescore, hint]
+    mutates_state: true
+    data_mode: deterministic_heuristics_plus_candidate_profile
+    deterministic_test_safe: true
+    implementation_status: implemented
+    source_files:
+      - backend/src/ai_job_radar/interfaces/api/routers/jobs.py
+      - backend/src/ai_job_radar/application/services/score_jobs.py
+      - backend/src/ai_job_radar/infrastructure/strategies/scoring.py
+      - backend/src/ai_job_radar/infrastructure/strategies/strictness.py
+
+  - name: list_scored_jobs
+    purpose: Return the latest score per job, ordered by fit score.
+    input_summary: limit query parameter and undecided boolean filter.
+    output_shape:
+      fields: [job, score]
+      job_fields: [id, title, company_name, url, source, ingested_at, technologies_detected]
+      score_fields: [fit, strictness, recommendation, explanation]
+      explanation_fields: [fit_score, strictness_score, summary, fit_reasons, strictness_reasons, risks, recommendation]
+    mutates_state: false
+    data_mode: database
+    deterministic_test_safe: true_with_seeded_db
+    implementation_status: implemented
+    source_files:
+      - backend/src/ai_job_radar/interfaces/api/routers/jobs.py
+      - backend/src/ai_job_radar/infrastructure/persistence/mappers.py
+
+  - name: get_job_score
+    purpose: Return a single job and latest score for card rendering and detail display.
+    input_summary: job_id path UUID.
+    output_shape:
+      fields: [job, score]
+    mutates_state: false
+    data_mode: database
+    deterministic_test_safe: true_with_seeded_db
+    implementation_status: implemented
+    source_files:
+      - backend/src/ai_job_radar/interfaces/api/routers/jobs.py
+
+  - name: render_job_card_png
+    purpose: Render a scored job card through the React card route and Playwright, with filesystem cache.
+    input_summary: job_id path UUID; uses latest score version and frontend_internal_url.
+    output_shape:
+      media_type: image/png
+      cache_path: var/card-cache
+    mutates_state: true
+    data_mode: browser_rendering
+    deterministic_test_safe: true_if_frontend_and_playwright_available
+    implementation_status: implemented_optional_runtime_dependency
+    source_files:
+      - backend/src/ai_job_radar/interfaces/api/routers/jobs.py
+      - backend/src/ai_job_radar/infrastructure/rendering/card_renderer.py
+      - frontend/src/routes/CardPage.tsx
+      - frontend/src/components/JobCard.tsx
+
+  - name: re_extract_technologies
+    purpose: Re-run the technology extractor on all normalized job descriptions.
+    input_summary: POST /jobs/re-extract-tech; no request body.
+    output_shape:
+      fields: [total, updated]
+    mutates_state: true
+    data_mode: deterministic_text_extraction
+    deterministic_test_safe: true_with_seeded_db
+    implementation_status: implemented
+    source_files:
+      - backend/src/ai_job_radar/interfaces/api/routers/jobs.py
+      - backend/src/ai_job_radar/application/utils/tech_extract.py
+
+  - name: get_job_stats
+    purpose: Return Easy Apply coverage across normalized jobs.
+    input_summary: GET /jobs/stats; no arguments.
+    output_shape:
+      fields: [total_jobs, easy_apply_count, easy_apply_pct]
+    mutates_state: false
+    data_mode: database
+    deterministic_test_safe: true_with_seeded_db
+    implementation_status: implemented
+    source_files:
+      - backend/src/ai_job_radar/interfaces/api/routers/jobs.py
+
+  - name: dispatch_notifications
+    purpose: Record and send Telegram job notifications above the configured fit threshold.
+    input_summary: POST /notifications/dispatch; uses NOTIFY_FIT_THRESHOLD and Telegram settings.
+    output_shape:
+      fields: [notifications_recorded]
+    mutates_state: true
+    data_mode: database_plus_external_telegram
+    deterministic_test_safe: true_with_fake_notifier_or_missing_credentials_skip
+    implementation_status: implemented
+    source_files:
+      - backend/src/ai_job_radar/interfaces/api/routers/notifications.py
+      - backend/src/ai_job_radar/application/services/notify_jobs.py
+      - backend/src/ai_job_radar/infrastructure/providers/telegram/notifier.py
+
+  - name: create_review_decision
+    purpose: Persist a Telegram-style review command for a normalized job.
+    input_summary: normalized_job_id, command enum ok/not_ok/save/why, optional raw_payload and telegram_update_id.
+    output_shape:
+      fields: [ok]
+    mutates_state: true
+    data_mode: database
+    deterministic_test_safe: true_with_seeded_db
+    implementation_status: implemented
+    source_files:
+      - backend/src/ai_job_radar/interfaces/api/routers/reviews.py
+      - backend/src/ai_job_radar/application/services/process_review.py
+
+  - name: telegram_webhook
+    purpose: Parse inbound Telegram slash commands and persist review decisions.
+    input_summary: Telegram update payload with text; optional X-Telegram-Bot-Api-Secret-Token.
+    output_shape:
+      fields: [ok, ignored, reason]
+    mutates_state: true
+    data_mode: external_webhook
+    deterministic_test_safe: true_with_sample_payloads
+    implementation_status: implemented
+    source_files:
+      - backend/src/ai_job_radar/interfaces/api/routers/telegram_webhook.py
+      - backend/src/ai_job_radar/application/services/process_review.py
+
+  - name: post_triage_decision
+    purpose: Persist or update the user's triage decision from the React swipe UI.
+    input_summary: job_id path UUID and decision APPLY/MAYBE/SKIP.
+    output_shape:
+      fields: [ok, job_id, decision]
+    mutates_state: true
+    data_mode: database
+    deterministic_test_safe: true_with_seeded_db
+    implementation_status: implemented
+    source_files:
+      - backend/src/ai_job_radar/interfaces/api/routers/decisions.py
+      - frontend/src/routes/Triage.tsx
+
+  - name: list_provider_runs
+    purpose: Return provider run history with status, stats, and errors.
+    input_summary: limit query parameter.
+    output_shape:
+      fields: [id, provider_name, started_at, finished_at, status, stats, error]
+    mutates_state: false
+    data_mode: database
+    deterministic_test_safe: true_with_seeded_db
+    implementation_status: implemented
+    source_files:
+      - backend/src/ai_job_radar/interfaces/api/routers/provider_runs.py
+      - backend/src/ai_job_radar/infrastructure/persistence/orm/models.py
+
+  - name: debug_mcp_tools
+    purpose: Read-only local DB/debug tools for provider runs, scores, notifications, parser previews, counts, and hints.
+    input_summary: FastMCP stdio tool calls; tool-specific arguments such as limit, source, raw_email, hours.
+    output_shape:
+      fields: [json_string_or_hint_text]
+    mutates_state: false
+    data_mode: database_or_parser_preview
+    deterministic_test_safe: true_if_db_configured
+    implementation_status: implemented_dev_tooling
+    source_files:
+      - backend/src/ai_job_radar/interfaces/debug_mcp.py
+
+tool_widget_compatibility: {}
+
+widgets:
+  - widget_type: dev_operations_panel
+    renderer: DevPanel
+    compatible_source_tools: [run_pull, imap_sync, score_jobs, dispatch_notifications, list_scored_jobs, list_normalized_jobs, list_provider_runs, get_job_stats]
+    section: operations
+    expected_data_shape: ScoredRow[], NormalizedJob[], ProviderRun[], JobStats, activity log strings.
+    empty_state: Shows no scored jobs, no normalized jobs, or no provider runs messages.
+    implementation_status: implemented
+    source_files:
+      - frontend/src/routes/DevPanel.tsx
+
+  - widget_type: scored_job_card
+    renderer: JobCard
+    compatible_source_tools: [list_scored_jobs, get_job_score]
+    section: triage
+    expected_data_shape: ScoredRow with job and score blocks.
+    empty_state: Parent routes handle no data.
+    implementation_status: implemented
+    source_files:
+      - frontend/src/components/JobCard.tsx
+      - frontend/src/types.ts
+
+  - widget_type: triage_swipe_queue
+    renderer: Triage
+    compatible_source_tools: [list_scored_jobs, post_triage_decision]
+    section: triage
+    expected_data_shape: Undecided ScoredRow queue.
+    empty_state: All done state with reload button.
+    implementation_status: implemented
+    source_files:
+      - frontend/src/routes/Triage.tsx
+
+  - widget_type: provider_runs_table
+    renderer: DevPanel provider runs table
+    compatible_source_tools: [list_provider_runs]
+    section: observability
+    expected_data_shape: ProviderRun rows with provider_name, status, started_at, finished_at, stats, error.
+    empty_state: No provider runs yet.
+    implementation_status: implemented
+    source_files:
+      - frontend/src/routes/DevPanel.tsx
+
+  - widget_type: normalized_jobs_table
+    renderer: DevPanel normalized jobs table
+    compatible_source_tools: [list_normalized_jobs]
+    section: operations
+    expected_data_shape: NormalizedJob rows.
+    empty_state: No normalized jobs loaded.
+    implementation_status: implemented
+    source_files:
+      - frontend/src/routes/DevPanel.tsx
+
+  - widget_type: job_card_image
+    renderer: CardPage plus JobCard image variant
+    compatible_source_tools: [render_job_card_png, get_job_score]
+    section: notifications
+    expected_data_shape: ScoredRow rendered at 800x420.
+    empty_state: Job not found image fallback.
+    implementation_status: implemented
+    source_files:
+      - frontend/src/routes/CardPage.tsx
+      - frontend/src/components/JobCard.tsx
+
+  - widget_type: telegram_job_card
+    renderer: TelegramNotificationProvider
+    compatible_source_tools: [dispatch_notifications]
+    section: notifications
+    expected_data_shape: title, company, source, location, url, ScoreExplanationDTO, optional PNG bytes.
+    empty_state: Missing token/chat id produces skipped notification metadata.
+    implementation_status: implemented
+    source_files:
+      - backend/src/ai_job_radar/infrastructure/providers/telegram/notifier.py
+
+providers:
+  job_sources:
+    - name: linkedin_alert_email
+      class: LinkedInAlertEmailProvider
+      interface: AlertIngestionProvider
+      source: pasted_or_uploaded_linkedin_alert_email
+      current_status: implemented
+    - name: linkedin_imap
+      class: LinkedInImapFetcher
+      interface: email_fetcher
+      source: IMAP mailbox, default LinkedIn alert sender filter
+      current_status: implemented_optional_requires_imap_settings
+    - name: startup_for_startup
+      class: StartupForStartupProvider
+      interface: JobSourceProvider
+      source: WordPress REST jobs collection derived from startupforstartup.com/jobs-in-startups
+      current_status: implemented
+    - name: friend_mock
+      class: MockFriendSourceProvider
+      interface: JobSourceProvider
+      source: deterministic in-code mock job
+      current_status: implemented_mock
+    - name: linkedin_public_search
+      class: LinkedInPublicSearchProvider
+      interface: JobSourceProvider
+      source: LinkedIn guest public search pages via Crawl4AI
+      current_status: implemented_optional_off_by_default
+  profile_providers:
+    - name: cv_profile
+      class: CvProfileProvider
+      interface: RepoProfileProvider
+      source: Reactive Resume JSON export
+      current_status: implemented_preferred_when_CV_PROFILE_PATH_set
+    - name: git_repo_profile
+      class: GitRepoProfileProvider
+      interface: RepoProfileProvider
+      source: deterministic repository scanner
+      current_status: implemented_fallback
+  notification_providers:
+    - name: telegram
+      class: TelegramNotificationProvider
+      interface: NotificationProvider
+      source: Telegram Bot HTTP API
+      current_status: implemented_requires_token_and_chat_id_for_send
+  persistence:
+    - name: postgres_sqlalchemy
+      current_status: implemented
+      tables: [provider_runs, raw_jobs, normalized_jobs, companies, requirements, candidate_profiles, job_scores, notifications, review_decisions, user_decisions, dedupe_keys]
+
+adapters:
+  - name: normalized_dto_from_raw
+    purpose: Normalize provider payloads into the stable NormalizedJobDTO shape.
+    normalized_shape: [external_id, source, source_type, title, company_name, company_external_id, url, location, work_model, employment_type, description_raw, requirements_raw, responsibilities_raw, posted_at, ingested_at, technologies_detected, seniority_detected, language_detected, has_easy_apply, raw_payload]
+    source_file: backend/src/ai_job_radar/infrastructure/providers/normalization.py
+  - name: linkedIn_alert_parser
+    purpose: Parse LinkedIn alert email HTML/text into raw job payloads.
+    source_file: backend/src/ai_job_radar/infrastructure/providers/linkedin_alert_email/parser.py
+  - name: startup_for_startup_parser
+    purpose: Parse WordPress REST job posts into raw job payloads.
+    source_file: backend/src/ai_job_radar/infrastructure/providers/startup_for_startup/parser.py
+  - name: linkedin_public_parser
+    purpose: Parse LinkedIn guest search/detail HTML into raw job payloads.
+    source_file: backend/src/ai_job_radar/infrastructure/providers/linkedin_scraper/parser.py
+  - name: scoring_and_strictness_strategies
+    purpose: Convert NormalizedJobDTO plus CandidateTechProfile into fit score, strictness score, reasons, risks, and recommendation.
+    source_files:
+      - backend/src/ai_job_radar/infrastructure/strategies/scoring.py
+      - backend/src/ai_job_radar/infrastructure/strategies/strictness.py
+  - name: telegram_notification_adapter
+    purpose: Convert scored jobs into Telegram sendMessage or sendPhoto calls with inline actions.
+    source_file: backend/src/ai_job_radar/infrastructure/providers/telegram/notifier.py
+
+workflows:
+  - name: ingest_jobs
+    trigger_examples: [Pull jobs button, POST /ingestion/pull, worker ingest tick]
+    steps:
+      - run StartupForStartupProvider, MockFriendSourceProvider, and LinkedInPublicSearchProvider
+      - write provider_runs and raw_jobs
+      - normalize raw_jobs into normalized_jobs
+      - write dedupe_keys
+    mutation_behavior: writes provider_runs, raw_jobs, normalized_jobs, dedupe_keys
+    current_status: implemented
+
+  - name: ingest_linkedin_alerts
+    trigger_examples: [POST /ingestion/linkedin-email, multipart upload, raw bytes upload, IMAP sync]
+    steps:
+      - parse LinkedIn alert email
+      - write raw_jobs under linkedin_alert source
+      - normalize and dedupe
+    mutation_behavior: writes provider_runs, raw_jobs, normalized_jobs, dedupe_keys
+    current_status: implemented
+
+  - name: normalize_and_dedupe
+    trigger_examples: [after ingestion, parser replay]
+    steps:
+      - map RawJobPayload to NormalizedJobDTO
+      - apply target location filter
+      - skip source/external_id and URL duplicates
+      - fuzzy compare recent title/company/technology candidates
+    mutation_behavior: writes normalized_jobs and dedupe_keys
+    current_status: implemented
+
+  - name: score_jobs
+    trigger_examples: [Score new button, Rescore batch button, POST /jobs/score, worker score tick]
+    steps:
+      - load or rebuild CV/profile row
+      - calculate fit from tech overlap and title cues
+      - estimate strictness from requirements language
+      - apply location filter and recommendation adjustment
+      - write job_scores
+    mutation_behavior: writes candidate_profiles and job_scores; rescore deletes selected existing scores
+    current_status: implemented
+
+  - name: triage_jobs
+    trigger_examples: [/triage route, keyboard or swipe actions]
+    steps:
+      - load /jobs/scored?undecided=true
+      - render JobCard queue
+      - persist APPLY/MAYBE/SKIP to /jobs/{job_id}/decision
+    mutation_behavior: writes or updates user_decisions
+    current_status: implemented
+
+  - name: send_telegram_digest
+    trigger_examples: [Dispatch Telegram button, POST /notifications/dispatch, worker notify tick]
+    steps:
+      - select scored jobs above NOTIFY_FIT_THRESHOLD
+      - skip already-notified job/channel dedupe keys
+      - optionally render PNG job card
+      - send Telegram message or photo
+      - record notification status and payload
+    mutation_behavior: writes notifications and calls external Telegram API when configured
+    current_status: implemented
+
+  - name: telegram_review_loop
+    trigger_examples: [/ok <uuid>, /not_ok <uuid>, /save <uuid>, /why <uuid>]
+    steps:
+      - receive POST /telegram/webhook
+      - validate optional Telegram secret header
+      - parse slash command
+      - persist review_decisions row
+    mutation_behavior: writes review_decisions
+    current_status: implemented
+
+  - name: provider_run_history
+    trigger_examples: [Provider runs panel, GET /provider-runs]
+    steps:
+      - read provider_runs newest first
+      - render provider, status, timing, stats, and error columns
+    mutation_behavior: read_only
+    current_status: implemented
+
+  - name: observability_debug
+    trigger_examples: [GET /metrics, Grafana dashboard, make debug-mcp]
+    steps:
+      - expose FastAPI instrumentator metrics
+      - expose worker Prometheus metrics on port 9091
+      - inspect DB through read-only FastMCP tools
+    mutation_behavior: read_only
+    current_status: implemented
+
+prompts:
+  llm_usage:
+    current_status: not_implemented_for_runtime_decisions
+    notes:
+      - profile_llm_enrich exists in settings but no active LLM provider or prompt path was found.
+      - CandidateProfileRow has llm_summary, populated from CV summary or left null for git scanner.
+      - Scoring explanations are heuristic DTOs, not LLM-generated reasoning.
+  agent_prompting:
+    current_status: not_present
+    notes:
+      - No chat mediator, tool-calling agent, or system prompt equivalent was found in the current AI Job Radar app.
+
+seed_data:
+  in_code_mock_provider: backend/src/ai_job_radar/infrastructure/providers/friend_mock/provider.py
+  parser_test_fixtures: backend/tests
+  cv_example_file: cv-c.json
+  local_env_template: .env.example
+
+tests:
+  backend:
+    unit:
+      - backend/tests/test_dedupe.py
+      - backend/tests/test_linkedin_parser.py
+      - backend/tests/test_linkedin_public_provider.py
+      - backend/tests/test_linkedin_scraper_parser.py
+      - backend/tests/test_normalization.py
+      - backend/tests/test_scoring.py
+      - backend/tests/test_settings_database_url.py
+      - backend/tests/test_startup_for_startup_parser.py
+      - backend/tests/test_strictness.py
+      - backend/tests/test_telegram_parse.py
+  frontend:
+    tests_found: []
+    validation_commands:
+      - npm run build
+      - npm run lint
+  expectations:
+    deterministic_provider_parser_tests: true
+    scoring_and_strictness_goldens: true
+    telegram_command_parse_tests: true
+    live_provider_credentials_required_in_tests: false
+    no_live_llm_dependency: true
+  commands:
+    backend: make test
+    backend_direct: cd backend && python -m pytest
+    backend_lint: make lint-backend
+    frontend_build: cd frontend && npm run build
+    frontend_lint: cd frontend && npm run lint
+
+compatibility_gaps:
+  - AI Job Radar currently has an operational pipeline UI, not an Agent Shell chat/tool-calling UX.
+  - tool_widget_compatibility is empty because there is no persisted agent workspace/widget system.
+  - Locus scan and impact commands timed out at 60 seconds in this extraction; targeted searches were used.
+  - Scribe artifact was created through the local Scribe CLI/store after the HTTP endpoint on port 9888 returned MCP-style bad-request responses to plain GET requests.
+  - Frontend automated tests were not found; current frontend validation appears to be build/lint only.
+  - LinkedIn public search, Telegram send, IMAP sync, and Playwright image rendering need optional runtime configuration/dependencies.
+  - profile_llm_enrich setting exists, but active LLM prompts/providers were not found.
+
+future_extensions:
+  application_materials:
+    - cover_letter_generator
+    - cv_tailoring
+    - apply_bundle
+  automation:
+    - browser_automation_apply_flow
+    - easy_apply_workflow_after_reliable_detection
+  enrichment:
+    - recruiter_or_contact_enrichment
+    - company_research_enrichment
+  analytics:
+    - job_market_analytics
+    - score_tuning_dashboard
+    - replayable_scoring_experiments
+  platform:
+    - deploy_planner_pack
+    - generic_ingestion_scoring_starter_template
+    - agentic_chat_layer_for_job_search_questions
+    - reusable_provider_run_and_notification_infrastructure

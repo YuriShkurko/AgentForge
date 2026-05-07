@@ -1,0 +1,164 @@
+"""
+Core generation logic: copy template + apply domain pack substitutions.
+
+v0.1 strategy: copy the fastapi-react template to the output directory, then
+substitute the handful of app-name tokens that differ between packs. Fixture
+records are also emitted from the domain pack's seed_data hints.
+
+This proves the generator flow end-to-end. Later milestones will introduce
+per-capability code generation using Jinja2 templates.
+"""
+import shutil
+import textwrap
+from pathlib import Path
+
+from agentforge.modules import ModuleSelection, select_modules
+from agentforge.pack import DomainPack
+
+def _build_substitutions(pack: DomainPack) -> list[tuple[str, str]]:
+    slug = pack.name.replace("-", "_")
+    return [
+        ("hybrid-scoring-demo", pack.name),
+        ("Hybrid Scoring Demo", pack.display_name),
+        ("hybrid_scoring_demo", slug),
+        ("scoring_demo",        slug),
+    ]
+
+# File extensions we consider "text" for substitution
+_TEXT_EXTENSIONS = {
+    ".py", ".ts", ".tsx", ".json", ".yaml", ".yml",
+    ".md", ".html", ".env", ".ini", ".txt", ".toml",
+}
+
+# Files/dirs to skip when copying the template
+_SKIP_NAMES = {"__pycache__", ".pytest_cache", "node_modules", "dist", ".venv", "venv"}
+
+
+def _template_root() -> Path:
+    return Path(__file__).parent.parent.parent / "templates" / "fastapi-react"
+
+
+def _docker_compose_template() -> Path:
+    return Path(__file__).parent.parent.parent / "templates" / "docker-compose" / "docker-compose.yml"
+
+
+def _ci_template_root() -> Path:
+    return Path(__file__).parent.parent.parent / "templates" / "ci"
+
+
+def generate(pack: DomainPack, output_dir: Path, *, dry_run: bool = False) -> dict:
+    """
+    Generate the app for the given domain pack into output_dir.
+
+    Returns a manifest dict with: output_dir, template, files_written, gaps.
+    Raises if output_dir already exists (use --force to overwrite).
+    """
+    selection = select_modules(pack)
+    template_root = _template_root()
+
+    if not template_root.exists():
+        raise FileNotFoundError(f"template not found: {template_root}")
+
+    if not dry_run:
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+    files_written: list[str] = []
+    substitutions = _build_substitutions(pack)
+
+    def _substitute(text: str) -> str:
+        for token, replacement in substitutions:
+            text = text.replace(token, replacement)
+        return text
+
+    def _copy_tree(src: Path, dst: Path) -> None:
+        for item in src.iterdir():
+            if item.name in _SKIP_NAMES:
+                continue
+            target = dst / item.name
+            if item.is_dir():
+                if not dry_run:
+                    target.mkdir(parents=True, exist_ok=True)
+                _copy_tree(item, target)
+            else:
+                if item.suffix in _TEXT_EXTENSIONS:
+                    text = item.read_text(encoding="utf-8")
+                    text = _substitute(text)
+                    if not dry_run:
+                        target.write_text(text, encoding="utf-8")
+                else:
+                    if not dry_run:
+                        shutil.copy2(item, target)
+                files_written.append(str(target.relative_to(output_dir) if not dry_run else item))
+
+    if not dry_run:
+        _copy_tree(template_root, output_dir)
+    else:
+        _copy_tree(template_root, output_dir)  # still walks to collect files_written list
+
+    # Emit docker-compose.yml at the output root
+    dc_src = _docker_compose_template()
+    if dc_src.exists():
+        dc_text = dc_src.read_text(encoding="utf-8")
+        dc_text = _substitute(dc_text)
+        dc_dst = output_dir / "docker-compose.yml"
+        if not dry_run:
+            dc_dst.write_text(dc_text, encoding="utf-8")
+        files_written.append("docker-compose.yml")
+
+    # Copy CI skeleton (.github/workflows/)
+    ci_root = _ci_template_root()
+    if ci_root.exists():
+        _copy_tree(ci_root, output_dir)
+
+    # Emit run_commands.txt
+    commands = _build_run_commands(pack)
+    cmd_dst = output_dir / "run_commands.txt"
+    if not dry_run:
+        cmd_dst.write_text(commands, encoding="utf-8")
+    files_written.append("run_commands.txt")
+
+    return {
+        "output_dir": str(output_dir),
+        "template": selection.template,
+        "archetype": selection.archetype,
+        "modules": sorted(selection.required),
+        "gaps": selection.gaps,
+        "files_written": len(files_written),
+        "dry_run": dry_run,
+    }
+
+
+def _build_run_commands(pack: DomainPack) -> str:
+    tests = pack.tests if isinstance(pack.tests, dict) else pack.tests.model_dump()
+    commands = tests.get("commands", {})
+    backend_cmd = commands.get("backend", "pytest")
+    frontend_build = commands.get("frontend_build", "npm run build")
+    frontend_lint = commands.get("frontend_lint", "npm run lint")
+    e2e_cmd = commands.get("e2e", "npm run test:e2e")
+
+    return textwrap.dedent(f"""\
+        # {pack.display_name} — local validation commands
+        # Generated by AgentForge generator for pack: {pack.name}
+
+        ## Start local services
+        docker compose up -d db
+
+        ## Backend
+        cd backend
+        pip install -r requirements-dev.txt
+        {backend_cmd}
+
+        ## Frontend
+        cd ../frontend
+        npm install
+        {frontend_build}
+        {frontend_lint}
+
+        ## E2E (requires running app)
+        # Start backend: uvicorn app.main:app --reload
+        # Start frontend: npm run dev
+        {e2e_cmd}
+
+        ## Full stack (Docker Compose)
+        docker compose up --build
+    """)
