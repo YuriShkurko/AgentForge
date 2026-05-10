@@ -33,6 +33,8 @@ The feature modules an app needs depend on its archetype. An agentic dashboard u
 
 `agent_runtime` *(optional when `agent_runtime` is declared as a feature module)*: Configuration for the Agent Runtime Module. Fields include `enabled`, `provider_mode` (`scripted`, `mock`, or `openai_compatible_placeholder`), `scripted_fixture_path` or inline `scripted_turns`, `tools` exposed to the agent, `conversation_persistence`, `streaming`, and `guardrails`. When `streaming.enabled` is true, generated apps expose `/agent/chat/stream` as `text/event-stream` with structured `message_start`, `text_delta`, `tool_call`, `tool_result`, `error`, and `done` events.
 
+`workspace` *(optional when `workspace` is declared as a feature module)*: Configuration for the Dashboard/Workspace Module. Fields include `enabled`, `persistence` (table/field expectations), `default_layout`, `remove_enabled`, `reorder_enabled`, `empty_state`, and `frontend_surface`. v0.4 stores direct widget JSON payloads, validates compatibility on the backend, and supports list/create/remove/reorder operations.
+
 `agent_shell_contract` *(agent_dashboard_app / hybrid_agent_pipeline only)*: Broader capabilities expected from a full Agent Shell runtime — `chat`, `streaming_sse`, `tool_calling`, `persistent_conversations`, `persistent_workspace_widgets`, `workspace_events`, `dashboard_layout`, `guardrails`, `scripted_llm_testing`.
 
 ## Capability and Tool Fields
@@ -41,9 +43,9 @@ The feature modules an app needs depend on its archetype. An agentic dashboard u
 
 `tools` *(agent_dashboard_app or `agent_runtime.tools`)*: Agent-callable capabilities exposed to the chat/tool-calling runtime. A subset of `capabilities`. For dashboard apps, each entry can include `allowed_widget_types`. For pipeline apps, prefer `agent_runtime.tools` so deterministic tools remain scoped to the Agent Runtime Module rather than implying a Dashboard/Workspace Module. Tool `input_schema` entries should be typed objects where practical, for example `{type: boolean, required: false, default: false}` or `{type: string, required: true, choices: [accept, skip, save]}`. Generated runtimes validate tool arguments before execution and return structured `unknown_tool` or `invalid_arguments` tool errors without crashing chat requests.
 
-`widgets` *(agent_dashboard_app only)*: Renderable workspace widget types. Each entry includes `widget_type`, `renderer`, `compatible_source_tools`, `section`, `expected_data_shape`, `empty_state`, `implementation_status`.
+`widgets` *(required when `workspace` is enabled)*: Renderable workspace widget types. Each entry includes `widget_type`, `renderer`, `compatible_source_tools`, `section`, `expected_data_shape`, `empty_state`, `implementation_status`. v0.4 supports generic widgets only; domain-specific renderers must be declared and implemented separately.
 
-`tool_widget_compatibility` *(required when `workspace_runtime` is enabled; empty map otherwise)*: Authoritative mapping from `source_tool` to allowed `widget_type` values. Generators use this map to produce validation that prevents an agent from pinning unrenderable widgets.
+`tool_widget_compatibility` *(required when `workspace` is enabled; empty map otherwise)*: Authoritative mapping from `source_tool` to allowed `widget_type` values. Generators use this map to produce backend validation that prevents an agent from pinning unrenderable widgets.
 
 `ui_surfaces`: General UI surfaces the app exposes — tables, cards, triage queues, operations panels, dashboards. Covers both persisted workspace widgets and non-persistent operational views. Each entry includes `surface_type`, `renderer`, `data_source`, `section`, `expected_data_shape`, `empty_state`.
 
@@ -83,6 +85,7 @@ The feature modules an app needs depend on its archetype. An agentic dashboard u
 | Application Template | template / Product Shell | The reusable FastAPI/React source tree copied and parameterized by the generator |
 | Feature Module | shell module | A reusable capability area wired by the generator (pipeline, scoring, agent runtime, etc.) |
 | Agent Runtime Module | `agent_runtime` | Optional scripted chat/tool-calling runtime with persisted conversations, SSE events, and typed tool validation |
+| Dashboard/Workspace Module | `workspace` | Optional persisted workspace widgets with generic rendering and backend source-tool/widget compatibility validation |
 | Integration Adapter | provider/adapter | Normalizes external or fixture data into stable app-specific records |
 | Test Harness | deterministic test shell | Fixture-based tests that avoid live external APIs or LLMs |
 | Provider | provider | Source of data or execution capability (mock, offline, external API, IMAP, etc.) |
@@ -132,7 +135,7 @@ Rules:
 - Generator must not invent current capabilities from `future_extensions`.
 - Generator must not wire optional shell modules unless declared in `optional_shell_modules`.
 - Generator must not force `tools`, `widgets`, or `tool_widget_compatibility` for pipeline archetypes.
-- Generator must not force the Agent Runtime Module or Dashboard/Workspace Module unless `agent_runtime` or `workspace_runtime` appears in `required_shell_modules` or `optional_shell_modules`.
+- Generator must not force the Agent Runtime Module or Dashboard/Workspace Module unless `agent_runtime` or `workspace` appears in `required_shell_modules` or `optional_shell_modules`.
 - Agent runtime tests must use `scripted` or `mock` provider modes; live OpenAI-compatible providers are configuration placeholders only until explicitly implemented.
 - Streaming must be honest `text/event-stream` delivery. Do not claim streaming support from a buffered non-streaming response.
 - Tool arguments must be validated against declared/generated typed schemas before handlers run, and validation errors must be returned as structured tool results.

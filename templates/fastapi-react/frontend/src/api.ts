@@ -16,6 +16,12 @@ async function get<T>(path: string): Promise<T> {
   return res.json();
 }
 
+async function del<T>(path: string): Promise<T> {
+  const res = await fetch(`${BASE}${path}`, { method: "DELETE" });
+  if (!res.ok) throw new Error(`DELETE ${path} failed: ${res.status}`);
+  return res.json();
+}
+
 async function streamAgentChat(
   message: string,
   conversationId: string | undefined,
@@ -80,6 +86,21 @@ export const api = {
   getAgentConversation: (conversationId: string) =>
     get<{ conversation_id: string; messages: import("./types").AgentMessage[] }>(
       `/agent/conversations/${conversationId}`
+    ),
+  getWorkspaceWidgets: () => get<{ widgets: import("./types").WorkspaceWidget[] }>("/workspace/widgets"),
+  createWorkspaceWidget: (body: {
+    widget_type: string;
+    title: string;
+    source_tool: string;
+    data: unknown;
+    metadata?: Record<string, unknown> | null;
+  }) => post<{ widget: import("./types").WorkspaceWidget }>("/workspace/widgets", body),
+  removeWorkspaceWidget: (widgetId: string) =>
+    del<{ removed: boolean; widget_id: string }>(`/workspace/widgets/${widgetId}`),
+  reorderWorkspaceWidgets: (widgetIds: string[]) =>
+    post<{ reordered: boolean; widget_ids: string[]; widgets: import("./types").WorkspaceWidget[] }>(
+      "/workspace/widgets/reorder",
+      { widget_ids: widgetIds }
     ),
   recordAction: (recordId: string, actionType: import("./types").TriageAction) =>
     post<{ ok: boolean; record_id: string; action_type: string; status: string }>(

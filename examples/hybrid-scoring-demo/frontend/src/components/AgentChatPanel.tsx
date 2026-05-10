@@ -9,9 +9,11 @@ interface Props {
 }
 
 export function AgentChatPanel({ onAgentDone }: Props) {
-  const [conversationId, setConversationId] = useState<string | undefined>(() => {
-    return window.localStorage.getItem(STORAGE_KEY) ?? undefined;
-  });
+  const [conversationId, setConversationId] = useState<string | undefined>(
+    () => {
+      return window.localStorage.getItem(STORAGE_KEY) ?? undefined;
+    },
+  );
   const [messages, setMessages] = useState<AgentMessage[]>([]);
   const [toolEvents, setToolEvents] = useState<AgentToolEvent[]>([]);
   const [input, setInput] = useState("score the records");
@@ -20,7 +22,8 @@ export function AgentChatPanel({ onAgentDone }: Props) {
 
   useEffect(() => {
     if (!conversationId) return;
-    api.getAgentConversation(conversationId)
+    api
+      .getAgentConversation(conversationId)
       .then((data) => setMessages(data.messages))
       .catch(() => {
         window.localStorage.removeItem(STORAGE_KEY);
@@ -43,8 +46,20 @@ export function AgentChatPanel({ onAgentDone }: Props) {
     const assistantId = `pending-assistant-${Date.now()}`;
     setMessages((current) => [
       ...current,
-      { id: `pending-user-${Date.now()}`, role: "user", content: message, metadata: null, created_at: now },
-      { id: assistantId, role: "assistant", content: "", metadata: null, created_at: now },
+      {
+        id: `pending-user-${Date.now()}`,
+        role: "user",
+        content: message,
+        metadata: null,
+        created_at: now,
+      },
+      {
+        id: assistantId,
+        role: "assistant",
+        content: "",
+        metadata: null,
+        created_at: now,
+      },
     ]);
     try {
       await api.streamAgentChat(message, conversationId, (streamEvent) => {
@@ -71,8 +86,14 @@ export function AgentChatPanel({ onAgentDone }: Props) {
     window.localStorage.setItem(STORAGE_KEY, nextConversationId);
   }
 
-  function handleStreamEvent(streamEvent: AgentStreamEvent, assistantId: string) {
-    if (streamEvent.event === "message_start" && typeof streamEvent.data.conversation_id === "string") {
+  function handleStreamEvent(
+    streamEvent: AgentStreamEvent,
+    assistantId: string,
+  ) {
+    if (
+      streamEvent.event === "message_start" &&
+      typeof streamEvent.data.conversation_id === "string"
+    ) {
       storeConversation(streamEvent.data.conversation_id);
       return;
     }
@@ -81,7 +102,10 @@ export function AgentChatPanel({ onAgentDone }: Props) {
         ...current,
         {
           tool_name: String(streamEvent.data.tool_name),
-          arguments: (streamEvent.data.arguments ?? {}) as Record<string, unknown>,
+          arguments: (streamEvent.data.arguments ?? {}) as Record<
+            string,
+            unknown
+          >,
           ok: true,
           result: null,
           error: null,
@@ -93,17 +117,26 @@ export function AgentChatPanel({ onAgentDone }: Props) {
     if (streamEvent.event === "tool_result") {
       const toolEvent = streamEvent.data as unknown as AgentToolEvent;
       setToolEvents((current) => [
-        ...current.filter((event) => event.status !== "running" || event.tool_name !== toolEvent.tool_name),
+        ...current.filter(
+          (event) =>
+            event.status !== "running" ||
+            event.tool_name !== toolEvent.tool_name,
+        ),
         { ...toolEvent, status: toolEvent.ok ? "succeeded" : "failed" },
       ]);
       return;
     }
     if (streamEvent.event === "text_delta") {
-      setMessages((current) => current.map((item) => (
-        item.id === assistantId
-          ? { ...item, content: `${item.content}${String(streamEvent.data.text ?? "")}` }
-          : item
-      )));
+      setMessages((current) =>
+        current.map((item) =>
+          item.id === assistantId
+            ? {
+                ...item,
+                content: `${item.content}${String(streamEvent.data.text ?? "")}`,
+              }
+            : item,
+        ),
+      );
       return;
     }
     if (streamEvent.event === "error") {
@@ -127,28 +160,75 @@ export function AgentChatPanel({ onAgentDone }: Props) {
   }
 
   return (
-    <section data-testid="agent-chat-panel" style={{ border: "1px solid #ddd", borderRadius: 8, padding: "1rem" }}>
+    <section
+      data-testid="agent-chat-panel"
+      style={{ border: "1px solid #ddd", borderRadius: 8, padding: "1rem" }}
+    >
       <h2>Agent Runtime</h2>
       <p style={{ fontSize: "0.9rem", color: "#555" }}>
-        Scripted local agent. Try: "ingest records", "score the records", "show best records", or "create notification preview".
+        Scripted local agent. Try: "ingest records", "score the records", "show
+        best records", or "create notification preview".
       </p>
-      <div data-testid="agent-messages" style={{ display: "grid", gap: "0.5rem", marginBottom: "0.75rem" }}>
+      <div
+        data-testid="agent-messages"
+        style={{ display: "grid", gap: "0.5rem", marginBottom: "0.75rem" }}
+      >
         {messages.length === 0 ? (
           <p data-testid="agent-empty">No conversation yet.</p>
         ) : (
-          messages.filter((message) => message.role !== "tool").map((message) => (
-            <div key={message.id} data-testid={`agent-message-${message.role}`}>
-              <strong>{message.role}:</strong> {message.content}
-            </div>
-          ))
+          messages
+            .filter((message) => message.role !== "tool")
+            .map((message) => (
+              <div
+                key={message.id}
+                data-testid={`agent-message-${message.role}`}
+              >
+                <strong>{message.role}:</strong> {message.content}
+              </div>
+            ))
         )}
       </div>
       {toolEvents.length > 0 && (
-        <ul data-testid="agent-tool-activity" style={{ fontSize: "0.85rem", paddingLeft: "1.2rem" }}>
+        <ul
+          data-testid="agent-tool-activity"
+          style={{
+            display: "grid",
+            gap: "0.35rem",
+            fontSize: "0.85rem",
+            listStyle: "none",
+            padding: 0,
+            margin: "0 0 0.75rem",
+          }}
+        >
           {toolEvents.map((event, index) => (
-            <li key={`${event.tool_name}-${index}`} data-testid="agent-tool-event">
-              {event.status === "running" ? "running" : event.ok ? "ran" : "failed"} {event.tool_name}
-              {event.error ? `: ${event.error}` : ""}
+            <li
+              key={`${event.tool_name}-${index}`}
+              data-testid="agent-tool-event"
+              style={{
+                border: "1px solid #e2e8f0",
+                borderRadius: 6,
+                padding: "0.45rem 0.55rem",
+                background: event.ok === false ? "#fff7f7" : "#fbfdff",
+                color: event.ok === false ? "#991b1b" : "#334155",
+              }}
+            >
+              <strong>
+                {event.status === "running"
+                  ? "running"
+                  : event.ok
+                    ? "ran"
+                    : "failed"}{" "}
+                {event.tool_name}
+              </strong>
+              <span
+                style={{
+                  display: "block",
+                  color: event.ok === false ? "#991b1b" : "#64748b",
+                  marginTop: "0.1rem",
+                }}
+              >
+                {describeToolEvent(event)}
+              </span>
             </li>
           ))}
         </ul>
@@ -165,7 +245,28 @@ export function AgentChatPanel({ onAgentDone }: Props) {
           {busy ? "Sending..." : "Send"}
         </button>
       </form>
-      {error && <p data-testid="agent-error" style={{ color: "#b71c1c" }}>{error}</p>}
+      {error && (
+        <p data-testid="agent-error" style={{ color: "#b71c1c" }}>
+          {error}
+        </p>
+      )}
     </section>
   );
+}
+
+function describeToolEvent(event: AgentToolEvent): string {
+  if (event.status === "running") {
+    return event.tool_name === "pin_widget"
+      ? "Saving a workspace widget..."
+      : "Tool is running.";
+  }
+  if (!event.ok) {
+    return event.tool_name === "pin_widget"
+      ? `Widget was not persisted: ${event.error ?? "tool failed"}`
+      : (event.error ?? "Tool failed.");
+  }
+  if (event.tool_name === "pin_widget") {
+    return "Workspace widget persisted. The workspace refreshes when the turn completes.";
+  }
+  return "Tool completed.";
 }

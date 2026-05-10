@@ -103,3 +103,23 @@ export interface AgentStreamEvent {
   event: AgentStreamEventName;
   data: Record<string, unknown>;
 }
+
+export type WorkspaceWidgetType =
+  | "summary_card"
+  | "ranking_list"
+  | "score_table"
+  | "run_history_list"
+  | "notification_preview_card"
+  | "action_history_list";
+
+export interface WorkspaceWidget {
+  id: string;
+  widget_type: WorkspaceWidgetType | string;
+  title: string;
+  source_tool: string;
+  data: unknown;
+  position: number;
+  metadata: Record<string, unknown> | null;
+  created_at: string;
+  updated_at: string;
+}

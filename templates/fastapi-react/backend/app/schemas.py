@@ -2,6 +2,7 @@ import uuid
 from datetime import datetime
 
 from pydantic import BaseModel
+from typing import Any
 
 
 # --- Provider Run ---
@@ -178,3 +179,48 @@ class AgentChatResponse(BaseModel):
 class AgentConversationOut(BaseModel):
     conversation_id: uuid.UUID
     messages: list[AgentMessageOut]
+
+
+# --- Workspace ---
+
+class WorkspaceWidgetOut(BaseModel):
+    id: uuid.UUID
+    widget_type: str
+    title: str
+    source_tool: str
+    data: Any
+    position: int
+    metadata: dict | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class WorkspaceWidgetsListOut(BaseModel):
+    widgets: list[WorkspaceWidgetOut]
+
+
+class WorkspaceWidgetCreate(BaseModel):
+    widget_type: str
+    title: str
+    source_tool: str
+    data: Any
+    metadata: dict | None = None
+
+
+class WorkspaceWidgetCreateOut(BaseModel):
+    widget: WorkspaceWidgetOut
+
+
+class WorkspaceWidgetDeleteOut(BaseModel):
+    removed: bool
+    widget_id: uuid.UUID
+
+
+class WorkspaceReorderRequest(BaseModel):
+    widget_ids: list[uuid.UUID]
+
+
+class WorkspaceReorderOut(BaseModel):
+    reordered: bool
+    widget_ids: list[uuid.UUID]
+    widgets: list[WorkspaceWidgetOut]

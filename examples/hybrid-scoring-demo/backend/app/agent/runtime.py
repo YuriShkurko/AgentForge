@@ -95,14 +95,17 @@ async def run_agent_chat_stream_events(
         provider = ScriptedAgentProvider()
         plan: AgentPlan = provider.plan(cleaned)
         tool_events = []
+        tool_results_by_name: dict[str, dict[str, Any]] = {}
 
         for call in plan.tool_calls:
-            yield {"event": "tool_call", "data": {"tool_name": call.name, "arguments": call.arguments}}
+            arguments = _resolve_tool_arguments(call.arguments, tool_results_by_name)
+            yield {"event": "tool_call", "data": {"tool_name": call.name, "arguments": arguments}}
             try:
-                result = await execute_tool(call.name, call.arguments, db)
+                result = await execute_tool(call.name, arguments, db)
+                tool_results_by_name[call.name] = result
                 event = {
                     "tool_name": call.name,
-                    "arguments": call.arguments,
+                    "arguments": arguments,
                     "ok": True,
                     "result": result,
                     "error": None,
@@ -112,7 +115,7 @@ async def run_agent_chat_stream_events(
             except ToolExecutionError as exc:
                 event = {
                     "tool_name": call.name,
-                    "arguments": call.arguments,
+                    "arguments": arguments,
                     "ok": False,
                     "result": None,
                     "error": exc.message,
@@ -122,7 +125,7 @@ async def run_agent_chat_stream_events(
             except Exception as exc:
                 event = {
                     "tool_name": call.name,
-                    "arguments": call.arguments,
+                    "arguments": arguments,
                     "ok": False,
                     "result": None,
                     "error": str(exc),
@@ -216,19 +219,22 @@ async def _run_agent_chat(
     plan: AgentPlan = provider.plan(cleaned)
 
     tool_events = []
+    tool_results_by_name: dict[str, dict[str, Any]] = {}
     for call in plan.tool_calls:
+        arguments = _resolve_tool_arguments(call.arguments, tool_results_by_name)
         if event_sink:
             await event_sink(
                 {
                     "event": "tool_call",
-                    "data": {"tool_name": call.name, "arguments": call.arguments},
+                    "data": {"tool_name": call.name, "arguments": arguments},
                 }
             )
         try:
-            result = await execute_tool(call.name, call.arguments, db)
+            result = await execute_tool(call.name, arguments, db)
+            tool_results_by_name[call.name] = result
             event = {
                 "tool_name": call.name,
-                "arguments": call.arguments,
+                "arguments": arguments,
                 "ok": True,
                 "result": result,
                 "error": None,
@@ -238,7 +244,7 @@ async def _run_agent_chat(
         except ToolExecutionError as exc:
             event = {
                 "tool_name": call.name,
-                "arguments": call.arguments,
+                "arguments": arguments,
                 "ok": False,
                 "result": None,
                 "error": exc.message,
@@ -248,7 +254,7 @@ async def _run_agent_chat(
         except Exception as exc:
             event = {
                 "tool_name": call.name,
-                "arguments": call.arguments,
+                "arguments": arguments,
                 "ok": False,
                 "result": None,
                 "error": str(exc),
@@ -301,6 +307,16 @@ def _text_chunks(text: str) -> list[str]:
     if len(words) <= 1:
         return [text]
     return [f"{word} " for word in words[:-1]] + [words[-1]]
+
+
+def _resolve_tool_arguments(arguments: dict[str, Any], tool_results_by_name: dict[str, dict[str, Any]]) -> dict[str, Any]:
+    source_tool = arguments.get("__from_tool")
+    if not isinstance(source_tool, str):
+        return arguments
+
+    resolved = {key: value for key, value in arguments.items() if key != "__from_tool"}
+    resolved["data"] = tool_results_by_name.get(source_tool, {})
+    return resolved
 
 
 def _render_assistant_text(final_text: str, tool_events: list[dict]) -> str:

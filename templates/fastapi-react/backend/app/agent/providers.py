@@ -35,6 +35,70 @@ class ScriptedAgentProvider(AgentProvider):
                 tool_calls=[AgentToolCall("score_records", {"rescore": "yes"})],
                 final_text="I could not run the tool with those arguments.",
             )
+        if "invalid widget" in text or "bad widget" in text:
+            return AgentPlan(
+                tool_calls=[
+                    AgentToolCall("get_scored_records", {"limit": 3}),
+                    AgentToolCall(
+                        "pin_widget",
+                        {
+                            "widget_type": "run_history_list",
+                            "title": "Invalid scored records widget",
+                            "source_tool": "get_scored_records",
+                            "__from_tool": "get_scored_records",
+                        },
+                    ),
+                ],
+                final_text="I could not pin that widget.",
+            )
+        if "pin" in text and ("scored records" in text or "best records" in text or "records" in text):
+            return AgentPlan(
+                tool_calls=[
+                    AgentToolCall("get_scored_records", {"limit": 3}),
+                    AgentToolCall(
+                        "pin_widget",
+                        {
+                            "widget_type": "ranking_list",
+                            "title": "Top scored records",
+                            "source_tool": "get_scored_records",
+                            "__from_tool": "get_scored_records",
+                        },
+                    ),
+                ],
+                final_text="I pinned the scored records to the workspace.",
+            )
+        if "pin" in text and ("preview" in text or "notification" in text):
+            return AgentPlan(
+                tool_calls=[
+                    AgentToolCall("create_notification_preview", {}),
+                    AgentToolCall(
+                        "pin_widget",
+                        {
+                            "widget_type": "notification_preview_card",
+                            "title": "Notification preview",
+                            "source_tool": "create_notification_preview",
+                            "__from_tool": "create_notification_preview",
+                        },
+                    ),
+                ],
+                final_text="I created notification previews and pinned the result to the workspace.",
+            )
+        if "pin" in text and "history" in text:
+            return AgentPlan(
+                tool_calls=[
+                    AgentToolCall("list_action_history", {"limit": 5}),
+                    AgentToolCall(
+                        "pin_widget",
+                        {
+                            "widget_type": "action_history_list",
+                            "title": "Action history",
+                            "source_tool": "list_action_history",
+                            "__from_tool": "list_action_history",
+                        },
+                    ),
+                ],
+                final_text="I pinned the action history to the workspace.",
+            )
         if "ingest" in text:
             return AgentPlan(
                 tool_calls=[AgentToolCall("run_ingest", {})],

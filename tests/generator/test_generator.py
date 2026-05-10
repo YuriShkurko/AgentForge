@@ -28,6 +28,7 @@ EXPECTED_BACKEND_FILES = [
     "backend/app/agent/providers.py",
     "backend/app/agent/runtime.py",
     "backend/app/agent/tools.py",
+    "backend/app/services/workspace.py",
     "backend/app/services/ingest.py",
     "backend/app/services/score.py",
     "backend/app/services/actions.py",
@@ -39,6 +40,7 @@ EXPECTED_BACKEND_FILES = [
     "backend/app/routers/actions.py",
     "backend/app/routers/notifications.py",
     "backend/app/routers/agent.py",
+    "backend/app/routers/workspace.py",
     "backend/requirements.txt",
 ]
 
@@ -53,6 +55,8 @@ EXPECTED_FRONTEND_FILES = [
     "frontend/src/components/NotificationPreviewPanel.tsx",
     "frontend/src/components/ActionHistoryPanel.tsx",
     "frontend/src/components/AgentChatPanel.tsx",
+    "frontend/src/components/WorkspacePanel.tsx",
+    "frontend/src/components/WidgetRenderer.tsx",
     "frontend/index.html",
     "frontend/package.json",
 ]
@@ -133,7 +137,7 @@ def test_snapshot_matches(tmp_path):
     assert set(result["modules"]) == {
         "pipeline", "provider_adapter", "scoring_explanation",
         "operations_ui", "persistence", "test", "notification_action", "triage_ui",
-        "agent_runtime",
+        "agent_runtime", "workspace",
     }
 
 
@@ -147,3 +151,5 @@ def test_plan_json_reports_agent_runtime(capsys):
     assert data["agent_runtime"]["provider_mode"] == "scripted"
     assert data["agent_runtime"]["streaming"]["enabled"] is True
     assert data["agent_runtime"]["streaming"]["endpoint"] == "/agent/chat/stream"
+    assert "workspace" in data["active_modules"]
+    assert data["workspace"]["enabled"] is True

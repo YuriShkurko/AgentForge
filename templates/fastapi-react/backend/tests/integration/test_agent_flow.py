@@ -74,6 +74,24 @@ async def test_agent_chat_stream_returns_validation_error_event(client):
 
 
 @pytest.mark.asyncio
+async def test_agent_chat_can_pin_workspace_widget(client):
+    await client.post("/agent/chat", json={"message": "ingest records"})
+    await client.post("/agent/chat", json={"message": "score the records"})
+
+    response = await client.post("/agent/chat/stream", json={"message": "pin the scored records to the workspace"})
+
+    assert response.status_code == 200
+    events = _parse_sse_events(response.text)
+    pin_result = [data for name, data in events if name == "tool_result"][-1]
+    assert pin_result["tool_name"] == "pin_widget"
+    assert pin_result["ok"] is True
+
+    widgets = await client.get("/workspace/widgets")
+    assert widgets.status_code == 200
+    assert widgets.json()["widgets"][0]["widget_type"] == "ranking_list"
+
+
+@pytest.mark.asyncio
 async def test_agent_chat_rejects_empty_message(client):
     response = await client.post("/agent/chat", json={"message": "   "})
 

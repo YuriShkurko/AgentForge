@@ -13,7 +13,7 @@ Business Insight is an agentic chat/workspace/dashboard app. AI Job Radar is a d
 AgentForge v0 module language:
 
 - **Agent Runtime Module** (Agent Shell): optional module for conversational UX, tool calling, streaming, guardrails, scripted LLM testing, and workspace/widget operations.
-- **Dashboard/Workspace Module** (Workspace Shell): optional module for persisted widgets, layout, dashboard sections, compatibility validation, and presentation mode.
+- **Dashboard/Workspace Module** (Workspace Shell): optional module for persisted widgets, layout/order, dashboard sections, compatibility validation, and simple widget lifecycle operations. Presentation mode remains outside v0.4.
 - **Ingestion Pipeline Module** (Pipeline Shell): optional module for provider runs, normalization, dedupe, scoring, replay, background jobs, and operational controls.
 - **Triage/Action Module** (Triage/Notification Shell): optional module for surfaced recommendations, action loops, notifications, and persisted decisions.
 
@@ -221,7 +221,19 @@ v0.2 promotes the v0.1 action stub into a reusable preview-only Notification/Tri
 - Delivery is a no-op preview adapter; no Telegram, email, Slack, live LLM, or paid API call is made.
 - Triage actions update the current action state and append an immutable history event.
 - The frontend exposes preview cards, action buttons, current state, and action history.
-- `notification_action` and `triage_ui` are supported template modules; `workspace`, `observability_debug`, and `deploy_planner` remain explicit gaps.
+- `notification_action`, `triage_ui`, and generic `workspace` are supported template modules; `observability_debug` and `deploy_planner` remain explicit gaps.
+
+## AgentForge v0.4 Dashboard/Workspace Scope
+
+v0.4 adds a generic Dashboard/Workspace Module over the deterministic generated app:
+
+- Workspace widgets are persisted in `workspace_widgets`.
+- The backend validates `source_tool` to `widget_type` compatibility before creating widgets.
+- The scripted agent can pin compatible tool results through `pin_widget`.
+- The frontend renders a compact workspace panel with generic widgets and remove/reorder controls.
+- Refresh preserves widgets because the workspace is database-backed.
+
+v0.4 does not generate Business Insight-specific widgets such as `money_flow`, `health_score`, `signal_timeline`, `opportunity_list`, or presentation dashboards. Those require separate domain-specific renderer work.
 
 ## AgentForge v0.3 Agent Runtime Scope
 
@@ -295,4 +307,3 @@ Do not update the core spec until v0.1 shape is accepted; these are architecture
 - Generating code without deterministic validation.
 - Collapsing widgets and UI surfaces into one concept.
 - Hiding project-specific semantics behind generic scoring names.
-

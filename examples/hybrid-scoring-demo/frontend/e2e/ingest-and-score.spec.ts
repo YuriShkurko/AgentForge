@@ -91,3 +91,30 @@ test("agent chat shows streamed tool validation errors", async ({ page }) => {
   await expect(page.getByTestId("agent-tool-event").first()).toContainText("failed score_records", { timeout: 5000 });
   await expect(page.getByTestId("agent-message-assistant").last()).toContainText("Tool error");
 });
+
+test("agent pins workspace widget that persists and can be removed", async ({ page }) => {
+  while (await page.getByTestId("workspace-remove-btn").count() > 0) {
+    await page.getByTestId("workspace-remove-btn").first().click();
+  }
+  await expect(page.getByTestId("workspace-empty")).toBeVisible();
+
+  await page.getByTestId("ingest-btn").click();
+  await expect(page.getByTestId("run-row").first()).toBeVisible({ timeout: 5000 });
+  await page.getByTestId("score-btn").click();
+  await expect(page.getByTestId("scored-row").first()).toBeVisible({ timeout: 5000 });
+
+  await page.getByTestId("agent-input").fill("pin the scored records to the workspace");
+  await page.getByTestId("agent-send-btn").click();
+
+  await expect(page.getByTestId("workspace-widget").first()).toContainText("Top scored records", { timeout: 5000 });
+  await expect(page.getByTestId("widget-ranking-list").first()).toBeVisible();
+
+  await page.reload();
+  await expect(page.getByTestId("workspace-widget").first()).toContainText("Top scored records", { timeout: 5000 });
+
+  await page.getByTestId("workspace-remove-btn").first().click();
+  await expect(page.getByTestId("workspace-empty")).toBeVisible({ timeout: 5000 });
+
+  await page.reload();
+  await expect(page.getByTestId("workspace-empty")).toBeVisible({ timeout: 5000 });
+});

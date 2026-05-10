@@ -12,6 +12,13 @@ from app.services.actions import list_action_history, record_action
 from app.services.ingest import run_ingest
 from app.services.notifications import create_notification_previews
 from app.services.score import run_score
+from app.services.workspace import (
+    WorkspaceError,
+    create_widget,
+    list_widgets as list_workspace_widgets,
+    remove_widget as remove_workspace_widget,
+    reorder_widgets as reorder_workspace_widgets,
+)
 
 ToolHandler = Callable[[dict[str, Any], AsyncSession], Awaitable[dict[str, Any]]]
 
@@ -72,6 +79,12 @@ def _validate_tool_arguments(tool: ToolDefinition, arguments: dict[str, Any]) ->
         elif spec.type_name == "string":
             if not isinstance(value, str):
                 raise ToolExecutionError("invalid_arguments", f"{name} must be a string")
+        elif spec.type_name == "object":
+            if not isinstance(value, dict):
+                raise ToolExecutionError("invalid_arguments", f"{name} must be an object")
+        elif spec.type_name == "array":
+            if not isinstance(value, list):
+                raise ToolExecutionError("invalid_arguments", f"{name} must be an array")
         else:
             raise ToolExecutionError("invalid_schema", f"unsupported schema type: {spec.type_name}")
 
@@ -172,6 +185,60 @@ async def _list_action_history(args: dict[str, Any], db: AsyncSession) -> dict[s
     }
 
 
+def _serialize_widget(widget: dict[str, Any]) -> dict[str, Any]:
+    return {
+        **widget,
+        "id": str(widget["id"]),
+        "created_at": widget["created_at"].isoformat(),
+        "updated_at": widget["updated_at"].isoformat(),
+    }
+
+
+async def _pin_widget(args: dict[str, Any], db: AsyncSession) -> dict[str, Any]:
+    try:
+        widget = await create_widget(
+            db,
+            widget_type=args["widget_type"],
+            title=args["title"],
+            source_tool=args["source_tool"],
+            data=args["data"],
+            metadata=args.get("metadata"),
+        )
+    except WorkspaceError as exc:
+        raise ToolExecutionError(exc.code, exc.message) from exc
+    return {"pinned": True, "widget": _serialize_widget(widget)}
+
+
+async def _list_widgets(args: dict[str, Any], db: AsyncSession) -> dict[str, Any]:
+    widgets = await list_workspace_widgets(db)
+    return {"widgets": [_serialize_widget(widget) for widget in widgets]}
+
+
+async def _remove_widget(args: dict[str, Any], db: AsyncSession) -> dict[str, Any]:
+    try:
+        result = await remove_workspace_widget(db, uuid.UUID(str(args["widget_id"])))
+    except WorkspaceError as exc:
+        raise ToolExecutionError(exc.code, exc.message) from exc
+    return {"removed": result["removed"], "widget_id": str(result["widget_id"])}
+
+
+async def _reorder_widgets(args: dict[str, Any], db: AsyncSession) -> dict[str, Any]:
+    try:
+        result = await reorder_workspace_widgets(
+            db,
+            [uuid.UUID(str(widget_id)) for widget_id in args["widget_ids"]],
+        )
+    except ValueError as exc:
+        raise ToolExecutionError("invalid_arguments", "widget_ids must contain UUID values") from exc
+    except WorkspaceError as exc:
+        raise ToolExecutionError(exc.code, exc.message) from exc
+    return {
+        "reordered": result["reordered"],
+        "widget_ids": [str(widget_id) for widget_id in result["widget_ids"]],
+        "widgets": [_serialize_widget(widget) for widget in result["widgets"]],
+    }
+
+
 TOOLS: dict[str, ToolDefinition] = {
     "run_ingest": ToolDefinition(
         name="run_ingest",
@@ -217,6 +284,36 @@ TOOLS: dict[str, ToolDefinition] = {
         description="List recent triage action history.",
         input_schema={"limit": ToolArgument("integer", default=5)},
         handler=_list_action_history,
+    ),
+    "pin_widget": ToolDefinition(
+        name="pin_widget",
+        description="Persist a compatible tool result as a workspace widget.",
+        input_schema={
+            "widget_type": ToolArgument("string", required=True),
+            "title": ToolArgument("string", required=True),
+            "source_tool": ToolArgument("string", required=True),
+            "data": ToolArgument("object", required=True),
+            "metadata": ToolArgument("object", default=None),
+        },
+        handler=_pin_widget,
+    ),
+    "list_widgets": ToolDefinition(
+        name="list_widgets",
+        description="List persisted workspace widgets.",
+        input_schema={},
+        handler=_list_widgets,
+    ),
+    "remove_widget": ToolDefinition(
+        name="remove_widget",
+        description="Remove a workspace widget by id.",
+        input_schema={"widget_id": ToolArgument("uuid", required=True)},
+        handler=_remove_widget,
+    ),
+    "reorder_widgets": ToolDefinition(
+        name="reorder_widgets",
+        description="Set the deterministic workspace widget order.",
+        input_schema={"widget_ids": ToolArgument("array", required=True)},
+        handler=_reorder_widgets,
     ),
 }
 

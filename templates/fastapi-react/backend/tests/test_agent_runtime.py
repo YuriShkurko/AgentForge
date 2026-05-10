@@ -71,6 +71,33 @@ async def test_agent_stream_returns_tool_error_without_crashing(db):
 
 
 @pytest.mark.asyncio
+async def test_agent_can_pin_scored_records_widget(db):
+    await run_agent_chat("ingest records", db)
+    await run_agent_chat("score the records", db)
+
+    result = await run_agent_chat("pin the scored records to the workspace", db)
+
+    pin_event = result["tool_events"][-1]
+    assert pin_event["tool_name"] == "pin_widget"
+    assert pin_event["ok"] is True
+    assert pin_event["result"]["pinned"] is True
+    assert pin_event["result"]["widget"]["widget_type"] == "ranking_list"
+
+
+@pytest.mark.asyncio
+async def test_agent_invalid_widget_pin_records_structured_error(db):
+    await run_agent_chat("ingest records", db)
+    await run_agent_chat("score the records", db)
+
+    result = await run_agent_chat("pin invalid widget", db)
+
+    pin_event = result["tool_events"][-1]
+    assert pin_event["tool_name"] == "pin_widget"
+    assert pin_event["ok"] is False
+    assert pin_event["error_code"] == "incompatible_widget"
+
+
+@pytest.mark.asyncio
 async def test_agent_conversation_can_continue(db):
     first = await run_agent_chat("What can you do?", db)
     second = await run_agent_chat("show action history", db, first["conversation_id"])

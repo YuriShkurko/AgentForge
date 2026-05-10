@@ -34,6 +34,7 @@ optional_shell_modules:
   - notification_action
   - triage_ui
   - agent_runtime   # command-panel stub only; no live LLM required
+  - workspace       # generic Dashboard/Workspace Module with persisted widgets
 
 agent_runtime:
   enabled: true
@@ -95,6 +96,45 @@ agent_runtime:
           default: 5
       output_schema:
         fields: [events]
+    - name: pin_widget
+      purpose: Persist a compatible tool result as a workspace widget.
+      input_schema:
+        widget_type:
+          type: string
+          required: true
+          choices: [summary_card, ranking_list, score_table, run_history_list, notification_preview_card, action_history_list]
+        title:
+          type: string
+          required: true
+        source_tool:
+          type: string
+          required: true
+        data:
+          type: object
+          required: true
+      output_schema:
+        fields: [pinned, widget]
+    - name: list_widgets
+      purpose: List persisted workspace widgets.
+      input_schema: {}
+      output_schema:
+        fields: [widgets]
+    - name: remove_widget
+      purpose: Remove a persisted workspace widget by UUID.
+      input_schema:
+        widget_id:
+          type: uuid
+          required: true
+      output_schema:
+        fields: [removed, widget_id]
+    - name: reorder_widgets
+      purpose: Set deterministic workspace widget order using all current widget IDs.
+      input_schema:
+        widget_ids:
+          type: array
+          required: true
+      output_schema:
+        fields: [reordered, widget_ids, widgets]
   scripted_turns:
     - match: ingest
       tool_calls:
@@ -112,6 +152,81 @@ agent_runtime:
         - name: create_notification_preview
           arguments: {}
       final_text: I created preview-only notification payloads for scored records.
+    - match: pin scored records
+      tool_calls:
+        - name: get_scored_records
+          arguments:
+            limit: 3
+        - name: pin_widget
+          arguments:
+            widget_type: ranking_list
+            title: Top scored records
+            source_tool: get_scored_records
+            __from_tool: get_scored_records
+      final_text: I pinned the scored records to the workspace.
+
+workspace:
+  enabled: true
+  persistence:
+    table_name: workspace_widgets
+    fields: [id, widget_type, title, source_tool, data, position, metadata, created_at, updated_at]
+  default_layout: []
+  remove_enabled: true
+  reorder_enabled: true
+  empty_state: No widgets yet. Ask the agent to pin scored records to the workspace.
+  frontend_surface: workspace_panel
+
+tool_widget_compatibility:
+  get_scored_records: [ranking_list, score_table]
+  get_run_history: [run_history_list, summary_card]
+  create_notification_preview: [notification_preview_card, summary_card]
+  list_action_history: [action_history_list, summary_card]
+  score_records: [summary_card]
+  run_ingest: [summary_card]
+
+widgets:
+  - widget_type: summary_card
+    renderer: SummaryCard
+    compatible_source_tools: [get_run_history, create_notification_preview, list_action_history, score_records, run_ingest]
+    section: workspace
+    expected_data_shape: Small object payload rendered as key/value summary rows.
+    empty_state: No summary data.
+    implementation_status: planned
+  - widget_type: ranking_list
+    renderer: RankingList
+    compatible_source_tools: [get_scored_records]
+    section: workspace
+    expected_data_shape: Records array with title, fit, label, and recommendation fields.
+    empty_state: No ranked records.
+    implementation_status: planned
+  - widget_type: score_table
+    renderer: ScoreTable
+    compatible_source_tools: [get_scored_records]
+    section: workspace
+    expected_data_shape: Records array rendered as compact score rows.
+    empty_state: No score rows.
+    implementation_status: planned
+  - widget_type: run_history_list
+    renderer: RunHistoryList
+    compatible_source_tools: [get_run_history]
+    section: workspace
+    expected_data_shape: Runs array with provider_name, status, and stats.
+    empty_state: No runs.
+    implementation_status: planned
+  - widget_type: notification_preview_card
+    renderer: NotificationPreviewCard
+    compatible_source_tools: [create_notification_preview]
+    section: workspace
+    expected_data_shape: Preview creation result or preview payload summary.
+    empty_state: No notification preview data.
+    implementation_status: planned
+  - widget_type: action_history_list
+    renderer: ActionHistoryList
+    compatible_source_tools: [list_action_history]
+    section: workspace
+    expected_data_shape: Events array with action_type, status, record_id, and created_at.
+    empty_state: No action history.
+    implementation_status: planned
 
 # ---------------------------------------------------------------------------
 # Capabilities
@@ -231,6 +346,16 @@ capabilities:
     deterministic_test_safe: true_with_seeded_db
     implementation_status: planned
 
+  - name: workspace_widgets
+    purpose: Create, list, remove, and reorder persisted generic workspace widgets.
+    input_summary: GET/POST/DELETE /workspace/widgets and POST /workspace/widgets/reorder.
+    output_shape:
+      fields: [widgets, widget, removed, reordered]
+    mutates_state: true
+    data_mode: database
+    deterministic_test_safe: true_with_seeded_db
+    implementation_status: planned
+
 # ---------------------------------------------------------------------------
 # UI Surfaces
 # ---------------------------------------------------------------------------
@@ -285,6 +410,13 @@ ui_surfaces:
     expected_data_shape: Persisted user/assistant messages plus visible tool activity.
     empty_state: No conversation yet.
 
+  - surface_type: workspace_panel
+    renderer: WorkspacePanel
+    data_source: workspace_widgets
+    section: dashboard_workspace
+    expected_data_shape: Persisted workspace_widgets rows rendered by generic WidgetRenderer.
+    empty_state: No widgets yet. Ask the agent to pin scored records to the workspace.
+
 # ---------------------------------------------------------------------------
 # Providers
 # ---------------------------------------------------------------------------
@@ -313,6 +445,7 @@ providers:
         - notification_previews
         - conversations
         - conversation_messages
+        - workspace_widgets
 
 # ---------------------------------------------------------------------------
 # Adapters
@@ -482,11 +615,13 @@ tests:
       - backend/tests/test_action_persistence.py   # pending/accepted/skipped/saved transitions
       - backend/tests/test_notification_previews.py # preview-only notification payloads
       - backend/tests/test_agent_runtime.py        # scripted provider, tools, persistence
+      - backend/tests/test_workspace.py            # workspace widget validation and persistence
     integration:
       - backend/tests/integration/test_ingest_flow.py   # full ingest: provider -> normalize -> run row
       - backend/tests/integration/test_score_flow.py    # full score: normalized -> scored output
       - backend/tests/integration/test_notification_flow.py # previews and action history APIs
       - backend/tests/integration/test_agent_flow.py # chat endpoint, tool flow, conversation history
+      - backend/tests/integration/test_workspace_flow.py # workspace routes and persistence
   frontend:
     playwright:
       - frontend/e2e/ingest-and-score.spec.ts  # trigger ingest -> run row appears -> trigger score -> scored record appears
@@ -522,5 +657,5 @@ compatibility_gaps:
   - ScoredRecordDTO explanation shape is minimal compared to AIJobRadar; can be extended.
   - Notification delivery is preview-only; no real Telegram/email/Slack channel is wired.
   - Agent Runtime provider is scripted only; no live LLM provider is configured.
-  - Agent Runtime streaming/SSE is deferred to v0.3.1.
+  - Dashboard/Workspace Module is generic only; Business Insight-specific widgets are not generated.
   - Frontend tests are Playwright only; no unit test suite planned for v0.1.

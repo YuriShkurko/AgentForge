@@ -63,6 +63,7 @@ Optional shell modules:
 - Notification/Action Shell.
 - Debug MCP/inspection tools.
 - Agent Runtime Module as a command/chat facade over deterministic tools.
+- Dashboard/Workspace Module for persisted generic widgets over deterministic tool results.
 
 Expected Domain Pack fields:
 
@@ -161,3 +162,4 @@ Example generated app: an ingestion/scoring pipeline with a command panel or cha
 
 The generator starts from `app_archetype`, loads required feature modules, then wires optional feature modules only when the App Blueprint declares them. This prevents pipeline apps from being forced into chat/workspace behavior.
 
+As of v0.4, `workspace` is supported as a generic Dashboard/Workspace Module. It covers persisted generic widgets, backend compatibility validation, and simple remove/reorder behavior; it does not imply support for every domain-specific Business Insight widget renderer.

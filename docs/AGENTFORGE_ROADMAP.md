@@ -89,6 +89,37 @@ This prepares for v0.4 Dashboard/Workspace by making agent turns observable as o
 
 Out of scope for v0.3.1: Dashboard/Workspace Module, persisted widgets, guided Blueprint Builder UI, arbitrary repo conversion, autonomous deployment, live LLM providers, multi-agent orchestration, and long-term memory beyond persisted conversations.
 
+## v0.4 Dashboard/Workspace Module
+
+Add a generic persisted workspace without copying Business Insight-specific widgets.
+
+The v0.4 generated app should include:
+
+- `workspace` App Blueprint configuration plus `widgets` and `tool_widget_compatibility`.
+- `workspace_widgets` persistence with deterministic ordering.
+- Backend APIs for list, create/pin, remove, and reorder.
+- Backend-enforced source-tool to widget-type compatibility.
+- Generic widget types: `summary_card`, `ranking_list`, `score_table`, `run_history_list`, `notification_preview_card`, and `action_history_list`.
+- Agent tools for pinning/listing/removing/reordering widgets through the scripted runtime.
+- A compact React workspace panel and generic `WidgetRenderer`.
+- Tests proving pin, refresh persistence, remove, reorder, and invalid compatibility paths.
+
+Out of scope for v0.4: guided Blueprint Builder UI, repo analyzer, deploy planner, live LLM/API providers, external integrations, multi-agent orchestration, presentation mode, major visual redesign, and Business Insight-specific widgets such as `money_flow`, `health_score`, and `signal_timeline`.
+
+## v0.4.1 Workspace UI Polish
+
+Polish the generated Dashboard/Workspace Module UI without changing the v0.4 contracts.
+
+The v0.4.1 generated app should include:
+
+- Clearer workspace header, description, widget count, and persisted-widget hint.
+- More intentional empty, loading, and error states.
+- Readable generic widget cards that display widget type and source tool as product labels rather than raw implementation noise.
+- More scannable generic widget renderers for summaries, rankings, score tables, run history, notification previews, and action history.
+- Agent tool activity copy that makes widget pin success or failure understandable.
+
+Out of scope for v0.4.1: workspace architecture changes, agent runtime architecture changes, new feature modules, live LLM/API dependencies, guided Blueprint Builder UI, repo analyzer, deployment planner, presentation mode, drag/drop, and Business Insight-specific widgets. Taste Skill-style critique may be used as a review aid only; it must not become a generated runtime dependency.
+
 ## Implementation Milestones
 
 ### Milestone 1: Spec Stabilization
@@ -205,4 +236,3 @@ Also clarify that:
 ## Near-Term Decision
 
 AgentForge v0.1 should build the hybrid scoring sample, not a Business Insight clone and not an AI Job Radar clone. The sample should be small enough to regenerate repeatedly and rich enough to prove provider/adapters, run history, scoring/explanation, UI, action loop, deterministic tests, and CI.
-

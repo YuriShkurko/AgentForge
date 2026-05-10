@@ -52,10 +52,11 @@ def test_optional_modules_preserved():
     assert "notification_action" in sel.active
 
 
-def test_workspace_module_flagged_as_gap():
+def test_workspace_module_supported_by_fastapi_react_template():
     pack = _pack("agent_dashboard_app", ["agent", "workspace", "provider_adapter", "test"])
     sel = select_modules(pack)
-    assert any("workspace" in g for g in sel.gaps)
+    assert "workspace" in sel.active
+    assert not any("workspace" in g for g in sel.gaps)
 
 
 def test_triage_ui_is_supported_by_fastapi_react_template():
@@ -80,6 +81,17 @@ def test_agent_runtime_is_supported_by_fastapi_react_template():
     assert not any("agent_runtime" in g for g in sel.gaps)
 
 
+def test_workspace_optional_module_supported():
+    pack = _pack(
+        "ingestion_scoring_pipeline",
+        ["pipeline", "provider_adapter", "scoring_explanation", "operations_ui", "persistence", "test"],
+        optional=["workspace"],
+    )
+    sel = select_modules(pack)
+    assert "workspace" in sel.active
+    assert not any("workspace" in g for g in sel.gaps)
+
+
 def test_hybrid_scoring_demo_pack_selects_correctly():
     from agentforge.pack import load_pack
     pack = load_pack(PACKS_DIR / "hybrid-scoring-demo" / "domain-pack.yaml")
@@ -99,8 +111,8 @@ def test_business_insight_identifies_gaps():
     pack = load_pack(PACKS_DIR / "business-insight" / "domain-pack.yaml")
     sel = select_modules(pack)
     assert sel.archetype == "agent_dashboard_app"
-    # workspace is in required_shell_modules; flagged as not yet in template
-    assert any("workspace" in g for g in sel.gaps)
+    assert "workspace" in sel.active
+    assert not any("workspace" in g for g in sel.gaps)
 
 
 def test_ai_job_radar_identifies_observability_gap():

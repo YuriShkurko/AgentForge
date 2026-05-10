@@ -51,7 +51,7 @@ def select_modules(pack: DomainPack) -> ModuleSelection:
     gaps = [f"pack missing canonical required module: {m}" for m in sorted(missing_from_pack)]
 
     # Modules declared but not yet in any template (future extensions)
-    unsupported = {"workspace", "observability_debug", "deploy_planner"}
+    unsupported = {"observability_debug", "deploy_planner"}
     unresolved = (declared_required | declared_optional) & unsupported
     gaps += [f"module not yet in template: {m}" for m in sorted(unresolved)]
     active = (declared_required | declared_optional) - unsupported

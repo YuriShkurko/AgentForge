@@ -1,25 +1,26 @@
 # AgentForge
 
-AgentForge is an opinionated generator for full-stack AI/product applications. It turns a structured **App Blueprint** into a runnable FastAPI + React project with integration adapters, deterministic scoring, notification/triage workflows, an Agent Runtime Module, tests, and CI-ready structure.
+AgentForge is an opinionated generator for full-stack AI/product applications. It turns a structured **App Blueprint** into a runnable FastAPI + React project with integration adapters, deterministic scoring, notification/triage workflows, an Agent Runtime Module, a Dashboard/Workspace Module, tests, and CI-ready structure.
 
-The current goal is deliberately narrow: prove a reusable generated application foundation before building dashboards, workspace widgets, live LLM integrations, deployment automation, or repo-conversion tooling. Everything in the generated demo runs locally and deterministically. No live LLM or paid API is required.
+The current goal is deliberately narrow: prove a reusable generated application foundation before live LLM integrations, deployment automation, repo-conversion tooling, or a guided builder UI. Everything in the generated demo runs locally and deterministically. No live LLM or paid API is required.
 
 ```
 App Blueprint (YAML)  +  Application Template  →  Generated App
 ```
 
-> **Current scope:** v0.3.1 generates one sample app — `hybrid-scoring-demo` — that proves reusable ingestion, scoring, notification preview, triage actions, persisted conversations, SSE agent streaming, and typed agent tool validation. It is not a generic AI app builder yet.
+> **Current scope:** v0.4.1 generates one sample app — `hybrid-scoring-demo` — that proves reusable ingestion, scoring, notification preview, triage actions, persisted conversations, SSE agent streaming, typed agent tool validation, and generic persisted workspace widgets. v0.4.1 is UI polish only; workspace behavior and contracts are unchanged from v0.4. It is not a generic AI app builder yet.
 
 ## What Works Today
 
 AgentForge can generate and validate a complete local demo app:
 
-- A FastAPI backend with async SQLAlchemy models for provider runs, records, scores, notification previews, action history, conversations, and messages.
-- A React + TypeScript frontend with operations, scoring, notification preview, action history, and agent chat panels.
+- A FastAPI backend with async SQLAlchemy models for provider runs, records, scores, notification previews, action history, conversations, messages, and workspace widgets.
+- A React + TypeScript frontend with operations, scoring, notification preview, action history, agent chat, and workspace panels.
 - A fixture provider and adapter that make tests deterministic and avoid live APIs.
 - A scoring/explanation pipeline that produces fit scores, labels, recommendations, drivers, and risks.
 - Preview-only notification generation with accept/skip/save triage actions and append-only action history.
 - An Agent Runtime Module with a scripted provider, deterministic tool calls, persisted conversation history, `/agent/chat`, and `/agent/chat/stream`.
+- A Dashboard/Workspace Module with persisted generic widgets, backend compatibility validation, remove/reorder APIs, and polished compact frontend rendering.
 - Typed tool argument validation with structured tool errors for unknown tools and invalid arguments.
 - Generator, backend, frontend, and Playwright E2E coverage.
 
@@ -45,9 +46,10 @@ The generated `hybrid-scoring-demo` app demonstrates this path:
 5. Record triage decisions and preserve an append-only action history.
 6. Chat with the scripted Agent Runtime Module.
 7. Stream agent events over SSE while tools run and assistant text appears.
-8. Reload the app and recover persisted agent conversation history.
+8. Ask the scripted agent to pin a compatible tool result into the workspace.
+9. Reload the app and recover persisted agent conversation history and workspace widgets.
 
-The agent can call generated tools such as `run_ingest`, `score_records`, `get_scored_records`, `create_notification_preview`, and `list_action_history`. Tool arguments are validated before execution; bad arguments and unknown tools become structured tool results instead of server crashes.
+The agent can call generated tools such as `run_ingest`, `score_records`, `get_scored_records`, `create_notification_preview`, `list_action_history`, and `pin_widget`. Tool arguments and widget compatibility are validated before execution; bad arguments, unknown tools, and invalid widget pins become structured tool results instead of server crashes.
 
 ## What it generates
 
@@ -60,21 +62,33 @@ The agent can call generated tools such as `run_ingest`, `score_records`, `get_s
 - **Operations and triage UI** — ingest/score/preview controls, run history, scored records, notification previews, action status, and action history
 - **Notification/Triage Module** — creates preview-only notification payloads and records accept/skip/save decisions without external delivery
 - **Agent Runtime Module** — persisted conversations, a scripted LLM provider, deterministic tool calls, typed tool argument validation, SSE streaming, and a compact chat panel
+- **Dashboard/Workspace Module** — persisted generic widgets with backend source-tool/widget compatibility validation, list/create/remove/reorder APIs, and a compact workspace panel
 - **Backend tests** (pytest, SQLite in-memory — no Postgres required)
 - **Playwright E2E tests** proving the full UI workflow
 - **GitHub Actions CI skeleton** with no live LLM or paid API dependency
 
 ## Validation Snapshot
 
-Latest local validation for v0.3.1:
+Latest local validation for v0.4:
 
-- `python -m pytest tests/generator/ -v` — 23 passed.
-- Template backend tests — 59 passed.
+- `python -m pytest tests/generator/ -v` — 24 passed.
+- Template backend tests — 72 passed.
 - Template frontend `npm run build` and `npm run lint` — passed.
 - `make validate` — passed.
-- Live generated app Playwright E2E — 8 passed.
+- Live generated app Playwright E2E — passed (`test-results/.last-run.json`, 9 tests in the generated spec).
 
 The generated app was also regenerated from `domain-packs/hybrid-scoring-demo/domain-pack.yaml`, so `examples/hybrid-scoring-demo/` reflects the current template and App Blueprint.
+
+v0.4.1 is a frontend polish pass over the v0.4 workspace UI. Taste Skill-style design critique was used as a review aid for spacing, hierarchy, empty states, and widget readability; it is not a runtime dependency and generated apps do not require it.
+
+## Screenshot/GIF Checklist
+
+Useful release visuals for v0.4.1:
+
+- Generated app overview with agent chat, workspace, and operations visible.
+- Agent chat pinning scored records into a workspace widget.
+- Workspace widget still present after a page refresh.
+- Notification preview and triage flow beside persisted workspace widgets.
 
 ## How it works
 
@@ -86,7 +100,8 @@ The generated app was also regenerated from `domain-packs/hybrid-scoring-demo/do
 
 - Only one application template exists: `ingestion_scoring_pipeline` via the `fastapi-react` template.
 - Token substitution is string-replace only — no per-capability code generation yet.
-- Feature modules `workspace`, `observability_debug`, and `deploy_planner` are reported as gaps, not generated.
+- Feature modules `observability_debug` and `deploy_planner` are reported as gaps, not generated.
+- Dashboard/Workspace widgets are generic in v0.4; Business Insight-specific widgets such as `money_flow`, `health_score`, and `signal_timeline` are not generated.
 - Notification delivery is preview-only in v0.2; real Telegram/email/Slack adapters are future work.
 - The Agent Runtime Module uses a scripted provider in v0.3.1; live LLM providers remain future work.
 - SSE streaming is deterministic runtime event streaming, not live model token streaming.
@@ -103,6 +118,8 @@ The generated app was also regenerated from `domain-packs/hybrid-scoring-demo/do
 - **v0.2** — Notification/Triage Module: notification previews, current action state, append-only action history, preview/action UI, and generator support for `triage_ui`.
 - **v0.3** — Agent Runtime Module: scripted provider, tool registry, `/agent/chat`, conversation/message persistence, chat UI, and deterministic agent tests.
 - **v0.3.1** — Agent Runtime hardening: `/agent/chat/stream` SSE events, frontend streaming consumption, typed tool validation, structured tool errors, and expanded E2E coverage.
+- **v0.4** — Dashboard/Workspace Module: persisted generic widgets, backend tool-to-widget compatibility validation, agent pinning, remove/reorder APIs, workspace UI, and validation coverage.
+- **v0.4.1** — Workspace UI polish: clearer workspace header, empty/loading/error states, readable widget cards/renderers, and clearer agent pin success/failure activity. No workspace contract or runtime dependency changes.
 
 ## Terminology
 
@@ -112,6 +129,7 @@ The generated app was also regenerated from `domain-packs/hybrid-scoring-demo/do
 | Application Template | `template` | The reusable FastAPI/React source tree copied and parameterized by the generator |
 | Feature Module | shell module | A reusable capability area — pipeline, scoring, notifications, agent runtime, etc. |
 | Agent Runtime Module | `agent_runtime` | Optional scripted chat/tool-calling runtime with persisted conversations, SSE events, and typed tool validation |
+| Dashboard/Workspace Module | `workspace` | Optional persisted widget workspace with generic renderers and backend compatibility validation |
 | Integration Adapter | provider/adapter | Normalizes external or fixture data into stable app-specific records |
 | Test Harness | deterministic test shell | Fixture-based tests that avoid live external APIs or LLMs |
 

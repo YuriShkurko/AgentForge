@@ -53,6 +53,16 @@ class AgentRuntimeConfig(BaseModel):
     guardrails: dict[str, Any] = {}
 
 
+class WorkspaceConfig(BaseModel):
+    enabled: bool = False
+    persistence: dict[str, Any] = {}
+    default_layout: list[str] = []
+    remove_enabled: bool = True
+    reorder_enabled: bool = True
+    empty_state: str = ""
+    frontend_surface: str = "workspace_panel"
+
+
 class DomainPack(BaseModel):
     name: str
     display_name: str
@@ -68,6 +78,9 @@ class DomainPack(BaseModel):
     adapters: list[dict[str, Any]] = []
     run_history: RunHistory | None = None
     agent_runtime: AgentRuntimeConfig | None = None
+    workspace: WorkspaceConfig | None = None
+    widgets: list[dict[str, Any]] = []
+    tool_widget_compatibility: dict[str, list[str]] = {}
     notification_actions: list[dict[str, Any]] = []
     workflows: list[dict[str, Any]] = []
     seed_data: dict[str, Any] = {}

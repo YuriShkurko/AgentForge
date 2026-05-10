@@ -17,6 +17,9 @@ def test_load_hybrid_scoring_demo():
     assert pack.app_archetype == "ingestion_scoring_pipeline"
     assert "pipeline" in pack.required_shell_modules
     assert "provider_adapter" in pack.required_shell_modules
+    assert pack.workspace is not None
+    assert pack.workspace.enabled is True
+    assert "get_scored_records" in pack.tool_widget_compatibility
 
 
 def test_load_business_insight():

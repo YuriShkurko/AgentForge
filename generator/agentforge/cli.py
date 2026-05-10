@@ -82,6 +82,7 @@ def cmd_plan(args: argparse.Namespace) -> int:
             "optional_modules": sorted(selection.optional),
             "active_modules": sorted(selection.active),
             "agent_runtime": pack.agent_runtime.model_dump() if pack.agent_runtime else None,
+            "workspace": pack.workspace.model_dump() if pack.workspace else None,
             "template": selection.template,
             "gaps": selection.gaps,
         }, indent=2))
@@ -98,6 +99,9 @@ def cmd_plan(args: argparse.Namespace) -> int:
             if pack.agent_runtime.streaming:
                 enabled = pack.agent_runtime.streaming.get("enabled", False)
                 print(f"  Streaming:        {'enabled' if enabled else 'disabled'}")
+        if pack.workspace and pack.workspace.enabled:
+            print("  Workspace:        enabled")
+            print(f"  Widgets:          {len(pack.widgets)} type(s)")
         if selection.gaps:
             print("  Gaps (explicit, not generated):")
             for gap in selection.gaps:
