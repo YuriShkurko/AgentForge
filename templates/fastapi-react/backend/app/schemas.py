@@ -76,6 +76,7 @@ class ScoreDetailOut(BaseModel):
 class ActionOut(BaseModel):
     action_type: str
     status: str
+    updated_at: datetime | None = None
 
     model_config = {"from_attributes": True}
 
@@ -101,3 +102,79 @@ class ActionResult(BaseModel):
     record_id: uuid.UUID
     action_type: str
     status: str
+
+
+class ActionEventOut(BaseModel):
+    id: uuid.UUID
+    record_id: uuid.UUID
+    action_type: str
+    status: str
+    created_at: datetime
+
+
+class ActionHistoryOut(BaseModel):
+    events: list[ActionEventOut]
+
+
+# --- Notification Preview ---
+
+class NotificationPreviewCreateOut(BaseModel):
+    previews_written: int
+
+
+class NotificationPreviewOut(BaseModel):
+    id: uuid.UUID
+    record_id: uuid.UUID
+    title: str
+    score: float
+    label: str
+    recommendation: str
+    summary: str
+    drivers: list[str]
+    risks: list[str]
+    available_actions: list[str]
+    delivery_channel: str
+    delivery_status: str
+    action: ActionOut | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class NotificationPreviewsListOut(BaseModel):
+    previews: list[NotificationPreviewOut]
+
+
+# --- Agent Runtime ---
+
+class AgentChatRequest(BaseModel):
+    message: str
+    conversation_id: uuid.UUID | None = None
+
+
+class AgentMessageOut(BaseModel):
+    id: uuid.UUID
+    role: str
+    content: str
+    metadata: dict | None = None
+    created_at: datetime
+
+
+class AgentToolEventOut(BaseModel):
+    tool_name: str
+    arguments: dict
+    ok: bool
+    result: dict | None = None
+    error: str | None = None
+    error_code: str | None = None
+
+
+class AgentChatResponse(BaseModel):
+    conversation_id: uuid.UUID
+    assistant_message: AgentMessageOut
+    messages: list[AgentMessageOut]
+    tool_events: list[AgentToolEventOut]
+
+
+class AgentConversationOut(BaseModel):
+    conversation_id: uuid.UUID
+    messages: list[AgentMessageOut]

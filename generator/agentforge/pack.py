@@ -16,7 +16,7 @@ VALID_ARCHETYPES = {
 VALID_MODULES = {
     "agent", "workspace", "pipeline", "provider_adapter", "scoring_explanation",
     "operations_ui", "persistence", "test", "notification_action", "triage_ui",
-    "observability_debug", "agent_runtime",
+    "observability_debug", "agent_runtime", "deploy_planner",
 }
 
 
@@ -42,6 +42,17 @@ class TestConfig(BaseModel):
     frontend: dict[str, Any] = {}
 
 
+class AgentRuntimeConfig(BaseModel):
+    enabled: bool = False
+    provider_mode: str = "scripted"
+    scripted_fixture_path: str | None = None
+    scripted_turns: list[dict[str, Any]] = []
+    tools: list[dict[str, Any]] = []
+    conversation_persistence: dict[str, Any] = {}
+    streaming: dict[str, Any] = {}
+    guardrails: dict[str, Any] = {}
+
+
 class DomainPack(BaseModel):
     name: str
     display_name: str
@@ -51,11 +62,12 @@ class DomainPack(BaseModel):
     optional_shell_modules: list[str] = []
     domain: DomainInfo
     capabilities: list[dict[str, Any]] = []
-    tools: list[dict[str, Any]] = []  # agent archetypes only
+    tools: list[dict[str, Any]] = []  # full agent/dashboard archetypes; pipeline agent tools live in agent_runtime
     ui_surfaces: list[dict[str, Any]] = []
     providers: dict[str, Any] = {}
     adapters: list[dict[str, Any]] = []
     run_history: RunHistory | None = None
+    agent_runtime: AgentRuntimeConfig | None = None
     notification_actions: list[dict[str, Any]] = []
     workflows: list[dict[str, Any]] = []
     seed_data: dict[str, Any] = {}

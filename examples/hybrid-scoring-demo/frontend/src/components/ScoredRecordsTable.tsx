@@ -1,5 +1,5 @@
 import { api } from "../api";
-import type { ScoredRecord } from "../types";
+import type { ScoredRecord, TriageAction } from "../types";
 import { ActionStatusBadge } from "./ActionStatusBadge";
 
 interface Props {
@@ -23,7 +23,7 @@ export function ScoredRecordsTable({ records, onActionDone }: Props) {
     );
   }
 
-  async function handleAction(recordId: string, actionType: "accept" | "skip" | "save") {
+  async function handleAction(recordId: string, actionType: TriageAction) {
     await api.recordAction(recordId, actionType);
     onActionDone();
   }

@@ -49,12 +49,35 @@ def test_optional_modules_preserved():
     sel = select_modules(pack)
     assert "notification_action" in sel.optional
     assert "agent_runtime" in sel.optional
+    assert "notification_action" in sel.active
 
 
 def test_workspace_module_flagged_as_gap():
     pack = _pack("agent_dashboard_app", ["agent", "workspace", "provider_adapter", "test"])
     sel = select_modules(pack)
     assert any("workspace" in g for g in sel.gaps)
+
+
+def test_triage_ui_is_supported_by_fastapi_react_template():
+    pack = _pack(
+        "ingestion_scoring_pipeline",
+        ["pipeline", "provider_adapter", "scoring_explanation", "operations_ui", "persistence", "test"],
+        optional=["notification_action", "triage_ui"],
+    )
+    sel = select_modules(pack)
+    assert "triage_ui" in sel.active
+    assert not any("triage_ui" in g for g in sel.gaps)
+
+
+def test_agent_runtime_is_supported_by_fastapi_react_template():
+    pack = _pack(
+        "ingestion_scoring_pipeline",
+        ["pipeline", "provider_adapter", "scoring_explanation", "operations_ui", "persistence", "test"],
+        optional=["agent_runtime"],
+    )
+    sel = select_modules(pack)
+    assert "agent_runtime" in sel.active
+    assert not any("agent_runtime" in g for g in sel.gaps)
 
 
 def test_hybrid_scoring_demo_pack_selects_correctly():
@@ -65,6 +88,10 @@ def test_hybrid_scoring_demo_pack_selects_correctly():
     assert sel.template == "fastapi-react"
     assert "pipeline" in sel.required
     assert "scoring_explanation" in sel.required
+    assert "notification_action" in sel.active
+    assert "triage_ui" in sel.active
+    assert pack.agent_runtime is not None
+    assert pack.agent_runtime.enabled is True
 
 
 def test_business_insight_identifies_gaps():

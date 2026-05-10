@@ -1,12 +1,15 @@
 """Generator tests — dry-run and snapshot checks."""
 import sys
 from pathlib import Path
+from argparse import Namespace
+import json
 
 import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "generator"))
 
 from agentforge.generator import generate
+from agentforge.cli import cmd_plan
 from agentforge.pack import load_pack
 
 PACKS_DIR = Path(__file__).parent.parent.parent / "domain-packs"
@@ -22,13 +25,20 @@ EXPECTED_BACKEND_FILES = [
     "backend/app/providers/fixture/provider.py",
     "backend/app/adapters/normalize.py",
     "backend/app/adapters/scoring.py",
+    "backend/app/agent/providers.py",
+    "backend/app/agent/runtime.py",
+    "backend/app/agent/tools.py",
     "backend/app/services/ingest.py",
     "backend/app/services/score.py",
     "backend/app/services/actions.py",
+    "backend/app/services/notifications.py",
+    "backend/app/adapters/notifications.py",
     "backend/app/routers/ingest.py",
     "backend/app/routers/records.py",
     "backend/app/routers/runs.py",
     "backend/app/routers/actions.py",
+    "backend/app/routers/notifications.py",
+    "backend/app/routers/agent.py",
     "backend/requirements.txt",
 ]
 
@@ -40,6 +50,9 @@ EXPECTED_FRONTEND_FILES = [
     "frontend/src/components/RunHistoryTable.tsx",
     "frontend/src/components/ScoredRecordsTable.tsx",
     "frontend/src/components/ActionStatusBadge.tsx",
+    "frontend/src/components/NotificationPreviewPanel.tsx",
+    "frontend/src/components/ActionHistoryPanel.tsx",
+    "frontend/src/components/AgentChatPanel.tsx",
     "frontend/index.html",
     "frontend/package.json",
 ]
@@ -116,8 +129,21 @@ def test_snapshot_matches(tmp_path):
         assert "{{PACK_" not in content, f"unreplaced generator token in {rel_path}"
         assert "__PACK_NAME__" not in content, f"unreplaced generator token in {rel_path}"
 
-    # Snapshot: required module list correct (notification_action is optional in this pack)
+    # Snapshot: active module list includes supported optional notification/triage modules.
     assert set(result["modules"]) == {
         "pipeline", "provider_adapter", "scoring_explanation",
-        "operations_ui", "persistence", "test",
+        "operations_ui", "persistence", "test", "notification_action", "triage_ui",
+        "agent_runtime",
     }
+
+
+def test_plan_json_reports_agent_runtime(capsys):
+    code = cmd_plan(Namespace(pack=str(PACKS_DIR / "hybrid-scoring-demo" / "domain-pack.yaml"), json=True))
+    assert code == 0
+
+    data = json.loads(capsys.readouterr().out)
+    assert "agent_runtime" in data["active_modules"]
+    assert data["agent_runtime"]["enabled"] is True
+    assert data["agent_runtime"]["provider_mode"] == "scripted"
+    assert data["agent_runtime"]["streaming"]["enabled"] is True
+    assert data["agent_runtime"]["streaming"]["endpoint"] == "/agent/chat/stream"

@@ -42,6 +42,53 @@ Optional v0.1 add-on:
 - CI skeleton runs the same checks.
 - Docs explain how to create a second App Blueprint (`domain-pack.yaml`) and choose an archetype.
 
+## v0.2 Notification/Triage Module
+
+Build on the v0.1 action stub by extracting a reusable preview-only Notification/Triage Module.
+
+The v0.2 generated app should include:
+
+- Notification previews generated from scored records.
+- A no-op delivery adapter boundary that stores preview payloads but does not call Telegram, email, Slack, or any paid API.
+- Current action state for each record.
+- Append-only action history so repeated decisions remain auditable.
+- A triage UI surface with preview cards, action buttons, and history.
+- Generator module selection that treats `notification_action` and `triage_ui` as supported template modules.
+
+Out of scope for v0.2: real external delivery, guided UI, live LLM behavior, autonomous deployment, arbitrary repo conversion, and direct Business Insight or AI Job Radar conversion.
+
+## v0.3 Agent Runtime Module
+
+Add a minimal reusable Agent Runtime Module without turning AgentForge into a full AI app builder.
+
+The v0.3 generated app should include:
+
+- Persisted conversations and messages.
+- A scripted LLM provider for deterministic local and CI tests.
+- A tool registry that exposes a small set of generated deterministic tools.
+- A non-streaming chat endpoint that persists user messages, executes scripted tool calls, persists tool events, and returns assistant responses.
+- A compact frontend chat panel that shows messages and tool activity without replacing the operations UI.
+- Tests proving simple response, tool call, tool result, unknown tool/error handling, conversation persistence, and no live LLM/API dependency.
+
+Out of scope for v0.3: Dashboard/Workspace Module, guided Blueprint Builder UI, arbitrary repo conversion, autonomous deployment, live LLM calls in tests, multi-agent orchestration, long-term memory beyond persisted conversations, and fake streaming. SSE streaming is deferred until it can be implemented honestly.
+
+## v0.3.1 Agent Runtime Hardening
+
+Tighten the v0.3 Agent Runtime Module before v0.4 Dashboard/Workspace work.
+
+The v0.3.1 generated app should include:
+
+- A real `/agent/chat/stream` SSE endpoint alongside the existing non-streaming `/agent/chat`.
+- Structured streaming events: `message_start`, `text_delta`, `tool_call`, `tool_result`, `error`, and `done`.
+- Scripted deterministic streaming behavior with no live LLM/API dependency.
+- Typed tool argument schemas validated before tool execution.
+- Structured `unknown_tool` and `invalid_arguments` tool errors that are visible in API responses and frontend tool activity.
+- Frontend streaming consumption with incremental assistant text and graceful fallback to `/agent/chat`.
+
+This prepares for v0.4 Dashboard/Workspace by making agent turns observable as ordered events and by making tool boundaries explicit before tool results are routed into widgets.
+
+Out of scope for v0.3.1: Dashboard/Workspace Module, persisted widgets, guided Blueprint Builder UI, arbitrary repo conversion, autonomous deployment, live LLM providers, multi-agent orchestration, and long-term memory beyond persisted conversations.
+
 ## Implementation Milestones
 
 ### Milestone 1: Spec Stabilization

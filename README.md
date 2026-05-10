@@ -1,12 +1,27 @@
 # AgentForge
 
-AgentForge is an opinionated generator for full-stack AI/product applications. It turns a structured **App Blueprint** into a runnable FastAPI + React project — complete with integration adapters, a scoring/explanation pipeline, an operations UI, deterministic tests, and CI-ready structure. No live LLM or paid API required.
+AgentForge is an opinionated generator for full-stack AI/product applications. It turns a structured **App Blueprint** into a runnable FastAPI + React project with integration adapters, deterministic scoring, notification/triage workflows, an Agent Runtime Module, tests, and CI-ready structure.
+
+The current goal is deliberately narrow: prove a reusable generated application foundation before building dashboards, workspace widgets, live LLM integrations, deployment automation, or repo-conversion tooling. Everything in the generated demo runs locally and deterministically. No live LLM or paid API is required.
 
 ```
 App Blueprint (YAML)  +  Application Template  →  Generated App
 ```
 
-> **Current scope:** v0.1 generates one sample app — `hybrid-scoring-demo` — that proves the reusable architecture shared by Business Insight and AI Job Radar. It is not a generic AI app builder yet.
+> **Current scope:** v0.3.1 generates one sample app — `hybrid-scoring-demo` — that proves reusable ingestion, scoring, notification preview, triage actions, persisted conversations, SSE agent streaming, and typed agent tool validation. It is not a generic AI app builder yet.
+
+## What Works Today
+
+AgentForge can generate and validate a complete local demo app:
+
+- A FastAPI backend with async SQLAlchemy models for provider runs, records, scores, notification previews, action history, conversations, and messages.
+- A React + TypeScript frontend with operations, scoring, notification preview, action history, and agent chat panels.
+- A fixture provider and adapter that make tests deterministic and avoid live APIs.
+- A scoring/explanation pipeline that produces fit scores, labels, recommendations, drivers, and risks.
+- Preview-only notification generation with accept/skip/save triage actions and append-only action history.
+- An Agent Runtime Module with a scripted provider, deterministic tool calls, persisted conversation history, `/agent/chat`, and `/agent/chat/stream`.
+- Typed tool argument validation with structured tool errors for unknown tools and invalid arguments.
+- Generator, backend, frontend, and Playwright E2E coverage.
 
 ## Quickstart
 
@@ -19,6 +34,21 @@ make validate
 
 This installs the generator CLI, previews the module plan, generates the demo app, then runs all tests and the frontend build.
 
+## Generated Demo Flow
+
+The generated `hybrid-scoring-demo` app demonstrates this path:
+
+1. Ingest fixture records through a provider interface.
+2. Normalize raw provider payloads into stable records.
+3. Score records deterministically and attach explanations.
+4. Create preview-only notification payloads for scored records.
+5. Record triage decisions and preserve an append-only action history.
+6. Chat with the scripted Agent Runtime Module.
+7. Stream agent events over SSE while tools run and assistant text appears.
+8. Reload the app and recover persisted agent conversation history.
+
+The agent can call generated tools such as `run_ingest`, `score_records`, `get_scored_records`, `create_notification_preview`, and `list_action_history`. Tool arguments are validated before execution; bad arguments and unknown tools become structured tool results instead of server crashes.
+
 ## What it generates
 
 `agentforge generate` reads an App Blueprint (`domain-pack.yaml`) and emits a self-contained project directory. The `hybrid-scoring-demo` output includes:
@@ -27,11 +57,24 @@ This installs the generator CLI, previews the module plan, generates the demo ap
 - **React + TypeScript frontend** built with Vite
 - **Integration adapter layer** — a fixture provider + normalizer that converts raw records into stable domain DTOs
 - **Scoring pipeline** — deterministic fit score (0–100), label (high/medium/low), recommendation, drivers, and risks
-- **Operations UI** — ingest/score controls, run history table, scored records table, action status badges
-- **Action/decision loop stub** — records accept/skip/save decisions without external delivery
-- **40 backend tests** (pytest, SQLite in-memory — no Postgres required)
-- **5 Playwright E2E tests** proving the full UI workflow
+- **Operations and triage UI** — ingest/score/preview controls, run history, scored records, notification previews, action status, and action history
+- **Notification/Triage Module** — creates preview-only notification payloads and records accept/skip/save decisions without external delivery
+- **Agent Runtime Module** — persisted conversations, a scripted LLM provider, deterministic tool calls, typed tool argument validation, SSE streaming, and a compact chat panel
+- **Backend tests** (pytest, SQLite in-memory — no Postgres required)
+- **Playwright E2E tests** proving the full UI workflow
 - **GitHub Actions CI skeleton** with no live LLM or paid API dependency
+
+## Validation Snapshot
+
+Latest local validation for v0.3.1:
+
+- `python -m pytest tests/generator/ -v` — 23 passed.
+- Template backend tests — 59 passed.
+- Template frontend `npm run build` and `npm run lint` — passed.
+- `make validate` — passed.
+- Live generated app Playwright E2E — 8 passed.
+
+The generated app was also regenerated from `domain-packs/hybrid-scoring-demo/domain-pack.yaml`, so `examples/hybrid-scoring-demo/` reflects the current template and App Blueprint.
 
 ## How it works
 
@@ -43,10 +86,23 @@ This installs the generator CLI, previews the module plan, generates the demo ap
 
 - Only one application template exists: `ingestion_scoring_pipeline` via the `fastapi-react` template.
 - Token substitution is string-replace only — no per-capability code generation yet.
-- Feature modules `workspace`, `observability_debug`, `triage_ui`, and `deploy_planner` are reported as gaps, not generated.
+- Feature modules `workspace`, `observability_debug`, and `deploy_planner` are reported as gaps, not generated.
+- Notification delivery is preview-only in v0.2; real Telegram/email/Slack adapters are future work.
+- The Agent Runtime Module uses a scripted provider in v0.3.1; live LLM providers remain future work.
+- SSE streaming is deterministic runtime event streaming, not live model token streaming.
+- Tool schemas are currently hand-authored in the generated registry and represented in the App Blueprint; arbitrary schema-driven tool generation is future work.
 - Production database is PostgreSQL; the generator does not yet emit migration scripts.
 - No guided UI — the generator is CLI-only.
 - `examples/hybrid-scoring-demo/` is a **committed snapshot** of the generated output; it is regenerable (see [Reproducibility](#reproducibility)).
+
+## Version History
+
+- **v0.1** — initial generator, App Blueprint loading, FastAPI/React template, fixture provider, run history, scoring, and deterministic tests.
+- **v0.1.1** — developer-experience hardening: package metadata, Makefile validation, public repo ignore rules, and generated README behavior.
+- **v0.1.2** — public documentation polish and terminology cleanup around App Blueprints, Application Templates, Feature Modules, Integration Adapters, and Test Harnesses.
+- **v0.2** — Notification/Triage Module: notification previews, current action state, append-only action history, preview/action UI, and generator support for `triage_ui`.
+- **v0.3** — Agent Runtime Module: scripted provider, tool registry, `/agent/chat`, conversation/message persistence, chat UI, and deterministic agent tests.
+- **v0.3.1** — Agent Runtime hardening: `/agent/chat/stream` SSE events, frontend streaming consumption, typed tool validation, structured tool errors, and expanded E2E coverage.
 
 ## Terminology
 
@@ -55,6 +111,7 @@ This installs the generator CLI, previews the module plan, generates the demo ap
 | App Blueprint | `domain-pack` | Machine-readable YAML describing app archetype, capabilities, adapters, UI surfaces, and tests |
 | Application Template | `template` | The reusable FastAPI/React source tree copied and parameterized by the generator |
 | Feature Module | shell module | A reusable capability area — pipeline, scoring, notifications, agent runtime, etc. |
+| Agent Runtime Module | `agent_runtime` | Optional scripted chat/tool-calling runtime with persisted conversations, SSE events, and typed tool validation |
 | Integration Adapter | provider/adapter | Normalizes external or fixture data into stable app-specific records |
 | Test Harness | deterministic test shell | Fixture-based tests that avoid live external APIs or LLMs |
 

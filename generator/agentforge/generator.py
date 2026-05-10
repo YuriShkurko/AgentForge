@@ -121,7 +121,7 @@ def generate(pack: DomainPack, output_dir: Path, *, dry_run: bool = False) -> di
         "output_dir": str(output_dir),
         "template": selection.template,
         "archetype": selection.archetype,
-        "modules": sorted(selection.required),
+        "modules": sorted(selection.active),
         "gaps": selection.gaps,
         "files_written": len(files_written),
         "dry_run": dry_run,

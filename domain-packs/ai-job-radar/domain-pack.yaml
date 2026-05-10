@@ -32,6 +32,7 @@ required_shell_modules:
   - persistence
   - test
   - notification_action
+  - triage_ui
   - observability_debug
 
 optional_shell_modules:

@@ -1,4 +1,4 @@
-import type { ActionStatus } from "../types";
+import type { ActionStatus, TriageAction } from "../types";
 
 const COLORS: Record<string, string> = {
   accepted: "#2e7d32",
@@ -10,7 +10,7 @@ const COLORS: Record<string, string> = {
 interface Props {
   action: ActionStatus | null;
   recordId: string;
-  onAction: (recordId: string, actionType: "accept" | "skip" | "save") => void;
+  onAction: (recordId: string, actionType: TriageAction) => void;
 }
 
 export function ActionStatusBadge({ action, recordId, onAction }: Props) {

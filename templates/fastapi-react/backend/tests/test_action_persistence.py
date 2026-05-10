@@ -1,7 +1,7 @@
 import pytest
 from sqlalchemy import select
 
-from app.models import NormalizedRecord, RecordAction
+from app.models import NormalizedRecord, RecordAction, RecordActionEvent
 from app.providers.fixture.provider import FixtureRecordProvider
 from app.services.actions import record_action
 from app.services.ingest import run_ingest
@@ -55,6 +55,21 @@ async def test_action_updates_on_repeat(db):
         select(RecordAction).where(RecordAction.normalized_record_id == record.id)
     )
     assert action.status == "skipped"
+
+
+@pytest.mark.asyncio
+async def test_repeated_actions_append_history(db):
+    record = await _seed(db)
+    await record_action(record.id, "accept", db)
+    await record_action(record.id, "skip", db)
+
+    result = await db.execute(
+        select(RecordActionEvent)
+        .where(RecordActionEvent.normalized_record_id == record.id)
+        .order_by(RecordActionEvent.created_at)
+    )
+    events = result.scalars().all()
+    assert [event.status for event in events] == ["accepted", "skipped"]
 
 
 @pytest.mark.asyncio

@@ -80,6 +80,8 @@ def cmd_plan(args: argparse.Namespace) -> int:
             "archetype": selection.archetype,
             "required_modules": sorted(selection.required),
             "optional_modules": sorted(selection.optional),
+            "active_modules": sorted(selection.active),
+            "agent_runtime": pack.agent_runtime.model_dump() if pack.agent_runtime else None,
             "template": selection.template,
             "gaps": selection.gaps,
         }, indent=2))
@@ -90,6 +92,12 @@ def cmd_plan(args: argparse.Namespace) -> int:
         print(f"  Required modules: {', '.join(sorted(selection.required))}")
         if selection.optional:
             print(f"  Optional modules: {', '.join(sorted(selection.optional))}")
+        print(f"  Active modules:   {', '.join(sorted(selection.active))}")
+        if pack.agent_runtime and pack.agent_runtime.enabled:
+            print(f"  Agent runtime:    enabled ({pack.agent_runtime.provider_mode})")
+            if pack.agent_runtime.streaming:
+                enabled = pack.agent_runtime.streaming.get("enabled", False)
+                print(f"  Streaming:        {'enabled' if enabled else 'disabled'}")
         if selection.gaps:
             print("  Gaps (explicit, not generated):")
             for gap in selection.gaps:

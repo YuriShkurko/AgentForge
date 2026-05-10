@@ -32,7 +32,86 @@ required_shell_modules:
 
 optional_shell_modules:
   - notification_action
+  - triage_ui
   - agent_runtime   # command-panel stub only; no live LLM required
+
+agent_runtime:
+  enabled: true
+  provider_mode: scripted
+  scripted_fixture_path: backend/app/agent/providers.py
+  conversation_persistence:
+    enabled: true
+    tables:
+      - conversations
+      - conversation_messages
+  streaming:
+    enabled: true
+    endpoint: /agent/chat/stream
+    events:
+      - message_start
+      - text_delta
+      - tool_call
+      - tool_result
+      - error
+      - done
+  guardrails:
+    reject_empty_message: true
+    unsafe_or_irrelevant_placeholder: documented_only
+  tools:
+    - name: run_ingest
+      purpose: Ingest deterministic fixture records through the provider interface.
+      input_schema: {}
+      output_schema:
+        fields: [run_id, raw_records_inserted, normalized_inserted]
+    - name: score_records
+      purpose: Score normalized records with deterministic heuristics.
+      input_schema:
+        rescore:
+          type: boolean
+          required: false
+          default: false
+      output_schema:
+        fields: [scores_written, rescore]
+    - name: get_scored_records
+      purpose: Return the highest-scored records.
+      input_schema:
+        limit:
+          type: integer
+          required: false
+          default: 3
+      output_schema:
+        fields: [records]
+    - name: create_notification_preview
+      purpose: Create preview-only notification payloads.
+      input_schema: {}
+      output_schema:
+        fields: [previews_written]
+    - name: list_action_history
+      purpose: Return recent triage action history.
+      input_schema:
+        limit:
+          type: integer
+          required: false
+          default: 5
+      output_schema:
+        fields: [events]
+  scripted_turns:
+    - match: ingest
+      tool_calls:
+        - name: run_ingest
+          arguments: {}
+      final_text: I ingested fixture records through the provider interface.
+    - match: score
+      tool_calls:
+        - name: score_records
+          arguments:
+            rescore: false
+      final_text: I scored the records using the deterministic scoring adapter.
+    - match: preview
+      tool_calls:
+        - name: create_notification_preview
+          arguments: {}
+      final_text: I created preview-only notification payloads for scored records.
 
 # ---------------------------------------------------------------------------
 # Capabilities
@@ -102,6 +181,56 @@ capabilities:
     deterministic_test_safe: true_with_seeded_db
     implementation_status: planned
 
+  - name: create_notification_previews
+    purpose: Generate deterministic preview-only notification payloads from scored records.
+    input_summary: POST /notifications/previews — no request body.
+    output_shape:
+      fields: [previews_written]
+    mutates_state: true
+    data_mode: database
+    deterministic_test_safe: true_with_seeded_db
+    implementation_status: planned
+
+  - name: list_notification_previews
+    purpose: Return preview payloads with score summary, reasons, risks, available actions, and current action state.
+    input_summary: GET /notifications/previews — optional limit query parameter.
+    output_shape:
+      fields: [id, record_id, title, score, label, recommendation, summary, drivers, risks, available_actions, delivery_channel, delivery_status, action]
+    mutates_state: false
+    data_mode: database
+    deterministic_test_safe: true_with_seeded_db
+    implementation_status: planned
+
+  - name: list_action_history
+    purpose: Return append-only action history events for triage/audit visibility.
+    input_summary: GET /actions/history — optional limit query parameter.
+    output_shape:
+      fields: [id, record_id, action_type, status, created_at]
+    mutates_state: false
+    data_mode: database
+    deterministic_test_safe: true_with_seeded_db
+    implementation_status: planned
+
+  - name: agent_chat
+    purpose: Accept a user message, run the scripted Agent Runtime provider, execute deterministic tools, and persist the conversation.
+    input_summary: POST /agent/chat — message and optional conversation_id.
+    output_shape:
+      fields: [conversation_id, assistant_message, messages, tool_events]
+    mutates_state: true
+    data_mode: scripted_provider_plus_database
+    deterministic_test_safe: true_with_seeded_db
+    implementation_status: planned
+
+  - name: get_agent_conversation
+    purpose: Return persisted conversation messages for the Agent Runtime Module.
+    input_summary: GET /agent/conversations/{conversation_id}
+    output_shape:
+      fields: [conversation_id, messages]
+    mutates_state: false
+    data_mode: database
+    deterministic_test_safe: true_with_seeded_db
+    implementation_status: planned
+
 # ---------------------------------------------------------------------------
 # UI Surfaces
 # ---------------------------------------------------------------------------
@@ -128,12 +257,33 @@ ui_surfaces:
     expected_data_shape: action_type and status (pending/accepted/skipped/saved).
     empty_state: No action taken.
 
+  - surface_type: notification_preview_panel
+    renderer: NotificationPreviewPanel
+    data_source: list_notification_previews
+    section: notifications
+    expected_data_shape: Preview cards with title, score, summary, risks, available actions, and current action state.
+    empty_state: No notification previews. Score records, then preview notifications.
+
+  - surface_type: action_history_panel
+    renderer: ActionHistoryPanel
+    data_source: list_action_history
+    section: triage
+    expected_data_shape: Append-only action events with status, action_type, record_id, and timestamp.
+    empty_state: No actions recorded yet.
+
   - surface_type: operations_panel
     renderer: OpsPanel
     data_source: ingest_records, score_records
     section: operations
     expected_data_shape: Trigger buttons for ingest and score; activity log strings.
     empty_state: Ready. No recent operations.
+
+  - surface_type: agent_chat_panel
+    renderer: AgentChatPanel
+    data_source: agent_chat, get_agent_conversation
+    section: agent_runtime
+    expected_data_shape: Persisted user/assistant messages plus visible tool activity.
+    empty_state: No conversation yet.
 
 # ---------------------------------------------------------------------------
 # Providers
@@ -159,6 +309,10 @@ providers:
         - normalized_records
         - record_scores
         - record_actions
+        - record_action_events
+        - notification_previews
+        - conversations
+        - conversation_messages
 
 # ---------------------------------------------------------------------------
 # Adapters
@@ -188,6 +342,18 @@ adapters:
           - drivers    # list[str]
           - risks      # list[str]
 
+  - name: notification_preview_adapter
+    purpose: Convert the latest scored record into a preview-only notification payload with no external delivery.
+    output_shape:
+      - title
+      - score
+      - label
+      - recommendation
+      - summary
+      - drivers
+      - risks
+      - available_actions
+
 # ---------------------------------------------------------------------------
 # Run History
 # ---------------------------------------------------------------------------
@@ -211,7 +377,8 @@ run_history:
 notification_actions:
   - name: record_decision
     trigger: user clicks Accept / Skip / Save on a scored record
-    delivery_channel: none_stub  # records status only; no external send
+    delivery_channel: preview  # no-op delivery adapter; no external send
+    delivery_mode: preview_only
     decision_states:
       - pending
       - accepted
@@ -219,6 +386,8 @@ notification_actions:
       - saved
     dedupe_key: record_id + action_type
     persistence_table: record_actions
+    history_table: record_action_events
+    preview_table: notification_previews
 
 # ---------------------------------------------------------------------------
 # Workflows
@@ -250,6 +419,18 @@ workflows:
     mutation_behavior: read_only
     current_status: planned
 
+  - name: preview_notifications
+    trigger_examples:
+      - Click Preview Notifications in ops panel
+      - POST /notifications/previews
+    steps:
+      - select latest scored records
+      - build deterministic preview payloads with summary, reasons, risks, and available actions
+      - upsert notification_previews rows
+      - render notification_preview_panel
+    mutation_behavior: writes notification_previews
+    current_status: planned
+
   - name: record_action_decision
     trigger_examples:
       - Click Accept / Skip / Save on a scored record row
@@ -257,8 +438,23 @@ workflows:
     steps:
       - validate action_type enum
       - upsert record_actions row with dedupe_key
+      - append record_action_events history row
       - return updated status
-    mutation_behavior: writes record_actions
+    mutation_behavior: writes record_actions and record_action_events
+    current_status: planned
+
+  - name: agent_chat_tool_loop
+    trigger_examples:
+      - Ask "score the records" in the Agent Runtime panel
+      - POST /agent/chat
+    steps:
+      - persist user message
+      - call scripted agent provider
+      - execute requested deterministic tool
+      - persist tool event
+      - persist assistant response
+      - return conversation messages and tool activity
+    mutation_behavior: writes conversations and conversation_messages; may call declared deterministic tools
     current_status: planned
 
 # ---------------------------------------------------------------------------
@@ -284,9 +480,13 @@ tests:
       - backend/tests/test_scoring.py              # deterministic score output for known inputs
       - backend/tests/test_run_history.py          # run row created on ingest call
       - backend/tests/test_action_persistence.py   # pending/accepted/skipped/saved transitions
+      - backend/tests/test_notification_previews.py # preview-only notification payloads
+      - backend/tests/test_agent_runtime.py        # scripted provider, tools, persistence
     integration:
       - backend/tests/integration/test_ingest_flow.py   # full ingest: provider -> normalize -> run row
       - backend/tests/integration/test_score_flow.py    # full score: normalized -> scored output
+      - backend/tests/integration/test_notification_flow.py # previews and action history APIs
+      - backend/tests/integration/test_agent_flow.py # chat endpoint, tool flow, conversation history
   frontend:
     playwright:
       - frontend/e2e/ingest-and-score.spec.ts  # trigger ingest -> run row appears -> trigger score -> scored record appears
@@ -320,5 +520,7 @@ future_extensions:
 compatibility_gaps:
   - FixtureRecordProvider is in-code only; no offline JSON directory yet.
   - ScoredRecordDTO explanation shape is minimal compared to AIJobRadar; can be extended.
-  - No real delivery channel for notification_actions — stub only.
+  - Notification delivery is preview-only; no real Telegram/email/Slack channel is wired.
+  - Agent Runtime provider is scripted only; no live LLM provider is configured.
+  - Agent Runtime streaming/SSE is deferred to v0.3.1.
   - Frontend tests are Playwright only; no unit test suite planned for v0.1.

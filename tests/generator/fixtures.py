@@ -17,7 +17,7 @@ FIXTURE_INGESTION_SCORING_PIPELINE = {
         "persistence",
         "test",
     ],
-    "optional_shell_modules": ["notification_action"],
+    "optional_shell_modules": ["notification_action", "triage_ui"],
     "domain": {
         "domain_name": "Test Pipeline",
         "app_type": "ingestion_scoring_pipeline",

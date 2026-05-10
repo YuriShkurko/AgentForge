@@ -150,7 +150,7 @@ Why reusable: essential for Business Insight, not currently supported by AI Job 
 
 Proved by: Business Insight.
 
-Generalize: chat API, streaming events, tool registry, scripted LLM provider, guardrails.
+Generalize: chat API, persisted conversations/messages, tool registry, scripted LLM provider, guardrails, and later streaming events.
 
 Keep specific: prompts, domain routing, tool schemas.
 
@@ -204,7 +204,7 @@ Generated app includes:
 - Run history persistence for provider/capability runs.
 - One scoring/explanation capability using deterministic logic.
 - One UI surface that lists runs and scored records.
-- One notification/action loop stub that records a pending/sent/skipped action without real external delivery.
+- One notification/action loop stub that records current action state and append-only action history without real external delivery.
 - Optional command panel or simple chat facade that calls one capability; no live LLM required.
 - Deterministic tests for provider, adapter, scoring, run history, and action persistence.
 - One Playwright happy path proving UI can trigger ingest/score and render the result.
@@ -212,6 +212,27 @@ Generated app includes:
 - CI skeleton that runs backend tests, frontend tests/build, and Playwright.
 
 v0.1 should not generate Business Insight or AI Job Radar directly. It should generate a minimal sample that demonstrates the shell modules those packs have in common.
+
+## AgentForge v0.2 Notification/Triage Scope
+
+v0.2 promotes the v0.1 action stub into a reusable preview-only Notification/Triage Module:
+
+- Notification previews are generated from scored records and persisted with delivery metadata.
+- Delivery is a no-op preview adapter; no Telegram, email, Slack, live LLM, or paid API call is made.
+- Triage actions update the current action state and append an immutable history event.
+- The frontend exposes preview cards, action buttons, current state, and action history.
+- `notification_action` and `triage_ui` are supported template modules; `workspace`, `observability_debug`, and `deploy_planner` remain explicit gaps.
+
+## AgentForge v0.3 Agent Runtime Scope
+
+v0.3 adds a minimal Agent Runtime Module over the deterministic generated app:
+
+- Conversations and messages are persisted in app-local tables.
+- The LLM provider is scripted for deterministic tests; no live LLM or paid API is required.
+- The tool registry exposes a small set of generated tools such as ingest, score, list scored records, create notification previews, and list action history.
+- The chat endpoint executes scripted tool calls, persists tool events, and returns an assistant response.
+- The frontend adds a compact chat panel with visible tool activity and persisted conversation restore.
+- Streaming/SSE, Dashboard/Workspace Module behavior, guided blueprint building, multi-agent orchestration, and long-term memory remain out of scope.
 
 ## Repo Structure Proposal
 

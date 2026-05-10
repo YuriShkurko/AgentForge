@@ -4,9 +4,10 @@ import { api } from "../api";
 interface Props {
   onIngestDone: () => void;
   onScoreDone: () => void;
+  onPreviewDone: () => void;
 }
 
-export function OpsPanel({ onIngestDone, onScoreDone }: Props) {
+export function OpsPanel({ onIngestDone, onScoreDone, onPreviewDone }: Props) {
   const [log, setLog] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
 
@@ -36,6 +37,19 @@ export function OpsPanel({ onIngestDone, onScoreDone }: Props) {
     }
   }
 
+  async function previewNotifications() {
+    setBusy(true);
+    try {
+      const r = await api.createNotificationPreviews();
+      setLog((l) => [`Previewed: ${r.previews_written} notifications`, ...l]);
+      onPreviewDone();
+    } catch (e) {
+      setLog((l) => [`Preview error: ${e}`, ...l]);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <section data-testid="ops-panel" style={{ marginBottom: "1.5rem" }}>
       <h2>Operations</h2>
@@ -45,6 +59,9 @@ export function OpsPanel({ onIngestDone, onScoreDone }: Props) {
         </button>
         <button data-testid="score-btn" onClick={score} disabled={busy}>
           Score
+        </button>
+        <button data-testid="preview-btn" onClick={previewNotifications} disabled={busy}>
+          Preview Notifications
         </button>
       </div>
       {log.length > 0 && (

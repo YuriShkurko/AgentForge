@@ -5,9 +5,11 @@ test.beforeEach(async ({ page }) => {
 });
 
 test("page loads with ops panel", async ({ page }) => {
+  await expect(page.getByTestId("agent-chat-panel")).toBeVisible();
   await expect(page.getByTestId("ops-panel")).toBeVisible();
   await expect(page.getByTestId("ingest-btn")).toBeVisible();
   await expect(page.getByTestId("score-btn")).toBeVisible();
+  await expect(page.getByTestId("preview-btn")).toBeVisible();
 });
 
 test("ingest creates a run row", async ({ page }) => {
@@ -50,4 +52,42 @@ test("accept action updates badge", async ({ page }) => {
   await page.getByTestId("accept-btn").first().click();
 
   await expect(page.getByTestId("action-badge").first()).toHaveText("accepted", { timeout: 5000 });
+});
+
+test("notification preview action writes history", async ({ page }) => {
+  await page.getByTestId("ingest-btn").click();
+  await expect(page.getByTestId("run-row").first()).toBeVisible({ timeout: 5000 });
+  await page.getByTestId("score-btn").click();
+  await expect(page.getByTestId("scored-row").first()).toBeVisible({ timeout: 5000 });
+
+  await page.getByTestId("preview-btn").click();
+  await expect(page.getByTestId("notification-preview").first()).toBeVisible({ timeout: 5000 });
+
+  await page.getByTestId("preview-skip-btn").first().click();
+
+  await expect(page.getByTestId("preview-action-state").first()).toHaveText("skipped", { timeout: 5000 });
+  await expect(page.getByTestId("action-history-row").first()).toContainText("skipped");
+});
+
+test("agent chat streams scoring tool activity and persists conversation", async ({ page }) => {
+  await page.getByTestId("ingest-btn").click();
+  await expect(page.getByTestId("run-row").first()).toBeVisible({ timeout: 5000 });
+
+  await page.getByTestId("agent-input").fill("score the records");
+  await page.getByTestId("agent-send-btn").click();
+
+  await expect(page.getByTestId("agent-tool-event").first()).toContainText("score_records", { timeout: 5000 });
+  await expect(page.getByTestId("agent-message-assistant").last()).toContainText("scored the records");
+  await expect(page.getByTestId("scored-row").first()).toBeVisible({ timeout: 5000 });
+
+  await page.reload();
+  await expect(page.getByTestId("agent-message-assistant").last()).toContainText("scored the records");
+});
+
+test("agent chat shows streamed tool validation errors", async ({ page }) => {
+  await page.getByTestId("agent-input").fill("please use invalid args");
+  await page.getByTestId("agent-send-btn").click();
+
+  await expect(page.getByTestId("agent-tool-event").first()).toContainText("failed score_records", { timeout: 5000 });
+  await expect(page.getByTestId("agent-message-assistant").last()).toContainText("Tool error");
 });

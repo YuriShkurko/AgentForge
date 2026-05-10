@@ -18,7 +18,8 @@ AgentForge selects an app archetype before selecting feature modules. The archet
 
 Required shell modules:
 
-- Agent Shell: chat, streaming, tool calling, scripted LLM, guardrails.
+- Agent Runtime Module: chat endpoint, scripted provider, tool calling, persisted conversations, guardrails.
+- Full Agent Shell: streaming, broader orchestration, and workspace-aware behavior.
 - Workspace Shell: widget persistence, widget lifecycle events, layout, compatibility validation.
 - Provider/Adapter Shell: source provider contracts and normalized domain data.
 - Test Shell: deterministic scripted LLM, tool registry tests, widget tests, Playwright.
@@ -61,7 +62,7 @@ Optional shell modules:
 
 - Notification/Action Shell.
 - Debug MCP/inspection tools.
-- Agent Shell as a command facade, not default chat.
+- Agent Runtime Module as a command/chat facade over deterministic tools.
 
 Expected Domain Pack fields:
 
@@ -75,6 +76,7 @@ Expected Domain Pack fields:
 - `workflows`
 - `seed_data`
 - `tests`
+- `agent_runtime` when the optional Agent Runtime Module is enabled
 - `observability`
 
 Example generated app: a job, lead, or opportunity pipeline that ingests records from a fixture provider, normalizes them, scores them, and shows run/scored result tables.
@@ -83,15 +85,16 @@ Example generated app: a job, lead, or opportunity pipeline that ingests records
 
 Required shell modules:
 
-- Notification/Action Shell: delivery channel abstraction, action definitions, dedupe, status.
-- Triage UI Shell: cards, queue, decision controls.
-- Persistence Shell: decisions and delivery history.
+- Notification/Action Shell: preview/no-op delivery adapter, action definitions, dedupe, current status, and history.
+- Triage UI Shell: preview cards, queue, decision controls, and action history.
+- Persistence Shell: previews, decisions, and delivery/action history.
 - Scoring/Explanation Shell: recommendation summary.
 
 Optional shell modules:
 
 - Pipeline Shell.
 - Agent Shell.
+- Agent Runtime Module.
 - External channel providers.
 
 Expected Domain Pack fields:
@@ -105,7 +108,7 @@ Expected Domain Pack fields:
 - `workflows`
 - `tests`
 
-Example generated app: a scored recommendation queue where each item can be accepted, skipped, saved, or sent to a stub channel.
+Example generated app: a scored recommendation queue where each item can be previewed, accepted, skipped, saved, and audited without sending to an external channel.
 
 ## `deploy_planner_app`
 
@@ -118,7 +121,7 @@ Required shell modules:
 
 Optional shell modules:
 
-- Agent Shell.
+- Agent Runtime Module.
 - Workspace Shell.
 - Notification Shell.
 
@@ -149,7 +152,7 @@ Optional shell modules:
 Expected Domain Pack fields:
 
 - deterministic pipeline capabilities.
-- optional agent routing over those capabilities.
+- optional Agent Runtime routing over those capabilities.
 - explicit guardrails around what the agent may mutate.
 
 Example generated app: an ingestion/scoring pipeline with a command panel or chat facade that can trigger approved deterministic workflows.

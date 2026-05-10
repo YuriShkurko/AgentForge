@@ -31,13 +31,15 @@ The feature modules an app needs depend on its archetype. An agentic dashboard u
 
 `optional_shell_modules`: Feature modules wired only when declared. Example: `[notification_action, observability_debug, agent_runtime]`.
 
-`agent_shell_contract` *(agent_dashboard_app / hybrid_agent_pipeline only)*: Capabilities expected from the Agent Shell runtime — `chat`, `streaming_sse`, `tool_calling`, `persistent_conversations`, `persistent_workspace_widgets`, `workspace_events`, `dashboard_layout`, `guardrails`, `scripted_llm_testing`.
+`agent_runtime` *(optional when `agent_runtime` is declared as a feature module)*: Configuration for the Agent Runtime Module. Fields include `enabled`, `provider_mode` (`scripted`, `mock`, or `openai_compatible_placeholder`), `scripted_fixture_path` or inline `scripted_turns`, `tools` exposed to the agent, `conversation_persistence`, `streaming`, and `guardrails`. When `streaming.enabled` is true, generated apps expose `/agent/chat/stream` as `text/event-stream` with structured `message_start`, `text_delta`, `tool_call`, `tool_result`, `error`, and `done` events.
+
+`agent_shell_contract` *(agent_dashboard_app / hybrid_agent_pipeline only)*: Broader capabilities expected from a full Agent Shell runtime — `chat`, `streaming_sse`, `tool_calling`, `persistent_conversations`, `persistent_workspace_widgets`, `workspace_events`, `dashboard_layout`, `guardrails`, `scripted_llm_testing`.
 
 ## Capability and Tool Fields
 
 `capabilities`: All operational capabilities exposed by the app — endpoint operations, pipeline steps, scoring actions. Use `capabilities` as the general term for any app archetype. Each entry includes `name`, `purpose`, `input_summary`, `output_shape`, `mutates_state`, `data_mode`, `deterministic_test_safe`, `implementation_status`, and optional `source_files`.
 
-`tools` *(agent_dashboard_app only)*: Agent-callable capabilities exposed to the chat/tool-calling runtime. A subset of `capabilities`. Each entry additionally includes `allowed_widget_types`. Only use `tools` when an agent runtime exists that can invoke them.
+`tools` *(agent_dashboard_app or `agent_runtime.tools`)*: Agent-callable capabilities exposed to the chat/tool-calling runtime. A subset of `capabilities`. For dashboard apps, each entry can include `allowed_widget_types`. For pipeline apps, prefer `agent_runtime.tools` so deterministic tools remain scoped to the Agent Runtime Module rather than implying a Dashboard/Workspace Module. Tool `input_schema` entries should be typed objects where practical, for example `{type: boolean, required: false, default: false}` or `{type: string, required: true, choices: [accept, skip, save]}`. Generated runtimes validate tool arguments before execution and return structured `unknown_tool` or `invalid_arguments` tool errors without crashing chat requests.
 
 `widgets` *(agent_dashboard_app only)*: Renderable workspace widget types. Each entry includes `widget_type`, `renderer`, `compatible_source_tools`, `section`, `expected_data_shape`, `empty_state`, `implementation_status`.
 
@@ -53,7 +55,7 @@ The feature modules an app needs depend on its archetype. An agentic dashboard u
 
 `run_history` *(ingestion_scoring_pipeline, notification_triage_app)*: Expectations for provider/capability run logging. Fields: `enabled`, `table_name`, `tracked_fields` (e.g. `[provider_name, started_at, finished_at, status, stats, error]`), `frontend_surface`.
 
-`notification_actions` *(notification_triage_app, ingestion_scoring_pipeline)*: Action definitions for the notification/triage loop. Each action includes `name`, `trigger`, `delivery_channel`, `decision_states` (e.g. `[pending, sent, skipped]`), `dedupe_key`, `persistence_table`.
+`notification_actions` *(notification_triage_app, ingestion_scoring_pipeline)*: Action definitions for the notification/triage loop. Each action includes `name`, `trigger`, `delivery_channel`, optional `delivery_mode` (for v0.2 this is `preview_only`), `decision_states` (e.g. `[pending, accepted, skipped, saved]`), `dedupe_key`, `persistence_table`, optional `history_table`, and optional `preview_table`.
 
 `observability` *(optional)*: Observability expectations. Fields: `prometheus_metrics`, `grafana_dashboard`, `metrics_endpoint`, `debug_tools`.
 
@@ -80,6 +82,7 @@ The feature modules an app needs depend on its archetype. An agentic dashboard u
 | App Blueprint | `domain-pack` | Machine-readable YAML describing app archetype, capabilities, adapters, UI surfaces, and tests |
 | Application Template | template / Product Shell | The reusable FastAPI/React source tree copied and parameterized by the generator |
 | Feature Module | shell module | A reusable capability area wired by the generator (pipeline, scoring, agent runtime, etc.) |
+| Agent Runtime Module | `agent_runtime` | Optional scripted chat/tool-calling runtime with persisted conversations, SSE events, and typed tool validation |
 | Integration Adapter | provider/adapter | Normalizes external or fixture data into stable app-specific records |
 | Test Harness | deterministic test shell | Fixture-based tests that avoid live external APIs or LLMs |
 | Provider | provider | Source of data or execution capability (mock, offline, external API, IMAP, etc.) |
@@ -109,7 +112,9 @@ Tests must cover (adapt to archetype):
 - Adapter: raw provider output → normalized DTO correctness.
 - Run history: row written on provider/capability call.
 - Scoring/explanation: deterministic output for known inputs.
-- Action persistence: pending/sent/skipped state transitions.
+- Notification previews: scored records produce deterministic preview payloads without external delivery.
+- Action persistence: current decision state plus append-only history for repeated actions.
+- Agent Runtime Module: scripted provider simple response, ordered SSE events, valid tool execution, invalid argument and unknown tool error paths, non-streaming fallback, conversation persistence, and no live LLM dependency.
 - UI surface: renders correctly for expected data shapes and empty state.
 - Playwright or E2E: proves core workflow end-to-end.
 - CI: all checks run without live LLM or paid API dependency.
@@ -121,10 +126,13 @@ For agent_dashboard_app additionally:
 
 ## Generator/Scaffolder Contract
 
-The generator reads `app_archetype` and `required_shell_modules` to select templates, then uses `capabilities`/`tools`, `providers`, `adapters`, `ui_surfaces`/`widgets`, `run_history`, `notification_actions`, and `seed_data` to wire domain-specific behavior into the shell.
+The generator reads `app_archetype` and `required_shell_modules` to select templates, then uses `capabilities`/`tools`, `providers`, `adapters`, `ui_surfaces`/`widgets`, `run_history`, `agent_runtime`, `notification_actions`, and `seed_data` to wire domain-specific behavior into the shell.
 
 Rules:
 - Generator must not invent current capabilities from `future_extensions`.
 - Generator must not wire optional shell modules unless declared in `optional_shell_modules`.
 - Generator must not force `tools`, `widgets`, or `tool_widget_compatibility` for pipeline archetypes.
-- Generator must not force Agent Shell or Workspace Shell unless `agent_runtime` or `workspace_runtime` appears in `required_shell_modules` or `optional_shell_modules`.
+- Generator must not force the Agent Runtime Module or Dashboard/Workspace Module unless `agent_runtime` or `workspace_runtime` appears in `required_shell_modules` or `optional_shell_modules`.
+- Agent runtime tests must use `scripted` or `mock` provider modes; live OpenAI-compatible providers are configuration placeholders only until explicitly implemented.
+- Streaming must be honest `text/event-stream` delivery. Do not claim streaming support from a buffered non-streaming response.
+- Tool arguments must be validated against declared/generated typed schemas before handlers run, and validation errors must be returned as structured tool results.

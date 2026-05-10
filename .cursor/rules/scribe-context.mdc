@@ -1,0 +1,15 @@
+---
+description: Check Scribe for AgentForge project context
+alwaysApply: true
+---
+
+# Scribe Project Context
+
+- At the start of meaningful work in this repository, check Scribe for current project context.
+- Use the local Scribe service on port 8787 through the `user-scribe` MCP tools when available.
+- Follow the Scribe workflow from `github.com/dpopsuev/scribe`: artifacts are the source of truth, goals/specs/bugs define work, tasks implement specs/bugs, and graph edges drive execution order.
+- Start with `admin` action `motd`, then list artifacts scoped to `agentforge` and read any relevant active goal, spec, task, bug, or ref before planning or editing.
+- For execution, prefer `graph` actions such as `next`, `topo_sort`, or `briefing` when tasks/dependencies exist; otherwise use the latest active high-priority spec as the plan.
+- Keep Scribe current while working: update the active artifact with progress notes, design decisions, validation results, remaining limitations, and status changes using `artifact` actions.
+- Before finishing significant work, run Scribe consistency checks when practical (`admin detect`/`lint`) and record final validation results in the relevant artifact.
+- If Scribe is unavailable, say so briefly and continue with repository context.
