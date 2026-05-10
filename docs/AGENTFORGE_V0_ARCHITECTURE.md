@@ -1,17 +1,21 @@
 # AgentForge v0 Architecture
 
-AgentForge v0 should extract the common reusable product foundation from the Business Insight and AI Job Radar domain packs without forcing every app into a chat-agent shape.
+AgentForge v0 extracts the common reusable application foundation from Business Insight and AI Job Radar without forcing every app into a chat-agent shape.
 
-Business Insight is an agentic chat/workspace/dashboard app. AI Job Radar is a deterministic ingestion, scoring, triage, notification, observability, and debug pipeline. The shared foundation is therefore broader than an Agent Shell.
+Business Insight is an agentic chat/workspace/dashboard app. AI Job Radar is a deterministic ingestion, scoring, triage, notification, observability, and debug pipeline. The shared foundation is therefore broader than an agent runtime.
 
-AgentForge v0 language:
+**Terminology used in this document** (see also [README terminology table](../README.md#terminology)):
 
-- Product Shell: reusable app foundation for APIs, providers/adapters, persistence, run history, deterministic tests, frontend surfaces, notifications, observability, and local/dev workflow.
-- Agent Shell: optional Product Shell module for conversational UX, tool calling, streaming, guardrails, scripted LLM testing, and workspace/widget operations.
-- Workspace Shell: optional module for persisted widgets, layout, dashboard sections, compatibility validation, and presentation mode.
-- Pipeline Shell: optional module for provider runs, normalization, dedupe, scoring, replay, background jobs, and operational controls.
-- Triage/Notification Shell: optional module for surfaced recommendations, action loops, notifications, and persisted decisions.
-- Domain Pack: product-specific identity, schemas, providers, adapters, capabilities, workflows, UI surfaces, prompts, fixtures, and tests.
+- **Application Template** (internal: Product Shell) — the reusable app foundation: APIs, providers/adapters, persistence, run history, deterministic tests, frontend surfaces, notifications, observability, and local/dev workflow.
+- **Feature Modules** (internal: shell modules) — capability areas wired by the generator based on the app archetype. Optional modules are only included when the App Blueprint declares them.
+- **App Blueprint** (internal: domain-pack) — the machine-readable YAML describing one app's identity, archetype, required modules, capabilities, schemas, and tests.
+
+AgentForge v0 module language:
+
+- **Agent Runtime Module** (Agent Shell): optional module for conversational UX, tool calling, streaming, guardrails, scripted LLM testing, and workspace/widget operations.
+- **Dashboard/Workspace Module** (Workspace Shell): optional module for persisted widgets, layout, dashboard sections, compatibility validation, and presentation mode.
+- **Ingestion Pipeline Module** (Pipeline Shell): optional module for provider runs, normalization, dedupe, scoring, replay, background jobs, and operational controls.
+- **Triage/Action Module** (Triage/Notification Shell): optional module for surfaced recommendations, action loops, notifications, and persisted decisions.
 
 ## Cross-Pack Comparison
 
@@ -164,26 +168,26 @@ Keep specific: widget renderers and domain data shapes.
 
 v0 priority: defer as a full module; include only if sample app chooses dashboard archetype.
 
-## Agent Shell vs Product Shell
+## Agent Runtime vs Application Template
 
-Agent Shell is not mandatory for every generated app. It should be one Product Shell module for apps where conversational UX is central.
+The Agent Runtime Module is not mandatory for every generated app. It is one optional feature module for apps where conversational UX is central.
 
 Business Insight uses:
 
-- Agent Shell
-- Workspace Shell
-- Provider/Adapter Shell
-- Deterministic Test Shell
+- Agent Runtime Module (Agent Shell)
+- Dashboard/Workspace Module (Workspace Shell)
+- Integration Adapter Layer (Provider/Adapter Shell)
+- Test Harness (Deterministic Test Shell)
 
 AI Job Radar uses:
 
-- Pipeline Shell
-- Triage/Notification Shell
-- Provider/Adapter Shell
-- Operations UI Shell
-- Observability/Debug Shell
+- Ingestion Pipeline Module (Pipeline Shell)
+- Triage/Action Module (Triage/Notification Shell)
+- Integration Adapter Layer (Provider/Adapter Shell)
+- Operations UI Module (Operations UI Shell)
+- Observability/Debug Module
 
-AgentForge v0 should generate Product Shell apps from archetypes, not assume the product is an agent.
+AgentForge v0 generates apps from archetypes, not from an assumption that every product is an agent.
 
 ## AgentForge v0.1 Scope
 

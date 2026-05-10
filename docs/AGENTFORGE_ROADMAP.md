@@ -1,10 +1,12 @@
 # AgentForge Roadmap
 
-This roadmap is based on the Business Insight and AI Job Radar domain packs. It favors one small generated app over a broad framework.
+This roadmap is based on the Business Insight and AI Job Radar App Blueprints (`domain-packs`). It favors one small generated app over a broad framework.
+
+> **Terms used here:** App Blueprint = the machine-readable `domain-pack.yaml`; Application Template = the reusable FastAPI/React source tree; Feature Modules = reusable capability areas (pipeline, scoring, notifications, etc.). See [README terminology table](../README.md#terminology).
 
 ## v0.1 Recommended Scope
 
-Build one tiny hybrid sample app that proves the reusable Product Shell pieces common to both packs.
+Build one tiny hybrid sample app that proves the reusable application template modules common to both packs.
 
 The v0.1 generated app should include:
 
@@ -29,7 +31,7 @@ Optional v0.1 add-on:
 
 ## Acceptance Criteria
 
-- `agentforge generate examples/hybrid-scoring-demo` or equivalent creates the sample app from a small Domain Pack.
+- `agentforge generate examples/hybrid-scoring-demo` or equivalent creates the sample app from a small App Blueprint (`domain-pack.yaml`).
 - The generated app runs locally with Docker Compose or documented local commands.
 - Ingesting fixture data creates a run history row.
 - Scoring writes deterministic explanation output.
@@ -38,7 +40,7 @@ Optional v0.1 add-on:
 - Backend deterministic tests pass.
 - Playwright happy path passes.
 - CI skeleton runs the same checks.
-- Docs explain how to create a second Domain Pack and choose an archetype.
+- Docs explain how to create a second App Blueprint (`domain-pack.yaml`) and choose an archetype.
 
 ## Implementation Milestones
 
@@ -47,7 +49,7 @@ Optional v0.1 add-on:
 Deliverables:
 
 - Finalize `app_archetype`, `required_shell_modules`, `optional_shell_modules`, `capabilities`, `ui_surfaces`, `run_history`, and `notification_actions` additions to `DOMAIN_PACK_SPEC.md`.
-- Add a minimal example Domain Pack for the v0.1 sample.
+- Add a minimal example App Blueprint (`domain-pack.yaml`) for the v0.1 sample.
 - Define TypeScript/Python schema fixtures used by generator tests.
 
 Exit criteria:
@@ -73,8 +75,8 @@ Exit criteria:
 
 Deliverables:
 
-- Generator command reads the sample Domain Pack.
-- Generator copies/wires selected shell modules.
+- Generator command reads the sample App Blueprint (`domain-pack.yaml`).
+- Generator copies/wires selected feature modules.
 - Generator emits backend/frontend app and local validation commands.
 
 Exit criteria:
@@ -105,7 +107,7 @@ Deliverables:
 
 Exit criteria:
 
-- The generator identifies required/optional shell modules correctly.
+- The generator identifies required/optional feature modules correctly.
 - Gaps are explicit and do not become fake generated features.
 
 ## What Not To Build Yet

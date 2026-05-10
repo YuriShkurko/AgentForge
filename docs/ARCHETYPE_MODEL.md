@@ -1,6 +1,8 @@
 # AgentForge Archetype Model
 
-AgentForge should choose an app archetype before choosing shell modules. The archetype tells the generator which Product Shell modules are required and which Domain Pack fields must be present.
+AgentForge selects an app archetype before selecting feature modules. The archetype tells the generator which application template modules are required and which App Blueprint (`domain-pack.yaml`) fields must be present.
+
+> **Terms:** "shell module" = feature module (pipeline, scoring, agent runtime, etc.); "Product Shell" = Application Template; "Domain Pack" = App Blueprint. See [README terminology table](../README.md#terminology).
 
 ## Archetype Summary
 
@@ -154,5 +156,5 @@ Example generated app: an ingestion/scoring pipeline with a command panel or cha
 
 ## Module Selection Rule
 
-The generator should start from `app_archetype`, then load required shell modules, then wire optional shell modules only when the Domain Pack declares them. This prevents AI Job Radar-style pipelines from being forced into Business Insight-style chat/workspace behavior.
+The generator starts from `app_archetype`, loads required feature modules, then wires optional feature modules only when the App Blueprint declares them. This prevents pipeline apps from being forced into chat/workspace behavior.
 

@@ -1,12 +1,12 @@
-# Domain Pack Specification
+# App Blueprint Specification (`domain-pack.yaml`)
 
-A Domain Pack is the complete machine-readable definition of one app domain. Combined with a Product Shell, it produces a runnable app.
+An **App Blueprint** (config name: `domain-pack`) is the complete machine-readable definition of one app domain. Combined with an Application Template, it produces a runnable app.
 
-**Product Shell + Domain Pack = App.**
+**Application Template + App Blueprint = Generated App.**
 
-The Product Shell provides reusable runtime infrastructure: APIs, persistence, run history, providers/adapters, deterministic tests, frontend surfaces, notifications, observability, and local/dev workflow. A Domain Pack provides the variable surface: identity, archetype declaration, required/optional shell modules, capabilities, schemas, providers/adapters, workflows, UI surfaces, seed data, and tests.
+The Application Template provides reusable runtime infrastructure: APIs, persistence, run history, integration adapters, deterministic test harness, frontend surfaces, notifications, observability, and local/dev workflow. The App Blueprint provides the variable surface: identity, archetype declaration, required/optional feature modules, capabilities, schemas, providers/adapters, workflows, UI surfaces, seed data, and tests.
 
-The shell modules an app needs depend on its archetype. An agentic dashboard uses Agent Shell and Workspace Shell. A pipeline app uses Pipeline Shell and Scoring Shell. A notification app uses Triage/Notification Shell. The generator reads `app_archetype` and `required_shell_modules` to decide which modules to wire.
+The feature modules an app needs depend on its archetype. An agentic dashboard uses the Agent Runtime Module and Dashboard/Workspace Module. A pipeline app uses the Ingestion Pipeline Module and Scoring Module. A notification app uses the Triage/Action Module. The generator reads `app_archetype` and `required_shell_modules` to decide which modules to wire.
 
 ## Top-Level Fields
 
@@ -27,9 +27,9 @@ The shell modules an app needs depend on its archetype. An agentic dashboard use
 - `hybrid_agent_pipeline` — chat or command UX over a deterministic pipeline
 - `deploy_planner_app` — plan, validate, and stage deployment work *(future)*
 
-`required_shell_modules`: List of Product Shell modules the generator must wire. Example: `[pipeline, provider_adapter, scoring_explanation, operations_ui, persistence, test]`.
+`required_shell_modules`: List of feature modules the generator must wire. Example: `[pipeline, provider_adapter, scoring_explanation, operations_ui, persistence, test]`.
 
-`optional_shell_modules`: Modules wired only when declared. Example: `[notification_action, observability_debug, agent_runtime]`.
+`optional_shell_modules`: Feature modules wired only when declared. Example: `[notification_action, observability_debug, agent_runtime]`.
 
 `agent_shell_contract` *(agent_dashboard_app / hybrid_agent_pipeline only)*: Capabilities expected from the Agent Shell runtime — `chat`, `streaming_sse`, `tool_calling`, `persistent_conversations`, `persistent_workspace_widgets`, `workspace_events`, `dashboard_layout`, `guardrails`, `scripted_llm_testing`.
 
@@ -75,16 +75,19 @@ The shell modules an app needs depend on its archetype. An agentic dashboard use
 
 ## Terminology
 
-| Term | Meaning |
-|---|---|
-| Provider | Source of data or execution capability (mock, offline, external API, IMAP, etc.) |
-| Adapter | Normalization layer from provider output to stable domain DTO |
-| Capability | Any operational app action; general term for all archetypes |
-| Tool | Agent-callable capability; only use when Agent Shell exists |
-| UI Surface | Any rendered surface: table, card, ops panel, triage queue, dashboard widget |
-| Widget | Persisted workspace surface (agent_dashboard_app only) |
-| Agent | Mediator/proxy UX layer routing user intent through tools (agent archetypes only) |
-| Domain Pack | Full machine-readable definition of one app domain |
+| Public term | Config / internal term | Meaning |
+|---|---|---|
+| App Blueprint | `domain-pack` | Machine-readable YAML describing app archetype, capabilities, adapters, UI surfaces, and tests |
+| Application Template | template / Product Shell | The reusable FastAPI/React source tree copied and parameterized by the generator |
+| Feature Module | shell module | A reusable capability area wired by the generator (pipeline, scoring, agent runtime, etc.) |
+| Integration Adapter | provider/adapter | Normalizes external or fixture data into stable app-specific records |
+| Test Harness | deterministic test shell | Fixture-based tests that avoid live external APIs or LLMs |
+| Provider | provider | Source of data or execution capability (mock, offline, external API, IMAP, etc.) |
+| Adapter | adapter | Normalization layer from provider output to stable domain DTO |
+| Capability | capability | Any operational app action; general term for all archetypes |
+| Tool | tool | Agent-callable capability; only use when Agent Runtime Module exists |
+| UI Surface | ui_surface | Any rendered surface: table, card, ops panel, triage queue, dashboard widget |
+| Widget | widget | Persisted workspace surface (agent_dashboard_app only) |
 
 ## Tool-to-Widget Compatibility (agent_dashboard_app only)
 
