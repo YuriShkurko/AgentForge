@@ -28,7 +28,7 @@ generate-demo:
 	@echo "Done. See $(DEMO_OUT)/run_commands.txt for next steps."
 
 test-generator:
-	pytest tests/generator/ -v
+	pytest tests/generator/ -v --basetemp=.tmp/pytest-generator-validate
 
 # ── Generated app — backend ───────────────────────────────────────────────────
 

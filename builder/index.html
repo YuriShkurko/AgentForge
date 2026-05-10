@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AgentForge Blueprint Builder</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <section class="builder">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow">AgentForge dev tool</p>
+            <h1>Blueprint Builder</h1>
+          </div>
+          <div class="status-pill" id="status-pill">Valid draft</div>
+        </header>
+
+        <section class="panel metadata-panel">
+          <div class="section-head">
+            <h2>App Metadata</h2>
+            <p>Define the public identity and target user for this App Blueprint.</p>
+          </div>
+          <div class="form-grid">
+            <label>
+              App name
+              <input id="app-name" value="starter-agent-app" autocomplete="off" />
+            </label>
+            <label>
+              Display name
+              <input id="display-name" value="Starter Agent App" autocomplete="off" />
+            </label>
+            <label class="wide">
+              Description
+              <textarea id="description">A local AgentForge app created with the Blueprint Builder.</textarea>
+            </label>
+            <label>
+              Target user/persona
+              <input id="target-user" value="developer" autocomplete="off" />
+            </label>
+            <label>
+              App archetype
+              <select id="archetype"></select>
+            </label>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="section-head">
+            <h2>Feature Modules</h2>
+            <p>Required modules follow the selected archetype. Optional modules can be added when supported.</p>
+          </div>
+          <div id="module-list" class="module-list"></div>
+        </section>
+
+        <section class="panel">
+          <div class="section-head">
+            <h2>Module Configuration</h2>
+            <p>Keep defaults deterministic and local. Live providers are intentionally disabled.</p>
+          </div>
+          <div class="config-grid">
+            <label>
+              Accept action label
+              <input id="action-accept" value="accept" />
+            </label>
+            <label>
+              Skip action label
+              <input id="action-skip" value="skip" />
+            </label>
+            <label>
+              Maybe action label
+              <input id="action-maybe" value="maybe" />
+            </label>
+            <label>
+              Notification mode
+              <select id="notification-mode">
+                <option value="preview_only">preview_only</option>
+              </select>
+            </label>
+            <label>
+              LLM provider mode
+              <select id="llm-mode">
+                <option value="scripted">scripted</option>
+              </select>
+            </label>
+            <label>
+              Widget compatibility preset
+              <select id="widget-preset">
+                <option value="generic_workspace">generic_workspace</option>
+              </select>
+            </label>
+            <label class="toggle-row">
+              <input id="workspace-enabled" type="checkbox" checked />
+              Workspace enabled
+            </label>
+            <label class="toggle-row">
+              <input id="fixture-enabled" type="checkbox" checked />
+              Fixture provider enabled
+            </label>
+          </div>
+        </section>
+      </section>
+
+      <aside class="preview">
+        <section class="panel preview-panel">
+          <div class="section-head">
+            <h2>Blueprint YAML</h2>
+            <p id="validation-summary">Ready for `agentforge plan`.</p>
+          </div>
+          <pre id="yaml-preview" tabindex="0"></pre>
+          <div class="actions">
+            <button id="copy-yaml" type="button">Copy YAML</button>
+            <button id="download-yaml" type="button">Download</button>
+          </div>
+        </section>
+
+        <section class="panel plan-panel">
+          <div class="section-head">
+            <h2>Plan Preview</h2>
+            <p>Run this command after saving the YAML. The CLI remains the source of truth.</p>
+          </div>
+          <pre id="plan-preview"></pre>
+        </section>
+      </aside>
+    </main>
+    <script type="module" src="./blueprint-builder.mjs"></script>
+    <script type="module" src="./app.mjs"></script>
+  </body>
+</html>

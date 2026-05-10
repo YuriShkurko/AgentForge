@@ -1,0 +1,272 @@
+:root {
+  color-scheme: light;
+  font-family:
+    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background: #f5f6f8;
+  color: #171a1f;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+}
+
+.shell {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(420px, 0.82fr);
+  gap: 20px;
+  min-height: 100vh;
+  padding: 24px;
+}
+
+.builder,
+.preview {
+  display: grid;
+  gap: 16px;
+  align-content: start;
+}
+
+.topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  padding: 4px 2px 2px;
+}
+
+.eyebrow {
+  margin: 0 0 4px;
+  color: #68707d;
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+h1,
+h2,
+p {
+  margin: 0;
+}
+
+h1 {
+  font-size: 2rem;
+  line-height: 1.1;
+}
+
+h2 {
+  font-size: 1rem;
+  line-height: 1.3;
+}
+
+.panel {
+  background: #ffffff;
+  border: 1px solid #d9dee7;
+  border-radius: 8px;
+  padding: 18px;
+  box-shadow: 0 1px 2px rgba(21, 26, 34, 0.04);
+}
+
+.section-head {
+  display: grid;
+  gap: 4px;
+  margin-bottom: 14px;
+}
+
+.section-head p {
+  color: #68707d;
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+
+.form-grid,
+.config-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+label {
+  display: grid;
+  gap: 6px;
+  color: #3b414c;
+  font-size: 0.84rem;
+  font-weight: 700;
+}
+
+.wide {
+  grid-column: 1 / -1;
+}
+
+input,
+select,
+textarea {
+  width: 100%;
+  border: 1px solid #c7ced9;
+  border-radius: 6px;
+  padding: 10px 11px;
+  color: #171a1f;
+  background: #ffffff;
+  font: inherit;
+  font-weight: 500;
+}
+
+textarea {
+  min-height: 84px;
+  resize: vertical;
+}
+
+input:focus,
+select:focus,
+textarea:focus,
+button:focus {
+  outline: 2px solid #2f6fed;
+  outline-offset: 2px;
+}
+
+.module-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.module-card {
+  grid-template-columns: 18px minmax(0, 1fr);
+  align-items: start;
+  min-height: 68px;
+  border: 1px solid #d9dee7;
+  border-radius: 8px;
+  padding: 12px;
+  background: #fbfcfe;
+}
+
+.module-card input {
+  width: 16px;
+  height: 16px;
+  margin: 2px 0 0;
+}
+
+.module-card strong,
+.module-card small {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.module-card small {
+  margin-top: 3px;
+  color: #697386;
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+
+.muted {
+  background: #f2f4f7;
+  color: #697386;
+}
+
+.toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 42px;
+}
+
+.toggle-row input {
+  width: 18px;
+  height: 18px;
+}
+
+.preview {
+  position: sticky;
+  top: 24px;
+  align-self: start;
+}
+
+.preview-panel,
+.plan-panel {
+  display: grid;
+  min-height: 0;
+}
+
+pre {
+  overflow: auto;
+  max-height: 58vh;
+  margin: 0;
+  border: 1px solid #d9dee7;
+  border-radius: 8px;
+  padding: 14px;
+  background: #121821;
+  color: #e8edf5;
+  font-size: 0.82rem;
+  line-height: 1.45;
+  white-space: pre;
+}
+
+.plan-panel pre {
+  max-height: 160px;
+}
+
+.actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+button {
+  border: 1px solid #1f5dc8;
+  border-radius: 6px;
+  padding: 10px 13px;
+  background: #2f6fed;
+  color: #ffffff;
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+button + button {
+  border-color: #c7ced9;
+  background: #ffffff;
+  color: #1d2430;
+}
+
+.status-pill {
+  border: 1px solid #b7dbc8;
+  border-radius: 999px;
+  padding: 7px 11px;
+  background: #eefaf3;
+  color: #126038;
+  font-size: 0.8rem;
+  font-weight: 800;
+}
+
+.status-pill.warning {
+  border-color: #f1cc82;
+  background: #fff7e6;
+  color: #805400;
+}
+
+@media (max-width: 980px) {
+  .shell {
+    grid-template-columns: 1fr;
+    padding: 16px;
+  }
+
+  .preview {
+    position: static;
+  }
+}
+
+@media (max-width: 680px) {
+  .form-grid,
+  .config-grid,
+  .module-list {
+    grid-template-columns: 1fr;
+  }
+
+  .topbar {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 12px;
+  }
+}

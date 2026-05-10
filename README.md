@@ -1,30 +1,56 @@
 # AgentForge
 
-AgentForge is an opinionated generator for full-stack AI/product applications. It turns a structured **App Blueprint** into a runnable FastAPI + React project with integration adapters, deterministic scoring, notification/triage workflows, an Agent Runtime Module, a Dashboard/Workspace Module, tests, and CI-ready structure.
+AgentForge is an opinionated generator for local-first full-stack AI/product apps. It reads a structured **App Blueprint** (`domain-pack.yaml`) and produces a runnable FastAPI + React project with provider adapters, deterministic scoring, notification triage, an optional scripted Agent Runtime Module, a persisted Dashboard/Workspace Module, tests, and CI-ready project structure.
 
-The current goal is deliberately narrow: prove a reusable generated application foundation before live LLM integrations, deployment automation, repo-conversion tooling, or a guided builder UI. Everything in the generated demo runs locally and deterministically. No live LLM or paid API is required.
+The project is intentionally narrow right now. It proves reusable application modules and a simple local Blueprint Builder before adding live LLM integrations, deployment automation, repository conversion, or AI-assisted app design. The generated demo runs locally and deterministically. No paid API or live LLM key is required.
 
+```text
+App Blueprint YAML + Application Template = Generated App
 ```
-App Blueprint (YAML)  +  Application Template  →  Generated App
-```
 
-> **Current scope:** v0.4.1 generates one sample app — `hybrid-scoring-demo` — that proves reusable ingestion, scoring, notification preview, triage actions, persisted conversations, SSE agent streaming, typed agent tool validation, and generic persisted workspace widgets. v0.4.1 is UI polish only; workspace behavior and contracts are unchanged from v0.4. It is not a generic AI app builder yet.
+**Current version:** v0.5 adds a static local **Blueprint Builder** for drafting App Blueprints and previewing the CLI commands to run next. Generation remains CLI-first through `agentforge plan` and `agentforge generate`.
 
-## What Works Today
+## Table of Contents
 
-AgentForge can generate and validate a complete local demo app:
+- [What You Can Do Today](#what-you-can-do-today)
+- [Quickstart](#quickstart)
+- [Blueprint Builder](#blueprint-builder)
+- [Generated Demo Flow](#generated-demo-flow)
+- [What Gets Generated](#what-gets-generated)
+- [How AgentForge Works](#how-agentforge-works)
+- [Commands](#commands)
+- [Running the Generated App](#running-the-generated-app)
+- [Validation Snapshot](#validation-snapshot)
+- [What Is Not Built Yet](#what-is-not-built-yet)
+- [Terminology](#terminology)
+- [Repository Layout](#repository-layout)
+- [Reproducibility](#reproducibility)
+- [Version History](#version-history)
+- [Further Reading](#further-reading)
 
-- A FastAPI backend with async SQLAlchemy models for provider runs, records, scores, notification previews, action history, conversations, messages, and workspace widgets.
-- A React + TypeScript frontend with operations, scoring, notification preview, action history, agent chat, and workspace panels.
-- A fixture provider and adapter that make tests deterministic and avoid live APIs.
-- A scoring/explanation pipeline that produces fit scores, labels, recommendations, drivers, and risks.
-- Preview-only notification generation with accept/skip/save triage actions and append-only action history.
-- An Agent Runtime Module with a scripted provider, deterministic tool calls, persisted conversation history, `/agent/chat`, and `/agent/chat/stream`.
-- A Dashboard/Workspace Module with persisted generic widgets, backend compatibility validation, remove/reorder APIs, and polished compact frontend rendering.
-- Typed tool argument validation with structured tool errors for unknown tools and invalid arguments.
-- Generator, backend, frontend, and Playwright E2E coverage.
+## What You Can Do Today
+
+AgentForge can generate and validate one complete local demo app, `hybrid-scoring-demo`.
+
+The demo proves these reusable pieces:
+
+- FastAPI backend with async SQLAlchemy models.
+- React + TypeScript frontend built with Vite.
+- Fixture provider and normalization adapter.
+- Deterministic scoring and explanation output.
+- Preview-only notification generation.
+- Triage actions with append-only action history.
+- Scripted Agent Runtime Module with persisted conversations.
+- Server-sent event streaming at `/agent/chat/stream`.
+- Typed tool argument validation and structured tool errors.
+- Persisted generic workspace widgets.
+- Generator tests, backend tests, frontend build/lint, and Playwright E2E coverage.
+
+The v0.5 builder also helps you draft new App Blueprint YAML without hand-writing every field from scratch.
 
 ## Quickstart
+
+Install the generator, inspect the demo plan, generate the app, and run validation:
 
 ```bash
 pip install -e generator/
@@ -33,119 +59,120 @@ agentforge generate domain-packs/hybrid-scoring-demo/domain-pack.yaml --force
 make validate
 ```
 
-This installs the generator CLI, previews the module plan, generates the demo app, then runs all tests and the frontend build.
+The generated app appears in:
+
+```text
+examples/hybrid-scoring-demo/
+```
+
+## Blueprint Builder
+
+The Blueprint Builder is a static local developer tool. It lives in [builder/](builder/).
+
+Open it directly in your browser:
+
+```text
+builder/index.html
+```
+
+No dev server is required.
+
+Use the builder to:
+
+- enter app metadata, display name, description, and target persona;
+- choose an app archetype;
+- select supported Feature Modules;
+- see future/planned modules as disabled options;
+- configure deterministic defaults such as `preview_only`, `scripted`, fixture provider mode, action labels, and workspace mode;
+- preview valid App Blueprint YAML;
+- copy or download `domain-pack.yaml`;
+- see the `agentforge plan <file>` and `agentforge generate <file>` commands to run next.
+
+The builder does not write files automatically, call live APIs, analyze repositories, convert apps, or deploy infrastructure. `agentforge plan` remains the source of truth for validation.
+
+You can also create a starter blueprint from the CLI:
+
+```bash
+agentforge init-blueprint my-app --optional-module agent_runtime --optional-module workspace
+agentforge plan domain-packs/my-app/domain-pack.yaml
+```
 
 ## Generated Demo Flow
 
-The generated `hybrid-scoring-demo` app demonstrates this path:
+The generated `hybrid-scoring-demo` app demonstrates a full deterministic workflow:
 
 1. Ingest fixture records through a provider interface.
 2. Normalize raw provider payloads into stable records.
-3. Score records deterministically and attach explanations.
+3. Score records and attach deterministic explanations.
 4. Create preview-only notification payloads for scored records.
-5. Record triage decisions and preserve an append-only action history.
+5. Record triage decisions and preserve action history.
 6. Chat with the scripted Agent Runtime Module.
-7. Stream agent events over SSE while tools run and assistant text appears.
-8. Ask the scripted agent to pin a compatible tool result into the workspace.
-9. Reload the app and recover persisted agent conversation history and workspace widgets.
+7. Stream agent events over SSE while tools run.
+8. Ask the scripted agent to pin compatible tool results into the workspace.
+9. Reload the app and recover persisted conversations and workspace widgets.
 
-The agent can call generated tools such as `run_ingest`, `score_records`, `get_scored_records`, `create_notification_preview`, `list_action_history`, and `pin_widget`. Tool arguments and widget compatibility are validated before execution; bad arguments, unknown tools, and invalid widget pins become structured tool results instead of server crashes.
+The agent can call generated tools such as `run_ingest`, `score_records`, `get_scored_records`, `create_notification_preview`, `list_action_history`, and `pin_widget`. Tool arguments and widget compatibility are validated before execution, so invalid arguments, unknown tools, and incompatible widget pins become structured tool results instead of server crashes.
 
-## What it generates
+## What Gets Generated
 
-`agentforge generate` reads an App Blueprint (`domain-pack.yaml`) and emits a self-contained project directory. The `hybrid-scoring-demo` output includes:
+`agentforge generate` reads an App Blueprint and emits a self-contained project directory.
 
-- **FastAPI backend** with async SQLAlchemy ORM (SQLite for local dev, PostgreSQL for production)
-- **React + TypeScript frontend** built with Vite
-- **Integration adapter layer** — a fixture provider + normalizer that converts raw records into stable domain DTOs
-- **Scoring pipeline** — deterministic fit score (0–100), label (high/medium/low), recommendation, drivers, and risks
-- **Operations and triage UI** — ingest/score/preview controls, run history, scored records, notification previews, action status, and action history
-- **Notification/Triage Module** — creates preview-only notification payloads and records accept/skip/save decisions without external delivery
-- **Agent Runtime Module** — persisted conversations, a scripted LLM provider, deterministic tool calls, typed tool argument validation, SSE streaming, and a compact chat panel
-- **Dashboard/Workspace Module** — persisted generic widgets with backend source-tool/widget compatibility validation, list/create/remove/reorder APIs, and a compact workspace panel
-- **Backend tests** (pytest, SQLite in-memory — no Postgres required)
-- **Playwright E2E tests** proving the full UI workflow
-- **GitHub Actions CI skeleton** with no live LLM or paid API dependency
+The current `fastapi-react` Application Template includes:
 
-## Validation Snapshot
+| Area | Generated output |
+| --- | --- |
+| Backend | FastAPI app with async SQLAlchemy, SQLite for local dev, and PostgreSQL-ready configuration |
+| Frontend | React + TypeScript app built with Vite |
+| Providers | Fixture provider interface and deterministic sample data |
+| Adapters | Normalization layer from raw provider records to stable DTOs |
+| Scoring | Deterministic fit score, label, recommendation, drivers, risks, and explanation |
+| Operations UI | Ingest, score, run history, and scored records views |
+| Notification/Triage | Preview-only notifications, action status, and action history |
+| Agent Runtime | Scripted provider, persisted conversations, tool calls, typed validation, and SSE streaming |
+| Workspace | Persisted generic widgets with source-tool/widget compatibility checks |
+| Tests | Backend pytest suite, generator tests, and Playwright E2E coverage |
+| CI | GitHub Actions skeleton with no live LLM or paid API dependency |
 
-Latest local validation for v0.4:
+## How AgentForge Works
 
-- `python -m pytest tests/generator/ -v` — 24 passed.
-- Template backend tests — 72 passed.
-- Template frontend `npm run build` and `npm run lint` — passed.
-- `make validate` — passed.
-- Live generated app Playwright E2E — passed (`test-results/.last-run.json`, 9 tests in the generated spec).
+AgentForge has three main pieces:
 
-The generated app was also regenerated from `domain-packs/hybrid-scoring-demo/domain-pack.yaml`, so `examples/hybrid-scoring-demo/` reflects the current template and App Blueprint.
+1. **App Blueprint**: a YAML file that describes the app domain, archetype, Feature Modules, capabilities, providers, adapters, UI surfaces, tests, and future gaps.
+2. **Generator**: the `agentforge` CLI reads the blueprint, selects modules, validates gaps, and copies/parameters the Application Template.
+3. **Generated App**: a normal FastAPI + React project that can run, test, and evolve independently.
 
-v0.4.1 is a frontend polish pass over the v0.4 workspace UI. Taste Skill-style design critique was used as a review aid for spacing, hierarchy, empty states, and widget readability; it is not a runtime dependency and generated apps do not require it.
-
-## Screenshot/GIF Checklist
-
-Useful release visuals for v0.4.1:
-
-- Generated app overview with agent chat, workspace, and operations visible.
-- Agent chat pinning scored records into a workspace widget.
-- Workspace widget still present after a page refresh.
-- Notification preview and triage flow beside persisted workspace widgets.
-
-## How it works
-
-1. **App Blueprint** (`domain-pack.yaml`) — describes your app's archetype (`ingestion_scoring_pipeline`, `agent_dashboard_app`, etc.), the feature modules it needs, and its data capabilities. Lives in `domain-packs/`.
-2. **Generator** (`agentforge generate`) — reads the blueprint, selects the matching application template, substitutes app-name tokens, and emits a fully self-contained project directory.
-3. **Generated app** — a real FastAPI + React project you can install, run, test, and deploy independently. It has no runtime dependency on AgentForge.
-
-## What is not built yet
-
-- Only one application template exists: `ingestion_scoring_pipeline` via the `fastapi-react` template.
-- Token substitution is string-replace only — no per-capability code generation yet.
-- Feature modules `observability_debug` and `deploy_planner` are reported as gaps, not generated.
-- Dashboard/Workspace widgets are generic in v0.4; Business Insight-specific widgets such as `money_flow`, `health_score`, and `signal_timeline` are not generated.
-- Notification delivery is preview-only in v0.2; real Telegram/email/Slack adapters are future work.
-- The Agent Runtime Module uses a scripted provider in v0.3.1; live LLM providers remain future work.
-- SSE streaming is deterministic runtime event streaming, not live model token streaming.
-- Tool schemas are currently hand-authored in the generated registry and represented in the App Blueprint; arbitrary schema-driven tool generation is future work.
-- Production database is PostgreSQL; the generator does not yet emit migration scripts.
-- No guided UI — the generator is CLI-only.
-- `examples/hybrid-scoring-demo/` is a **committed snapshot** of the generated output; it is regenerable (see [Reproducibility](#reproducibility)).
-
-## Version History
-
-- **v0.1** — initial generator, App Blueprint loading, FastAPI/React template, fixture provider, run history, scoring, and deterministic tests.
-- **v0.1.1** — developer-experience hardening: package metadata, Makefile validation, public repo ignore rules, and generated README behavior.
-- **v0.1.2** — public documentation polish and terminology cleanup around App Blueprints, Application Templates, Feature Modules, Integration Adapters, and Test Harnesses.
-- **v0.2** — Notification/Triage Module: notification previews, current action state, append-only action history, preview/action UI, and generator support for `triage_ui`.
-- **v0.3** — Agent Runtime Module: scripted provider, tool registry, `/agent/chat`, conversation/message persistence, chat UI, and deterministic agent tests.
-- **v0.3.1** — Agent Runtime hardening: `/agent/chat/stream` SSE events, frontend streaming consumption, typed tool validation, structured tool errors, and expanded E2E coverage.
-- **v0.4** — Dashboard/Workspace Module: persisted generic widgets, backend tool-to-widget compatibility validation, agent pinning, remove/reorder APIs, workspace UI, and validation coverage.
-- **v0.4.1** — Workspace UI polish: clearer workspace header, empty/loading/error states, readable widget cards/renderers, and clearer agent pin success/failure activity. No workspace contract or runtime dependency changes.
-
-## Terminology
-
-| Public term | Config / internal term | Meaning |
-|---|---|---|
-| App Blueprint | `domain-pack` | Machine-readable YAML describing app archetype, capabilities, adapters, UI surfaces, and tests |
-| Application Template | `template` | The reusable FastAPI/React source tree copied and parameterized by the generator |
-| Feature Module | shell module | A reusable capability area — pipeline, scoring, notifications, agent runtime, etc. |
-| Agent Runtime Module | `agent_runtime` | Optional scripted chat/tool-calling runtime with persisted conversations, SSE events, and typed tool validation |
-| Dashboard/Workspace Module | `workspace` | Optional persisted widget workspace with generic renderers and backend compatibility validation |
-| Integration Adapter | provider/adapter | Normalizes external or fixture data into stable app-specific records |
-| Test Harness | deterministic test shell | Fixture-based tests that avoid live external APIs or LLMs |
-
-## All-in-one via Makefile
+The important command flow is:
 
 ```bash
-make validate          # generator tests + backend tests + frontend build/lint
+agentforge plan path/to/domain-pack.yaml
+agentforge generate path/to/domain-pack.yaml
+```
+
+`agentforge plan` is the source of truth for module support and known gaps.
+
+## Commands
+
+Common commands from the repo root:
+
+```bash
+make validate          # generator tests + generated backend tests + frontend build/lint
 make generate-demo     # regenerate examples/hybrid-scoring-demo
 make test-generator    # generator unit tests only
 make test-backend      # generated app backend tests only
-make run-backend       # start backend dev server
-make run-frontend      # start frontend dev server
-make run-e2e           # run Playwright E2E (requires running stack)
+make run-backend       # start generated backend dev server on :8000
+make run-frontend      # start generated frontend dev server on :5173
+make run-e2e           # run Playwright E2E; requires the live stack
 ```
 
-## Running the generated app manually
+Generator CLI:
+
+```bash
+agentforge plan domain-packs/hybrid-scoring-demo/domain-pack.yaml
+agentforge generate domain-packs/hybrid-scoring-demo/domain-pack.yaml --force
+agentforge init-blueprint my-app --optional-module agent_runtime
+```
+
+## Running the Generated App
 
 ### Backend
 
@@ -163,51 +190,119 @@ npm install
 VITE_API_URL=http://localhost:8000 npm run dev
 ```
 
-### Full stack (Docker Compose)
+### Full Stack With Docker Compose
 
 ```bash
 cd examples/hybrid-scoring-demo
 docker-compose up
 ```
 
-## Repository layout
+## Validation Snapshot
 
+Latest local validation for v0.5:
+
+| Command | Result |
+| --- | --- |
+| `python -m pytest tests/generator/ -v --basetemp=.tmp/pytest-generator-v05` | 29 passed |
+| `make validate` | passed |
+| Generated backend tests | 72 passed |
+| Generated frontend build | passed |
+| Generated frontend lint | passed |
+
+Playwright was not rerun for v0.5 because the generated app flows were not changed. Existing Playwright coverage remains in the generated frontend and can be run with:
+
+```bash
+make run-e2e
 ```
+
+## What Is Not Built Yet
+
+AgentForge is still early and deliberately constrained.
+
+Not built yet:
+
+- AI-assisted Blueprint Builder.
+- Live LLM provider integration.
+- Repository analysis or repository conversion.
+- Autonomous code modification.
+- Deployment planning or production mutation.
+- Real Telegram/email/Slack notification delivery.
+- Per-capability code generation from arbitrary schemas.
+- Database migration generation.
+- Multiple mature Application Templates.
+- Business Insight-specific workspace renderers such as `money_flow`, `health_score`, or `signal_timeline`.
+
+Current limitations:
+
+- The only full Application Template is `fastapi-react`.
+- Some modules are represented as planned/future gaps.
+- Token substitution is still simple string replacement.
+- The v0.5 builder mirrors a small schema subset in browser code for live YAML preview; the generator schema and `agentforge plan` remain authoritative.
+- `examples/hybrid-scoring-demo/` is a committed generated snapshot for convenience.
+
+## Terminology
+
+| Public term | Config/internal term | Meaning |
+| --- | --- | --- |
+| App Blueprint | `domain-pack` | YAML definition of one app domain |
+| Application Template | `template` | Reusable source tree copied and parameterized by the generator |
+| Feature Module | shell module | Reusable capability area such as pipeline, scoring, notifications, agent runtime, or workspace |
+| Integration Adapter | provider/adapter | Boundary that normalizes external or fixture data into stable app records |
+| Agent Runtime Module | `agent_runtime` | Optional scripted chat/tool runtime with persisted conversations, SSE events, and typed tool validation |
+| Dashboard/Workspace Module | `workspace` | Optional persisted widget workspace with generic renderers and compatibility validation |
+| Test Harness | deterministic test shell | Fixture-based tests that avoid live external APIs and LLMs |
+
+## Repository Layout
+
+```text
 AgentForge/
-├── generator/               # Python package — the AgentForge CLI
-│   ├── agentforge/
-│   │   ├── cli.py           # agentforge generate / agentforge plan
-│   │   ├── generator.py     # core copy + substitute logic
-│   │   ├── modules.py       # archetype → module selection
-│   │   └── pack.py          # DomainPack Pydantic model + validation
-│   └── pyproject.toml       # pip-installable, entry_point: agentforge
-├── domain-packs/            # App Blueprint YAML files
-│   └── hybrid-scoring-demo/ # the v0.1 proof-of-concept blueprint
-├── templates/               # Application templates
-│   ├── fastapi-react/       # FastAPI + React 18 + TypeScript template
-│   ├── ci/                  # GitHub Actions CI skeleton
-│   └── docker-compose/      # docker-compose.yml template
-├── examples/                # GENERATED output (disposable — see below)
-│   └── hybrid-scoring-demo/ # snapshot of the generated demo app
-├── tests/
-│   └── generator/           # generator unit + snapshot tests
-└── docs/                    # architecture and spec docs
+  builder/                       Static local Blueprint Builder UI
+  docs/                          Architecture, roadmap, and App Blueprint docs
+  domain-packs/                  App Blueprint YAML files
+    hybrid-scoring-demo/         Blueprint for the generated demo
+  generator/                     Python package for the AgentForge CLI
+    agentforge/
+      blueprints.py              Starter blueprint helpers
+      cli.py                     agentforge plan/generate/init-blueprint
+      generator.py               Copy and substitution logic
+      modules.py                 Archetype to module selection
+      pack.py                    Pydantic App Blueprint model
+  templates/                     Application Templates
+    fastapi-react/               FastAPI + React template
+  examples/                      Generated output snapshots
+    hybrid-scoring-demo/         Current generated demo app
+  tests/
+    generator/                   Generator and builder YAML tests
 ```
 
 ## Reproducibility
 
-`examples/hybrid-scoring-demo/` is a generated snapshot committed for convenience. It can be fully regenerated from its App Blueprint:
+The generated demo is committed as a snapshot, but it can be regenerated from its App Blueprint:
 
 ```bash
-rm -rf examples/hybrid-scoring-demo
-agentforge generate domain-packs/hybrid-scoring-demo/domain-pack.yaml
+agentforge generate domain-packs/hybrid-scoring-demo/domain-pack.yaml --force
 ```
 
-The generator skips `__pycache__`, `node_modules`, `dist`, and `.venv` — those are never committed.
+The generator skips local build/runtime directories such as `__pycache__`, `node_modules`, `dist`, and `.venv`.
 
-## Documentation
+## Version History
 
-- [App Blueprint Specification](docs/DOMAIN_PACK_SPEC.md) — how to write a `domain-pack.yaml`
-- [Architecture](docs/AGENTFORGE_V0_ARCHITECTURE.md) — module language and cross-pack comparison
-- [Archetype Model](docs/ARCHETYPE_MODEL.md) — archetype definitions and required feature modules
-- [Roadmap](docs/AGENTFORGE_ROADMAP.md) — what is and isn't planned
+| Version | Summary |
+| --- | --- |
+| v0.1 | Initial generator, App Blueprint loading, FastAPI/React template, fixture provider, run history, scoring, and deterministic tests |
+| v0.1.1 | Developer-experience hardening: package metadata, Makefile validation, ignore rules, and generated README behavior |
+| v0.1.2 | Public terminology cleanup around App Blueprints, Application Templates, Feature Modules, Integration Adapters, and Test Harnesses |
+| v0.2 | Notification/Triage Module with previews, current action state, append-only action history, preview/action UI, and `triage_ui` support |
+| v0.3 | Agent Runtime Module with scripted provider, tool registry, `/agent/chat`, persistence, chat UI, and deterministic agent tests |
+| v0.3.1 | Agent Runtime hardening with `/agent/chat/stream`, SSE events, frontend streaming, typed tool validation, and structured tool errors |
+| v0.4 | Dashboard/Workspace Module with persisted generic widgets, compatibility validation, agent pinning, remove/reorder APIs, and workspace UI |
+| v0.4.1 | Workspace UI polish with clearer states, readable widget cards/renderers, and clearer agent pin success/failure activity |
+| v0.5 | Simple static Blueprint Builder UI plus `agentforge init-blueprint`; generation remains CLI-first |
+
+## Further Reading
+
+- [App Blueprint Specification](docs/DOMAIN_PACK_SPEC.md)
+- [AgentForge v0 Architecture](docs/AGENTFORGE_V0_ARCHITECTURE.md)
+- [Archetype Model](docs/ARCHETYPE_MODEL.md)
+- [Roadmap](docs/AGENTFORGE_ROADMAP.md)
+- [Blueprint Builder README](builder/README.md)

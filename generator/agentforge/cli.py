@@ -4,12 +4,14 @@ AgentForge generator CLI.
 Usage:
   agentforge generate <domain_pack_path> [--output <dir>] [--dry-run]
   agentforge plan    <domain_pack_path>
+  agentforge init-blueprint <name> [--output <path>]
 """
 import argparse
 import json
 import sys
 from pathlib import Path
 
+from agentforge.blueprints import create_starter_blueprint, write_starter_blueprint
 from agentforge.generator import generate
 from agentforge.modules import select_modules
 from agentforge.pack import load_pack
@@ -112,6 +114,39 @@ def cmd_plan(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_init_blueprint(args: argparse.Namespace) -> int:
+    try:
+        blueprint = create_starter_blueprint(
+            args.name,
+            display_name=args.display_name,
+            description=args.description,
+            target_user=args.target_user,
+            archetype=args.archetype,
+            optional_modules=args.optional_module,
+            workspace_enabled=not args.no_workspace,
+            fixture_provider_enabled=not args.no_fixture_provider,
+        )
+    except Exception as exc:
+        print(f"error: could not create starter blueprint - {exc}", file=sys.stderr)
+        return 1
+
+    output = Path(args.output) if args.output else Path("domain-packs") / blueprint["name"] / "domain-pack.yaml"
+
+    try:
+        write_starter_blueprint(output, blueprint, force=args.force)
+    except FileExistsError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        print("Use --force to overwrite.", file=sys.stderr)
+        return 1
+    except Exception as exc:
+        print(f"error: could not write starter blueprint - {exc}", file=sys.stderr)
+        return 1
+
+    print(f"Created App Blueprint: {output}")
+    print(f"Next: agentforge plan {output}")
+    return 0
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         prog="agentforge",
@@ -130,12 +165,46 @@ def main() -> None:
     plan.add_argument("pack", help="Path to domain-pack.yaml")
     plan.add_argument("--json", action="store_true", help="Output as JSON")
 
+    init = sub.add_parser("init-blueprint", help="Create a starter App Blueprint YAML file")
+    init.add_argument("name", help="App Blueprint machine/display name")
+    init.add_argument("--output", "-o", help="Output YAML path (default: domain-packs/<name>/domain-pack.yaml)")
+    init.add_argument("--force", "-f", action="store_true", help="Overwrite existing output file")
+    init.add_argument("--display-name", help="Human-readable display name")
+    init.add_argument(
+        "--description",
+        default="A local AgentForge app created with the Blueprint Builder.",
+        help="Product purpose text",
+    )
+    init.add_argument("--target-user", default="developer", help="Primary target user/persona")
+    init.add_argument(
+        "--archetype",
+        default="ingestion_scoring_pipeline",
+        choices=[
+            "agent_dashboard_app",
+            "ingestion_scoring_pipeline",
+            "notification_triage_app",
+            "hybrid_agent_pipeline",
+            "deploy_planner_app",
+        ],
+        help="App archetype",
+    )
+    init.add_argument(
+        "--optional-module",
+        action="append",
+        default=[],
+        help="Optional feature module to include; repeat for multiple modules",
+    )
+    init.add_argument("--no-workspace", action="store_true", help="Do not include the workspace optional config")
+    init.add_argument("--no-fixture-provider", action="store_true", help="Mark fixture provider seed data as disabled")
+
     args = parser.parse_args()
 
     if args.command == "generate":
         sys.exit(cmd_generate(args))
     elif args.command == "plan":
         sys.exit(cmd_plan(args))
+    elif args.command == "init-blueprint":
+        sys.exit(cmd_init_blueprint(args))
 
 
 if __name__ == "__main__":

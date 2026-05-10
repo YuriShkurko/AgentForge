@@ -139,3 +139,14 @@ Rules:
 - Agent runtime tests must use `scripted` or `mock` provider modes; live OpenAI-compatible providers are configuration placeholders only until explicitly implemented.
 - Streaming must be honest `text/event-stream` delivery. Do not claim streaming support from a buffered non-streaming response.
 - Tool arguments must be validated against declared/generated typed schemas before handlers run, and validation errors must be returned as structured tool results.
+
+## Blueprint Builder Contract
+
+The v0.5 Blueprint Builder drafts this same App Blueprint format. It is not a second schema and must not make generation UI-only.
+
+Rules:
+- The builder may mirror a small subset of fields in browser-side code for live YAML preview.
+- `agentforge.pack.load_pack` and `agentforge plan` remain the validation source of truth.
+- Builder defaults must stay deterministic: fixture provider data, `preview_only` notifications, and `scripted` Agent Runtime provider mode.
+- The builder must not add live LLM/API requirements, repo analysis, repo conversion, deployment planning, or autonomous code modification.
+- Export is copy/download by default; filesystem writes should stay in the CLI path such as `agentforge init-blueprint`.

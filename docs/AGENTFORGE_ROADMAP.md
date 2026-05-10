@@ -120,6 +120,29 @@ The v0.4.1 generated app should include:
 
 Out of scope for v0.4.1: workspace architecture changes, agent runtime architecture changes, new feature modules, live LLM/API dependencies, guided Blueprint Builder UI, repo analyzer, deployment planner, presentation mode, drag/drop, and Business Insight-specific widgets. Taste Skill-style critique may be used as a review aid only; it must not become a generated runtime dependency.
 
+## v0.5 Simple Blueprint Builder UI
+
+Add a small local/dev Blueprint Builder for creating and editing App Blueprints without making the generated app runtime more complex.
+
+The v0.5 builder should include:
+
+- App metadata fields for name, display name, description, target user/persona, and app archetype.
+- Archetype selection for current known archetypes, with future archetypes marked as planned where appropriate.
+- Feature Module selection with supported modules enabled and future modules disabled/planned.
+- Simple deterministic module configuration: preview-only notification mode, scripted LLM provider mode, fixture provider enabled, action labels, workspace enabled, and generic widget compatibility preset.
+- Live App Blueprint YAML preview.
+- Copy/download export for `domain-pack.yaml`.
+- A plan preview that shows the `agentforge plan <file>` command; CLI planning remains the source of truth.
+- A small `agentforge init-blueprint` CLI helper for starter App Blueprints.
+
+Out of scope for v0.5: AI-assisted Blueprint Builder behavior, live LLM/API dependencies, repo analysis, repo conversion, deployment planning, autonomous code modification, generated app redesign, and a hosted builder platform.
+
+## v0.6 AI-Assisted Blueprint Builder
+
+Use v0.5's stable App Blueprint draft flow as the foundation for guided AI assistance.
+
+The v0.6 direction is to help users refine App Blueprint intent, module choices, validation gaps, and test expectations while keeping `agentforge plan` and `agentforge generate` authoritative. Repo conversion, deployment automation, and autonomous code modification remain separate future decisions rather than implicit v0.6 scope.
+
 ## Implementation Milestones
 
 ### Milestone 1: Spec Stabilization

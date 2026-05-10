@@ -163,3 +163,9 @@ Example generated app: an ingestion/scoring pipeline with a command panel or cha
 The generator starts from `app_archetype`, loads required feature modules, then wires optional feature modules only when the App Blueprint declares them. This prevents pipeline apps from being forced into chat/workspace behavior.
 
 As of v0.4, `workspace` is supported as a generic Dashboard/Workspace Module. It covers persisted generic widgets, backend compatibility validation, and simple remove/reorder behavior; it does not imply support for every domain-specific Business Insight widget renderer.
+
+## Blueprint Builder Mapping
+
+The v0.5 Blueprint Builder is a local/dev drafting tool for this same archetype model. It presents public labels such as Application Template, Feature Modules, Integration Adapters, and Test Harness, then emits the existing internal config fields such as `app_archetype`, `required_shell_modules`, `optional_shell_modules`, `agent_runtime`, `workspace`, and `tool_widget_compatibility`.
+
+The builder does not define a separate archetype schema. Its generated YAML must still load through `agentforge.pack.load_pack`, and `agentforge plan` remains the authoritative module support/gap check.
