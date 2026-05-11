@@ -22,12 +22,29 @@ class PlannerResult:
     commands: list[str] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
 
+    def to_dict(self) -> dict[str, Any]:
+        """Return a JSON-serializable planner result."""
+        return {
+            "status": self.status,
+            "questions": self.questions,
+            "blueprint": self.blueprint,
+            "yaml": self.yaml,
+            "assumptions": self.assumptions,
+            "warnings": self.warnings,
+            "suggested_modules": self.suggested_modules,
+            "commands": self.commands,
+            "errors": self.errors,
+        }
+
 
 class Planner(Protocol):
     """Blueprint-only planner interface."""
 
     def draft(self, idea: str, prior_answers: dict[str, str] | None = None) -> PlannerResult:
         """Draft a blueprint or ask clarifying questions."""
+
+    def clarify(self, idea: str) -> PlannerResult:
+        """Ask clarifying questions for an idea."""
 
     def refine(self, blueprint: dict[str, Any], instruction: str) -> PlannerResult:
         """Return an updated blueprint for a bounded refinement instruction."""
@@ -39,6 +56,7 @@ def validate_blueprint_result(
     assumptions: list[str] | None = None,
     warnings: list[str] | None = None,
     suggested_modules: list[str] | None = None,
+    path: str | None = None,
 ) -> PlannerResult:
     """Validate a planner blueprint with the generator schema before returning it."""
     if not isinstance(blueprint, dict):
@@ -50,7 +68,7 @@ def validate_blueprint_result(
         return PlannerResult(status="error", errors=[f"invalid App Blueprint: {exc}"])
 
     yaml_text = blueprint_to_yaml(blueprint)
-    path = f"./domain-packs/{pack.name}/domain-pack.yaml"
+    output_path = path or f"./domain-packs/{pack.name}/domain-pack.yaml"
     return PlannerResult(
         status="draft",
         blueprint=blueprint,
@@ -59,8 +77,8 @@ def validate_blueprint_result(
         warnings=warnings or [],
         suggested_modules=suggested_modules or [],
         commands=[
-            f"agentforge plan {path}",
-            f"agentforge generate {path} --force",
+            f"agentforge plan {output_path}",
+            f"agentforge generate {output_path} --force",
         ],
     )
 

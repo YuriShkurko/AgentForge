@@ -5,6 +5,7 @@ Usage:
   agentforge generate <domain_pack_path> [--output <dir>] [--dry-run]
   agentforge plan    <domain_pack_path>
   agentforge init-blueprint <name> [--output <path>]
+  agentforge serve-builder [--host <host>] [--port <port>]
 """
 import argparse
 import json
@@ -15,6 +16,8 @@ from agentforge.blueprints import create_starter_blueprint, write_starter_bluepr
 from agentforge.generator import generate
 from agentforge.modules import select_modules
 from agentforge.pack import load_pack
+from agentforge.planner.scripted import ScriptedPlanner
+from agentforge.planner.server import serve_builder
 
 
 def cmd_generate(args: argparse.Namespace) -> int:
@@ -147,6 +150,59 @@ def cmd_init_blueprint(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_draft_blueprint(args: argparse.Namespace) -> int:
+    if args.planner != "scripted":
+        print("error: only the scripted planner is available in v0.6", file=sys.stderr)
+        return 1
+
+    answers = None
+    if args.answers:
+        try:
+            answers = json.loads(Path(args.answers).read_text(encoding="utf-8"))
+        except Exception as exc:
+            print(f"error: could not read answers JSON - {exc}", file=sys.stderr)
+            return 1
+
+    result = ScriptedPlanner().draft(args.idea, answers)
+    if args.json:
+        print(json.dumps(result.to_dict(), indent=2))
+        return 0 if result.status in {"draft", "needs_clarification"} else 1
+
+    if result.status == "needs_clarification":
+        print("Clarification needed:")
+        for question in result.questions:
+            print(f"  - {question}")
+        return 2
+    if result.status == "error":
+        print("error: planner failed", file=sys.stderr)
+        for error in result.errors:
+            print(f"  - {error}", file=sys.stderr)
+        return 1
+
+    if args.out:
+        output = Path(args.out)
+        if output.exists() and not args.force:
+            print(f"error: refusing to overwrite existing file: {output}", file=sys.stderr)
+            print("Use --force to overwrite.", file=sys.stderr)
+            return 1
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(result.yaml or "", encoding="utf-8")
+        print(f"Drafted App Blueprint: {output}")
+        for command in result.commands:
+            print(f"Next: {command.replace('./domain-packs/' + result.blueprint['name'] + '/domain-pack.yaml', str(output))}")
+    else:
+        print(result.yaml or "")
+    return 0
+
+
+def cmd_serve_builder(args: argparse.Namespace) -> int:
+    try:
+        serve_builder(host=args.host, port=args.port)
+    except KeyboardInterrupt:
+        print("\nStopped AgentForge builder server.")
+    return 0
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         prog="agentforge",
@@ -197,6 +253,18 @@ def main() -> None:
     init.add_argument("--no-workspace", action="store_true", help="Do not include the workspace optional config")
     init.add_argument("--no-fixture-provider", action="store_true", help="Mark fixture provider seed data as disabled")
 
+    draft = sub.add_parser("draft-blueprint", help="Draft an App Blueprint with the scripted planner")
+    draft.add_argument("--idea", required=True, help="Short app idea to draft from")
+    draft.add_argument("--answers", help="Optional JSON file with clarification answers")
+    draft.add_argument("--out", help="Write YAML to this path instead of stdout")
+    draft.add_argument("--force", action="store_true", help="Overwrite --out if it exists")
+    draft.add_argument("--planner", default="scripted", choices=["scripted", "live"], help="Planner backend")
+    draft.add_argument("--json", action="store_true", help="Output full PlannerResult JSON")
+
+    serve = sub.add_parser("serve-builder", help="Serve the static builder with scripted planner endpoints")
+    serve.add_argument("--host", default="127.0.0.1", help="Host to bind")
+    serve.add_argument("--port", type=int, default=8765, help="Port to bind")
+
     args = parser.parse_args()
 
     if args.command == "generate":
@@ -205,6 +273,10 @@ def main() -> None:
         sys.exit(cmd_plan(args))
     elif args.command == "init-blueprint":
         sys.exit(cmd_init_blueprint(args))
+    elif args.command == "draft-blueprint":
+        sys.exit(cmd_draft_blueprint(args))
+    elif args.command == "serve-builder":
+        sys.exit(cmd_serve_builder(args))
 
 
 if __name__ == "__main__":

@@ -2,13 +2,13 @@
 
 AgentForge is an opinionated generator for local-first full-stack AI/product apps. It reads a structured **App Blueprint** (`domain-pack.yaml`) and produces a runnable FastAPI + React project with provider adapters, deterministic scoring, notification triage, an optional scripted Agent Runtime Module, a persisted Dashboard/Workspace Module, tests, and CI-ready project structure.
 
-The project is intentionally narrow right now. It proves reusable application modules, a simple local Blueprint Builder, and the first scripted App Blueprint planner contract before adding live LLM integrations, deployment automation, repository conversion, or AI-assisted builder flows. The generated demo runs locally and deterministically. No paid API or live LLM key is required.
+The project is intentionally narrow right now. It proves reusable application modules, a local Blueprint Builder, and a scripted App Blueprint planner before adding live LLM integrations, deployment automation, repository conversion, or hosted builder flows. The generated demo and planner run locally and deterministically. No paid API or live LLM key is required.
 
 ```text
 App Blueprint YAML + Application Template = Generated App
 ```
 
-**Current version:** v0.6 Phase 1 adds a Python planner contract and deterministic scripted planner for drafting schema-valid App Blueprints. Generation remains CLI-first through `agentforge plan` and `agentforge generate`.
+**Current version:** v0.6 adds scripted AI-assisted App Blueprint drafting and refinement through an optional local builder server. Generation remains CLI-first through `agentforge plan` and `agentforge generate`.
 
 ## Table of Contents
 
@@ -47,7 +47,7 @@ The demo proves these reusable pieces:
 - Persisted generic workspace widgets.
 - Generator tests, backend tests, frontend build/lint, and Playwright E2E coverage.
 
-The v0.5 builder helps you draft new App Blueprint YAML without hand-writing every field from scratch. v0.6 Phase 1 adds the generator-side scripted planner foundation that future builder assistance will use.
+The v0.6 builder can draft, clarify, refine, and validate App Blueprints through the local scripted planner, while still supporting the static v0.5 manual-editing path.
 
 ## Quickstart
 
@@ -70,13 +70,19 @@ examples/hybrid-scoring-demo/
 
 The Blueprint Builder is a static local developer tool. It lives in [builder/](builder/).
 
-Open it directly in your browser:
+Open it directly in your browser for static/manual mode:
 
 ```text
 builder/index.html
 ```
 
-No dev server is required.
+No dev server is required for manual editing.
+
+For scripted planner assistance, run the local builder server and open the printed URL:
+
+```bash
+agentforge serve-builder
+```
 
 Use the builder to:
 
@@ -87,9 +93,13 @@ Use the builder to:
 - configure deterministic defaults such as `preview_only`, `scripted`, fixture provider mode, action labels, and workspace mode;
 - preview valid App Blueprint YAML;
 - copy or download `domain-pack.yaml`;
-- see the `agentforge plan <file>` and `agentforge generate <file>` commands to run next.
+- see the `agentforge plan <file>` and `agentforge generate <file>` commands to run next;
+- draft a blueprint from a short idea when the local planner server is running;
+- answer clarifying questions for vague ideas;
+- refine an existing draft with bounded instructions such as `add workspace widgets`;
+- validate planner output through the Python generator schema.
 
-The builder does not write files automatically, call live APIs, analyze repositories, convert apps, or deploy infrastructure. `agentforge plan` remains the source of truth for validation.
+The builder does not write files automatically, call live LLMs or live provider APIs, analyze repositories, convert apps, deploy infrastructure, or modify code autonomously. `agentforge plan` remains the source of truth for validation.
 
 You can also create a starter blueprint from the CLI:
 
@@ -100,7 +110,7 @@ agentforge plan domain-packs/my-app/domain-pack.yaml
 
 ## Scripted Planner
 
-v0.6 Phase 1 adds a Python planner contract under `generator/agentforge/planner/`. It is intentionally not wired into the builder UI or CLI yet.
+v0.6 adds a Python planner contract under `generator/agentforge/planner/`, a deterministic scripted backend, a local builder server, and a small CLI draft helper.
 
 The scripted planner can:
 
@@ -110,7 +120,14 @@ The scripted planner can:
 - refine an existing blueprint for bounded requests such as adding `agent_runtime` or `workspace`;
 - validate every draft through the generator schema before returning `status="draft"`.
 
-It does not call live LLMs, make network requests, write files, modify repositories, run generation, or replace `agentforge plan`.
+CLI draft example:
+
+```bash
+agentforge draft-blueprint --idea "triage support tickets and create preview notifications" --out domain-packs/support-triage/domain-pack.yaml
+agentforge plan domain-packs/support-triage/domain-pack.yaml
+```
+
+The scripted planner does not call live LLMs, make network requests, modify repositories, run generation, or replace `agentforge plan`. It writes a file only when the user explicitly passes `--out`.
 
 ## Generated Demo Flow
 
@@ -236,7 +253,6 @@ AgentForge is still early and deliberately constrained.
 
 Not built yet:
 
-- AI-assisted Blueprint Builder.
 - Live LLM provider integration.
 - Repository analysis or repository conversion.
 - Autonomous code modification.
@@ -313,7 +329,7 @@ The generator skips local build/runtime directories such as `__pycache__`, `node
 | v0.4 | Dashboard/Workspace Module with persisted generic widgets, compatibility validation, agent pinning, remove/reorder APIs, and workspace UI |
 | v0.4.1 | Workspace UI polish with clearer states, readable widget cards/renderers, and clearer agent pin success/failure activity |
 | v0.5 | Simple static Blueprint Builder UI plus `agentforge init-blueprint`; generation remains CLI-first |
-| v0.6 Phase 1 | Python planner contract plus deterministic scripted App Blueprint drafts/refinements; no UI, CLI, live LLM, network, template, or example changes |
+| v0.6 | Scripted AI-assisted Blueprint Builder with idea drafting, clarification, refinement, local schema validation, `serve-builder`, and `draft-blueprint`; generation remains CLI-first |
 
 ## Further Reading
 

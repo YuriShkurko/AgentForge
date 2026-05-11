@@ -44,15 +44,24 @@ _CLARIFYING_QUESTIONS = [
 class ScriptedPlanner:
     """Keyword-based planner that never calls network services or writes files."""
 
+    def clarify(self, idea: str) -> PlannerResult:
+        """Return targeted clarification questions without drafting a blueprint."""
+        text = idea.strip()
+        questions = list(_CLARIFYING_QUESTIONS)
+        if any(word in text.lower() for word in ["agent", "dashboard", "workspace"]):
+            questions[-1] = "Which agent tool results should be pinned to the workspace?"
+        elif any(word in text.lower() for word in ["notify", "notification", "triage"]):
+            questions[-1] = "Which preview notification decisions should the operator be able to record?"
+        return PlannerResult(
+            status="needs_clarification",
+            questions=questions,
+            warnings=["Clarification requested before drafting an App Blueprint."],
+        )
+
     def draft(self, idea: str, prior_answers: dict[str, str] | None = None) -> PlannerResult:
         text = " ".join(str(item or "").strip() for item in [idea, *(prior_answers or {}).values()]).strip()
         if self._needs_clarification(text, prior_answers):
-            return PlannerResult(
-                status="needs_clarification",
-                questions=_CLARIFYING_QUESTIONS,
-                assumptions=[],
-                warnings=["Idea is too broad for a safe App Blueprint draft."],
-            )
+            return self.clarify(idea)
 
         archetype = infer_archetype(text)
         return self._draft_for_archetype(archetype, text)

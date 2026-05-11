@@ -17,6 +17,50 @@
           <div class="status-pill" id="status-pill">Valid draft</div>
         </header>
 
+        <section class="panel planner-panel">
+          <div class="section-head">
+            <h2>Planner</h2>
+            <p id="planner-status">Static mode. Start `agentforge serve-builder` to enable scripted drafting.</p>
+          </div>
+          <label>
+            App idea
+            <textarea id="planner-idea">Score incoming support tickets and help an operator triage the most urgent requests.</textarea>
+          </label>
+          <div class="actions">
+            <button id="draft-blueprint" type="button">Draft Blueprint</button>
+            <button id="clarify-idea" type="button">Clarify</button>
+          </div>
+          <div id="clarification-panel" class="planner-output hidden">
+            <h3>Questions</h3>
+            <div id="clarification-questions" class="question-list"></div>
+            <div class="actions">
+              <button id="submit-answers" type="button">Submit Answers</button>
+            </div>
+          </div>
+          <div id="draft-panel" class="planner-output hidden">
+            <h3>Draft Review</h3>
+            <p id="draft-summary"></p>
+            <div class="result-grid">
+              <div>
+                <h4>Assumptions</h4>
+                <ul id="planner-assumptions"></ul>
+              </div>
+              <div>
+                <h4>Warnings</h4>
+                <ul id="planner-warnings"></ul>
+              </div>
+            </div>
+          </div>
+          <label>
+            Refinement
+            <textarea id="planner-refine" placeholder="Add workspace widgets, add agent runtime, add notification triage"></textarea>
+          </label>
+          <div class="actions">
+            <button id="refine-blueprint" type="button">Refine Draft</button>
+            <button id="validate-blueprint" type="button">Validate Draft</button>
+          </div>
+        </section>
+
         <section class="panel metadata-panel">
           <div class="section-head">
             <h2>App Metadata</h2>

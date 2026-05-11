@@ -47,6 +47,14 @@ def test_scripted_planner_vague_idea_returns_clarifying_questions(idea):
     assert result.yaml is None
 
 
+def test_scripted_planner_clarify_returns_targeted_questions():
+    result = ScriptedPlanner().clarify("agent dashboard for support work")
+
+    assert result.status == "needs_clarification"
+    assert 2 <= len(result.questions) <= 5
+    assert any("workspace" in question.lower() for question in result.questions)
+
+
 def test_scripted_planner_prior_answers_can_resolve_vague_idea(tmp_path):
     result = ScriptedPlanner().draft(
         "app",

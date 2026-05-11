@@ -141,9 +141,18 @@ Out of scope for v0.5: AI-assisted Blueprint Builder behavior, live LLM/API depe
 
 Use v0.5's stable App Blueprint draft flow as the foundation for guided AI assistance.
 
-The v0.6 direction is to help users refine App Blueprint intent, module choices, validation gaps, and test expectations while keeping `agentforge plan` and `agentforge generate` authoritative. Repo conversion, deployment automation, and autonomous code modification remain separate future decisions rather than implicit v0.6 scope.
+v0.6 helps users refine App Blueprint intent, module choices, validation gaps, and test expectations while keeping `agentforge plan` and `agentforge generate` authoritative. Repo conversion, deployment automation, and autonomous code modification remain separate future decisions rather than implicit v0.6 scope.
 
-Phase 1 in progress: add the Python planner contract and scripted backend first, without UI, CLI, live LLM, network, template, or example changes.
+Implemented v0.6 scope:
+
+- Python `Planner` contract and `PlannerResult` structure.
+- Deterministic scripted planner for draft, clarify, and refine flows.
+- Local `agentforge serve-builder` server exposing scripted planner endpoints to the static builder.
+- Builder UI panels for idea drafting, clarification questions, draft review, refinement, and schema validation.
+- Optional `agentforge draft-blueprint` helper for writing scripted planner YAML when `--out` is explicit.
+- Tests proving planner output round-trips through `load_pack`, vague ideas ask questions, live planner mode fails fast, and the local server endpoints work.
+
+Out of scope for v0.6 remains: live LLM integration, repo analysis/conversion, deployment planning, hosted builder state, autonomous edits, and replacing `agentforge plan` as the validation source of truth.
 
 ## Implementation Milestones
 
