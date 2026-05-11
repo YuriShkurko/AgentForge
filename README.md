@@ -1,59 +1,126 @@
 # AgentForge
 
-AgentForge is an opinionated generator for local-first full-stack AI/product apps. It reads a structured **App Blueprint** (`domain-pack.yaml`) and produces a runnable FastAPI + React project with provider adapters, deterministic scoring, notification triage, an optional scripted Agent Runtime Module, a persisted Dashboard/Workspace Module, tests, and CI-ready project structure.
+AgentForge turns a structured app idea into a runnable local-first FastAPI + React product demo, then helps you safely analyze existing repos for extension and deployment planning.
 
-The project is intentionally narrow right now. It proves reusable application modules, a local Blueprint Builder, and a scripted App Blueprint planner before adding live LLM integrations, deployment automation, repository conversion, or hosted builder flows. The generated demo and planner run locally and deterministically. No paid API or live LLM key is required.
+**v1.0 focus:** AgentForge is not adding more capability for this milestone. v1.0 makes the existing capability obvious, demoable, and trustworthy.
+
+> **Goal:** make AgentForge understandable and impressive in 5 minutes.
+
+## Safe by default
+
+AgentForge is designed to be safe to try locally:
+
+- It does **not** deploy infrastructure.
+- It does **not** spend money.
+- It does **not** modify existing repos by default.
+- It does **not** require live LLM/API access for validation.
+- Patch apply mode is explicit and limited to low-risk docs, blueprint, and checklist files.
+- The deployment planner is planning-only.
+
+## How it works
+
+```text
+App idea / existing repo
+        ↓
+Blueprint / analysis
+        ↓
+Plan / generate / extension plan
+        ↓
+Generated app or safe migration artifacts
+        ↓
+Validation / deployment plan
+```
+
+For the primary generated-app path:
 
 ```text
 App Blueprint YAML + Application Template = Generated App
 ```
 
-**Current version:** v0.8.3 improves `agentforge prepare-extension` with richer patch previews, better dry-run safety reporting, conflict/dirty-repo details, and interactive apply confirmation. Default behavior still never modifies the target repository; apply mode requires `--apply` plus interactive `yes` or `--yes`, and only writes docs/blueprint/checklist files.
+## Golden Demo Path
 
-## Table of Contents
+This is the primary v1.0 demo story:
 
-- [What You Can Do Today](#what-you-can-do-today)
-- [Quickstart](#quickstart)
-- [Blueprint Builder](#blueprint-builder)
-- [Scripted Planner](#scripted-planner)
-- [Repo Analyzer](#repo-analyzer)
-- [Repo Extension Planner](#repo-extension-planner)
-- [Generated Demo Flow](#generated-demo-flow)
-- [What Gets Generated](#what-gets-generated)
-- [How AgentForge Works](#how-agentforge-works)
-- [Commands](#commands)
-- [Running the Generated App](#running-the-generated-app)
-- [Validation Snapshot](#validation-snapshot)
-- [What Is Not Built Yet](#what-is-not-built-yet)
-- [Terminology](#terminology)
-- [Repository Layout](#repository-layout)
-- [Reproducibility](#reproducibility)
-- [Version History](#version-history)
-- [Further Reading](#further-reading)
+1. Open the local Builder.
+2. Draft an App Blueprint from an app idea.
+3. Validate and plan the Blueprint.
+4. Generate the app.
+5. Run the generated app.
+6. Ingest and score records.
+7. Use the scripted agent chat.
+8. Pin an agent result into the workspace.
+9. Refresh and show persisted chat, widgets, and triage history.
 
-## What You Can Do Today
+Start here:
 
-AgentForge can generate and validate one complete local demo app, `hybrid-scoring-demo`.
+```bash
+pip install -e generator/
+agentforge serve-builder
+```
 
-The demo proves these reusable pieces:
+Then follow the full walkthrough in [docs/DEMO_GUIDE.md](docs/DEMO_GUIDE.md).
 
-- FastAPI backend with async SQLAlchemy models.
-- React + TypeScript frontend built with Vite.
-- Fixture provider and normalization adapter.
-- Deterministic scoring and explanation output.
-- Preview-only notification generation.
-- Triage actions with append-only action history.
-- Scripted Agent Runtime Module with persisted conversations.
-- Server-sent event streaming at `/agent/chat/stream`.
-- Typed tool argument validation and structured tool errors.
-- Persisted generic workspace widgets.
-- Generator tests, backend tests, frontend build/lint, and Playwright E2E coverage.
+## Secondary path: existing repos
 
-The v0.7.1 builder is the recommended starting point. It explains what AgentForge can generate, offers a new-app idea flow, shows existing-repo analyzer and extension-planner guidance, previews generated modules/gaps, and keeps Blueprint YAML available as the advanced source view.
+If you already have an app, AgentForge can produce safe planning artifacts:
 
-## Quickstart
+```bash
+agentforge analyze-repo path/to/repo --format md --output repo-analysis.md
+agentforge plan-extension path/to/repo --format md --output extension-plan.md
+agentforge prepare-extension path/to/repo --dry-run
+agentforge plan-deployment path/to/repo --format md --output deployment-plan.md
+```
 
-Install the generator, inspect the demo plan, generate the app, and run validation:
+This path is analysis/planning-first. By default it does not mutate the target repository, deploy, install packages, run cloud CLIs, or call live LLMs/APIs.
+
+## Command Map
+
+| Intent | Command | What it does | Writes files? | Can modify an existing repo? | Safety notes |
+| --- | --- | --- | --- | --- | --- |
+| Create new apps | `agentforge serve-builder` | Runs the local Builder/planner server | No target app writes | No | Local deterministic planner; no live LLM/API |
+| Create new apps | `agentforge draft-blueprint` | Drafts a Blueprint from an idea | Only with `--out` | No | Validates against generator schema |
+| Create new apps | `agentforge init-blueprint` | Creates a starter Blueprint | Yes, new Blueprint path | No | Blueprint-only starter |
+| Create new apps | `agentforge plan` | Validates a Blueprint and previews generation | No | No | Source of truth before generation |
+| Create new apps | `agentforge generate` | Generates a FastAPI + React app from a Blueprint | Yes, generated app output | No existing repo mutation by default | Use `--force` only when intentionally replacing generated output |
+| Understand existing repos | `agentforge analyze-repo` | Produces a local compatibility report | Only with `--output` | No | Analysis-only; skips local/vendor/generated dirs |
+| Understand existing repos | `agentforge plan-extension` | Plans possible AgentForge module additions | Only with `--output` | No | Advisory; no patches applied |
+| Understand existing repos | `agentforge prepare-extension` | Creates or previews a safe patch/planning bundle | Bundle mode writes output dir; dry-run writes nothing | Only in explicit apply mode | Apply is limited to low-risk docs/blueprint/checklist files |
+| Understand existing repos | `agentforge plan-deployment` | Produces deployment readiness guidance | Only with `--output` / docs bundle | No by default | Does not deploy/provision/store secrets |
+| Safety / planning | `prepare-extension --dry-run` | Shows planned writes and safety checks | No | No | Recommended before any apply |
+| Safety / planning | `prepare-extension --apply --yes` | Applies approved low-risk files | Yes | Yes, limited | Refuses risky runtime/package/router/CI edits |
+| Safety / planning | `plan-deployment` | Builds a deployment plan/checklist | Optional report/docs output | No | Planning-only |
+
+See [docs/COMMAND_REFERENCE.md](docs/COMMAND_REFERENCE.md) for examples and detailed write behavior.
+
+## What AgentForge generates today
+
+AgentForge currently generates and validates one complete deterministic local app: `hybrid-scoring-demo`.
+
+The generated FastAPI + React app includes:
+
+- fixture ingestion and normalization;
+- deterministic scoring with explanations;
+- preview-only notification payloads;
+- triage actions and append-only action history;
+- scripted Agent Runtime with persisted conversations;
+- SSE streaming at `/agent/chat/stream`;
+- typed tool validation and structured tool errors;
+- persisted workspace widgets;
+- backend tests, frontend build/lint, generator tests, and Playwright coverage.
+
+Generated snapshot:
+
+```text
+examples/hybrid-scoring-demo/
+```
+
+Regenerate it from the Blueprint:
+
+```bash
+agentforge generate domain-packs/hybrid-scoring-demo/domain-pack.yaml --force
+```
+
+## Quickstart without the Builder
 
 ```bash
 pip install -e generator/
@@ -62,350 +129,45 @@ agentforge generate domain-packs/hybrid-scoring-demo/domain-pack.yaml --force
 make validate
 ```
 
-The generated app appears in:
-
-```text
-examples/hybrid-scoring-demo/
-```
-
-## Blueprint Builder
-
-The Blueprint Builder is the local product front door for AgentForge. It lives in [builder/](builder/) and supports two starting paths: describe a new app idea, or analyze an existing repository with the v0.7 Repo Analyzer and v0.8 Repo Extension Planner, then paste JSON reports for review.
-
-Open it directly in your browser for static/manual mode:
-
-```text
-builder/index.html
-```
-
-No dev server is required for manual editing.
-
-For scripted planner assistance, run the local builder server and open the printed URL:
+Run the generated stack:
 
 ```bash
-agentforge serve-builder
+make run-backend
+make run-frontend
 ```
 
-Use the builder to:
+Open the frontend at `http://localhost:5173` and the API docs at `http://localhost:8000/docs`.
 
-- understand what AgentForge generates before reading the full repo;
-- start from an app idea with example prompts and scripted drafting;
-- start from an existing repo with safe `agentforge analyze-repo` / `agentforge plan-extension` guidance and pasted report previews;
-- enter app metadata, display name, description, and target persona;
-- choose an app archetype;
-- select supported Feature Modules;
-- see future/planned modules as disabled options;
-- configure deterministic defaults such as `preview_only`, `scripted`, fixture provider mode, action labels, and workspace mode;
-- preview generated app pieces, supported modules, planned gaps, and next CLI commands;
-- preview valid App Blueprint YAML as the advanced Blueprint Source;
-- copy or download `domain-pack.yaml`;
-- see the `agentforge plan <file>` and `agentforge generate <file>` commands to run next;
-- draft a blueprint from a short idea when the local planner server is running;
-- answer clarifying questions for vague ideas;
-- refine an existing draft with bounded instructions such as `add workspace widgets`;
-- validate planner output through the Python generator schema.
+## Validation and release readiness
 
-The builder does not write files automatically, call live LLMs or live provider APIs, analyze repositories, convert apps, deploy infrastructure, or modify code autonomously. `agentforge plan` remains the source of truth for validation.
-
-You can also create a starter blueprint from the CLI:
+Local validation targets:
 
 ```bash
-agentforge init-blueprint my-app --optional-module agent_runtime --optional-module workspace
-agentforge plan domain-packs/my-app/domain-pack.yaml
+python -m pytest tests/generator/ -v
+make validate
 ```
 
-## Scripted Planner
-
-v0.6 adds a Python planner contract under `generator/agentforge/planner/`, a deterministic scripted backend, a local builder server, and a small CLI draft helper.
-
-The scripted planner can:
-
-- return a structured `PlannerResult`;
-- draft deterministic App Blueprints for supported archetypes;
-- ask clarifying questions for vague ideas;
-- refine an existing blueprint for bounded requests such as adding `agent_runtime` or `workspace`;
-- validate every draft through the generator schema before returning `status="draft"`.
-
-CLI draft example:
-
-```bash
-agentforge draft-blueprint --idea "triage support tickets and create preview notifications" --out domain-packs/support-triage/domain-pack.yaml
-agentforge plan domain-packs/support-triage/domain-pack.yaml
-```
-
-The scripted planner does not call live LLMs, make network requests, modify repositories, run generation, or replace `agentforge plan`. It writes a file only when the user explicitly passes `--out`.
-
-## Repo Analyzer
-
-v0.7 adds a deterministic, local-only repository analyzer:
-
-```bash
-agentforge analyze-repo path/to/repo
-agentforge analyze-repo path/to/repo --format md --output repo-analysis.md
-agentforge analyze-repo path/to/repo --json
-```
-
-The analyzer is advisory and analysis-only. It does not modify the target repository, generate patches, convert source code, call live LLMs, call external APIs, require internet access, or inspect secret values. It ignores generated/vendor/local directories such as `node_modules`, `.venv`, `.git`, `dist`, `build`, `.next`, `.scribe`, and `.tmp`.
-
-Reports include repository basics, detected stack/config/test/devops/AI/observability signals, architecture signals, AgentForge module compatibility statuses (`compatible`, `partial`, `missing`, `conflict`, `unknown`), likely archetype candidates, risks/blockers, a phased advisory migration plan, and an optional draft App Blueprint seed for review.
-
-See [docs/REPO_ANALYZER.md](docs/REPO_ANALYZER.md) for details.
-
-## Repo Extension Planner
-
-v0.8 adds a planning-only extension layer after analysis:
-
-```bash
-agentforge plan-extension path/to/repo
-agentforge plan-extension analysis.json --from-report
-agentforge plan-extension path/to/repo --modules agent_runtime,dashboard_workspace --format md --output extension-plan.md
-agentforge plan-extension path/to/repo --json
-agentforge prepare-extension path/to/repo --output agentforge-output/repo-extension
-agentforge prepare-extension path/to/repo --modules agent_runtime --dry-run
-agentforge prepare-extension path/to/repo --modules agent_runtime --apply
-agentforge prepare-extension path/to/repo --modules agent_runtime --apply --yes
-```
-
-The planner answers what AgentForge modules could be added, what prerequisites are missing, what files would likely be added/modified later, what migration phases should run first, and what risks need review. It does not modify target repos, overwrite files, install packages, apply patches, create branches, call live LLMs/APIs, or require internet access.
-
-`agentforge prepare-extension` reuses this planner output. In bundle mode it writes a preview bundle with a manifest, plan, file impact, migration phases, validation checklist, safety notes, and proposed low-risk files. `--dry-run` prints planned writes, apply-eligible files, dirty git state, overwrite conflicts, safety checks, validation commands, and next steps without writing files. In apply mode it requires interactive `yes` or `--yes`, refuses dirty git repos and overwrites by default, never stages/commits/pushes/deploys/installs/runs scripts, and only writes AgentForge docs, checklists, and App Blueprint seed files.
-
-See [docs/REPO_EXTENSION_PLANNER.md](docs/REPO_EXTENSION_PLANNER.md) and [docs/SAFE_PATCH_APPLICATION.md](docs/SAFE_PATCH_APPLICATION.md) for details.
-
-## Deployment Planner
-
-v0.9 adds a planning-only deployment readiness planner:
-
-```bash
-agentforge plan-deployment path/to/repo
-agentforge plan-deployment analysis.json --from-report --format md
-agentforge plan-deployment path/to/repo --platform railway --output deploy-plan.md
-agentforge plan-deployment path/to/repo --docs-bundle --output agentforge-output/deploy-plan
-```
-
-It detects backend/frontend/database/Docker/CI/env/health signals, scores readiness, recommends platforms, and writes optional deployment docs bundles. It does **not** deploy, provision cloud resources, run cloud CLIs, store secrets, run target scripts/package installs, or modify the target repo by default.
-
-See [docs/DEPLOYMENT_PLANNER.md](docs/DEPLOYMENT_PLANNER.md) for details.
-
-## Generated Demo Flow
-
-The generated `hybrid-scoring-demo` app demonstrates a full deterministic workflow:
-
-1. Ingest fixture records through a provider interface.
-2. Normalize raw provider payloads into stable records.
-3. Score records and attach deterministic explanations.
-4. Create preview-only notification payloads for scored records.
-5. Record triage decisions and preserve action history.
-6. Chat with the scripted Agent Runtime Module.
-7. Stream agent events over SSE while tools run.
-8. Ask the scripted agent to pin compatible tool results into the workspace.
-9. Reload the app and recover persisted conversations and workspace widgets.
-
-The agent can call generated tools such as `run_ingest`, `score_records`, `get_scored_records`, `create_notification_preview`, `list_action_history`, and `pin_widget`. Tool arguments and widget compatibility are validated before execution, so invalid arguments, unknown tools, and incompatible widget pins become structured tool results instead of server crashes.
-
-## What Gets Generated
-
-`agentforge generate` reads an App Blueprint and emits a self-contained project directory.
-
-The current `fastapi-react` Application Template includes:
-
-| Area | Generated output |
-| --- | --- |
-| Backend | FastAPI app with async SQLAlchemy, SQLite for local dev, and PostgreSQL-ready configuration |
-| Frontend | React + TypeScript app built with Vite |
-| Providers | Fixture provider interface and deterministic sample data |
-| Adapters | Normalization layer from raw provider records to stable DTOs |
-| Scoring | Deterministic fit score, label, recommendation, drivers, risks, and explanation |
-| Operations UI | Ingest, score, run history, and scored records views |
-| Notification/Triage | Preview-only notifications, action status, and action history |
-| Agent Runtime | Scripted provider, persisted conversations, tool calls, typed validation, and SSE streaming |
-| Workspace | Persisted generic widgets with source-tool/widget compatibility checks |
-| Tests | Backend pytest suite, generator tests, and Playwright E2E coverage |
-| CI | GitHub Actions skeleton with no live LLM or paid API dependency |
-
-## How AgentForge Works
-
-AgentForge has three main pieces:
-
-1. **App Blueprint**: a YAML file that describes the app domain, archetype, Feature Modules, capabilities, providers, adapters, UI surfaces, tests, and future gaps.
-2. **Generator**: the `agentforge` CLI reads the blueprint, selects modules, validates gaps, and copies/parameters the Application Template.
-3. **Generated App**: a normal FastAPI + React project that can run, test, and evolve independently.
-
-The important command flow is:
-
-```bash
-agentforge plan path/to/domain-pack.yaml
-agentforge generate path/to/domain-pack.yaml
-```
-
-`agentforge plan` is the source of truth for module support and known gaps.
-
-## Commands
-
-Common commands from the repo root:
-
-```bash
-make validate          # generator tests + generated backend tests + frontend build/lint
-make generate-demo     # regenerate examples/hybrid-scoring-demo
-make test-generator    # generator unit tests only
-make test-backend      # generated app backend tests only
-make run-backend       # start generated backend dev server on :8000
-make run-frontend      # start generated frontend dev server on :5173
-make run-e2e           # run Playwright E2E; requires the live stack
-```
-
-Generator CLI:
-
-```bash
-agentforge plan domain-packs/hybrid-scoring-demo/domain-pack.yaml
-agentforge generate domain-packs/hybrid-scoring-demo/domain-pack.yaml --force
-agentforge init-blueprint my-app --optional-module agent_runtime
-agentforge analyze-repo path/to/local/repo --format md
-agentforge plan-extension path/to/local/repo --format md
-agentforge prepare-extension path/to/local/repo --output agentforge-output/repo-extension
-agentforge plan-deployment path/to/local/repo --format md
-```
-
-## Running the Generated App
-
-### Backend
-
-```bash
-cd examples/hybrid-scoring-demo/backend
-pip install -r requirements-dev.txt
-DATABASE_URL=sqlite+aiosqlite:///./demo.db uvicorn app.main:app --reload
-```
-
-### Frontend
-
-```bash
-cd examples/hybrid-scoring-demo/frontend
-npm install
-VITE_API_URL=http://localhost:8000 npm run dev
-```
-
-### Full Stack With Docker Compose
-
-```bash
-cd examples/hybrid-scoring-demo
-docker-compose up
-```
-
-## Validation Snapshot
-
-Latest local validation for v0.8.3:
-
-| Command | Result |
-| --- | --- |
-| `python -m pytest tests/generator/ -v` | see task validation output |
-| `make validate` | passed |
-| Generated backend tests | 72 passed |
-| Generated frontend build | passed |
-| Generated frontend lint | passed |
-
-Playwright was not rerun for v0.8.3 because generated runtime/template flows were not changed. Existing Playwright coverage remains in the generated frontend and can be run with:
+`make validate` runs generator tests, generated backend tests, frontend build, and frontend lint. Playwright E2E is available with a live stack:
 
 ```bash
 make run-e2e
 ```
 
-## What Is Not Built Yet
+CI status for v1.0 readiness:
 
-AgentForge is still early and deliberately constrained.
+- No `.github/workflows/` workflow is currently present in this repository.
+- A CI badge should only be added after reliable CI exists and passes.
+- A green badge is valuable for a portfolio-ready MVP, but it should not be faked.
 
-Not built yet:
+## Docs
 
-- Live LLM provider integration.
-- Repository conversion or invasive runtime patch application.
-- Autonomous code modification.
-- Deployment planning or production mutation.
-- Real Telegram/email/Slack notification delivery.
-- Per-capability code generation from arbitrary schemas.
-- Database migration generation.
-- Multiple mature Application Templates.
-- Business Insight-specific workspace renderers such as `money_flow`, `health_score`, or `signal_timeline`.
+README is the guided landing page. Detailed docs live here:
 
-Current limitations:
-
-- The only full Application Template is `fastapi-react`.
-- Some modules are represented as planned/future gaps.
-- Token substitution is still simple string replacement.
-- The builder mirrors a small schema subset in browser code for live YAML preview; the generator schema and CLI planner remain authoritative.
-- `examples/hybrid-scoring-demo/` is a committed generated snapshot for convenience.
-
-## Terminology
-
-| Public term | Config/internal term | Meaning |
-| --- | --- | --- |
-| App Blueprint | `domain-pack` | YAML definition of one app domain |
-| Application Template | `template` | Reusable source tree copied and parameterized by the generator |
-| Feature Module | shell module | Reusable capability area such as pipeline, scoring, notifications, agent runtime, or workspace |
-| Integration Adapter | provider/adapter | Boundary that normalizes external or fixture data into stable app records |
-| Agent Runtime Module | `agent_runtime` | Optional scripted chat/tool runtime with persisted conversations, SSE events, and typed tool validation |
-| Dashboard/Workspace Module | `workspace` | Optional persisted widget workspace with generic renderers and compatibility validation |
-| Test Harness | deterministic test shell | Fixture-based tests that avoid live external APIs and LLMs |
-
-## Repository Layout
-
-```text
-AgentForge/
-  builder/                       Static local Blueprint Builder UI
-  docs/                          Architecture, roadmap, and App Blueprint docs
-  domain-packs/                  App Blueprint YAML files
-    hybrid-scoring-demo/         Blueprint for the generated demo
-  generator/                     Python package for the AgentForge CLI
-    agentforge/
-      analyzer.py                Analysis-only local Repo Analyzer
-      blueprints.py              Starter blueprint helpers
-      extension_planner.py       Planning-only repo extension planner
-      patch_bundle.py            Safe bundle and approved low-risk apply logic
-      deployment_planner.py      Planning-only deployment readiness planner
-      cli.py                     agentforge plan/generate/init-blueprint/analyze-repo/plan-extension/prepare-extension
-      generator.py               Copy and substitution logic
-      modules.py                 Archetype to module selection
-      pack.py                    Pydantic App Blueprint model
-  templates/                     Application Templates
-    fastapi-react/               FastAPI + React template
-  examples/                      Generated output snapshots
-    hybrid-scoring-demo/         Current generated demo app
-  tests/
-    generator/                   Generator and builder YAML tests
-```
-
-## Reproducibility
-
-The generated demo is committed as a snapshot, but it can be regenerated from its App Blueprint:
-
-```bash
-agentforge generate domain-packs/hybrid-scoring-demo/domain-pack.yaml --force
-```
-
-The generator skips local build/runtime directories such as `__pycache__`, `node_modules`, `dist`, and `.venv`.
-
-## Version History
-
-| Version | Summary |
-| --- | --- |
-| v0.1 | Initial generator, App Blueprint loading, FastAPI/React template, fixture provider, run history, scoring, and deterministic tests |
-| v0.1.1 | Developer-experience hardening: package metadata, Makefile validation, ignore rules, and generated README behavior |
-| v0.1.2 | Public terminology cleanup around App Blueprints, Application Templates, Feature Modules, Integration Adapters, and Test Harnesses |
-| v0.2 | Notification/Triage Module with previews, current action state, append-only action history, preview/action UI, and `triage_ui` support |
-| v0.3 | Agent Runtime Module with scripted provider, tool registry, `/agent/chat`, persistence, chat UI, and deterministic agent tests |
-| v0.3.1 | Agent Runtime hardening with `/agent/chat/stream`, SSE events, frontend streaming, typed tool validation, and structured tool errors |
-| v0.4 | Dashboard/Workspace Module with persisted generic widgets, compatibility validation, agent pinning, remove/reorder APIs, and workspace UI |
-| v0.4.1 | Workspace UI polish with clearer states, readable widget cards/renderers, and clearer agent pin success/failure activity |
-| v0.5 | Simple static Blueprint Builder UI plus `agentforge init-blueprint`; generation remains CLI-first |
-| v0.6 | Scripted AI-assisted Blueprint Builder with idea drafting, clarification, refinement, local schema validation, `serve-builder`, and `draft-blueprint`; generation remains CLI-first |
-| v0.7 | Analysis-only Repo Analyzer with local stack detection, AgentForge module compatibility, archetype guesses, advisory migration plans, JSON/text/Markdown reports, and draft Blueprint seed output |
-| v0.7.1 | Builder UX clarity pass: product front door, two starting paths, new-app flow polish, existing-repo analyzer guidance/pasted JSON preview, generation preview, and advanced Blueprint Source framing |
-| v0.8 | Planning-only Repo Extension Planner with repo/report inputs, module selection, file impact, migration phases, risks, patch-plan previews, Markdown/text/JSON reports, and no target repo modifications |
-| v0.8.1 | Safe patch bundle generation with manifest, plan, file impact, migration phases, validation checklist, proposed files, and safety notes |
-| v0.8.2 | Explicit approved apply mode for low-risk docs/blueprint/checklist files only, with dirty-repo and overwrite refusal by default |
-| v0.8.3 | Richer prepare-extension previews, stable JSON preview fields, better dry-run/dirty/overwrite reporting, and interactive apply confirmation |
-| v0.9 | Planning-only Deployment Planner with readiness checks, env/Docker/CI checklists, platform recommendations, docs bundle output, and no deployment/provisioning behavior |
-
-## Further Reading
-
+- [Docs Index](docs/README.md)
+- [Getting Started](docs/GETTING_STARTED.md)
+- [Demo Guide](docs/DEMO_GUIDE.md)
+- [Command Reference](docs/COMMAND_REFERENCE.md)
+- [Safety Model](docs/SAFETY_MODEL.md)
 - [App Blueprint Specification](docs/DOMAIN_PACK_SPEC.md)
 - [AgentForge v0 Architecture](docs/AGENTFORGE_V0_ARCHITECTURE.md)
 - [Archetype Model](docs/ARCHETYPE_MODEL.md)
@@ -415,3 +177,29 @@ The generator skips local build/runtime directories such as `__pycache__`, `node
 - [Safe Patch Application](docs/SAFE_PATCH_APPLICATION.md)
 - [Deployment Planner](docs/DEPLOYMENT_PLANNER.md)
 - [Blueprint Builder README](builder/README.md)
+
+## What is not built yet
+
+AgentForge is deliberately constrained. It does not yet provide:
+
+- live LLM provider integration;
+- broad arbitrary app generation;
+- invasive repository conversion;
+- autonomous code modification;
+- real notification delivery;
+- production deployment automation;
+- cloud resource provisioning;
+- mature multi-template support.
+
+## Repository layout
+
+```text
+AgentForge/
+  builder/                       Local Blueprint Builder UI
+  docs/                          Guides, safety model, architecture, planner docs
+  domain-packs/                  App Blueprints
+  generator/                     Python package for the agentforge CLI
+  templates/                     Application Templates
+  examples/hybrid-scoring-demo/  Committed generated demo app
+  tests/generator/               Generator and builder tests
+```
