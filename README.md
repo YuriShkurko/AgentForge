@@ -8,7 +8,7 @@ The project is intentionally narrow right now. It proves reusable application mo
 App Blueprint YAML + Application Template = Generated App
 ```
 
-**Current version:** v0.8.2 adds `agentforge prepare-extension` for safe patch bundles and explicit approved low-risk apply. Default behavior still never modifies the target repository; apply mode requires `--apply --yes` and only writes docs/blueprint/checklist files.
+**Current version:** v0.8.3 improves `agentforge prepare-extension` with richer patch previews, better dry-run safety reporting, conflict/dirty-repo details, and interactive apply confirmation. Default behavior still never modifies the target repository; apply mode requires `--apply` plus interactive `yes` or `--yes`, and only writes docs/blueprint/checklist files.
 
 ## Table of Contents
 
@@ -162,12 +162,13 @@ agentforge plan-extension path/to/repo --modules agent_runtime,dashboard_workspa
 agentforge plan-extension path/to/repo --json
 agentforge prepare-extension path/to/repo --output agentforge-output/repo-extension
 agentforge prepare-extension path/to/repo --modules agent_runtime --dry-run
+agentforge prepare-extension path/to/repo --modules agent_runtime --apply
 agentforge prepare-extension path/to/repo --modules agent_runtime --apply --yes
 ```
 
 The planner answers what AgentForge modules could be added, what prerequisites are missing, what files would likely be added/modified later, what migration phases should run first, and what risks need review. It does not modify target repos, overwrite files, install packages, apply patches, create branches, call live LLMs/APIs, or require internet access.
 
-`agentforge prepare-extension` reuses this planner output. In bundle mode it writes a preview bundle with a manifest, plan, file impact, migration phases, validation checklist, safety notes, and proposed low-risk files. In apply mode it requires explicit approval, refuses dirty git repos and overwrites by default, never stages/commits/pushes/deploys/installs/runs scripts, and only writes AgentForge docs, checklists, and App Blueprint seed files.
+`agentforge prepare-extension` reuses this planner output. In bundle mode it writes a preview bundle with a manifest, plan, file impact, migration phases, validation checklist, safety notes, and proposed low-risk files. `--dry-run` prints planned writes, apply-eligible files, dirty git state, overwrite conflicts, safety checks, validation commands, and next steps without writing files. In apply mode it requires interactive `yes` or `--yes`, refuses dirty git repos and overwrites by default, never stages/commits/pushes/deploys/installs/runs scripts, and only writes AgentForge docs, checklists, and App Blueprint seed files.
 
 See [docs/REPO_EXTENSION_PLANNER.md](docs/REPO_EXTENSION_PLANNER.md) and [docs/SAFE_PATCH_APPLICATION.md](docs/SAFE_PATCH_APPLICATION.md) for details.
 
@@ -276,7 +277,7 @@ docker-compose up
 
 ## Validation Snapshot
 
-Latest local validation for v0.8.2:
+Latest local validation for v0.8.3:
 
 | Command | Result |
 | --- | --- |
@@ -286,7 +287,7 @@ Latest local validation for v0.8.2:
 | Generated frontend build | passed |
 | Generated frontend lint | passed |
 
-Playwright was not rerun for v0.8.2 because generated runtime/template flows were not changed. Existing Playwright coverage remains in the generated frontend and can be run with:
+Playwright was not rerun for v0.8.3 because generated runtime/template flows were not changed. Existing Playwright coverage remains in the generated frontend and can be run with:
 
 ```bash
 make run-e2e
@@ -383,6 +384,7 @@ The generator skips local build/runtime directories such as `__pycache__`, `node
 | v0.8 | Planning-only Repo Extension Planner with repo/report inputs, module selection, file impact, migration phases, risks, patch-plan previews, Markdown/text/JSON reports, and no target repo modifications |
 | v0.8.1 | Safe patch bundle generation with manifest, plan, file impact, migration phases, validation checklist, proposed files, and safety notes |
 | v0.8.2 | Explicit approved apply mode for low-risk docs/blueprint/checklist files only, with dirty-repo and overwrite refusal by default |
+| v0.8.3 | Richer prepare-extension previews, stable JSON preview fields, better dry-run/dirty/overwrite reporting, and interactive apply confirmation |
 
 ## Further Reading
 

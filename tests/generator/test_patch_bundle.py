@@ -2,11 +2,13 @@
 import json
 import subprocess
 import sys
+from argparse import Namespace
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "generator"))
 
 from agentforge.analyzer import analyze_repo
+from agentforge.cli import cmd_prepare_extension
 from agentforge.patch_bundle import PrepareExtensionOptions, prepare_extension, render_prepare_result
 
 FIXTURES = Path(__file__).parent / "fixtures" / "repo_analyzer"
@@ -38,9 +40,16 @@ def test_default_bundle_mode_does_not_modify_target_and_creates_expected_files(t
     assert (out / "proposed-files" / "AGENTFORGE_MIGRATION.md").exists()
     manifest = json.loads((out / "manifest.json").read_text(encoding="utf-8"))
     assert manifest["target_repo"]["name"] == "repo"
+    assert manifest["target_repo_path"] == str(repo)
+    assert manifest["generated_at"]
+    assert manifest["agentforge_version"]
     assert manifest["selected_modules"] == ["agent_runtime"]
-    assert manifest["planned_operations"]
-    assert manifest["safety_notes"]
+    assert manifest["operations"]
+    assert manifest["apply_eligibility"]
+    assert manifest["warnings"]
+    readme = (out / "README.md").read_text(encoding="utf-8")
+    assert "What can be applied safely" in readme
+    assert "Preview apply without writing" in readme
 
 
 def test_dry_run_reports_planned_writes_without_writing(tmp_path):
@@ -51,9 +60,11 @@ def test_dry_run_reports_planned_writes_without_writing(tmp_path):
 
     assert result["mode"] == "dry-run"
     assert result["planned_operations"]
+    assert result["apply_eligible_operations"]
+    assert result["dirty_repo_status"]["dirty"] is False
     assert not out.exists()
     assert not (repo / "AGENTFORGE_MIGRATION.md").exists()
-    assert "dry_run" in render_prepare_result(result, "text")
+    assert "dry_run" in render_prepare_result(result, "text") or "dry-run" in render_prepare_result(result, "text")
 
 
 def test_apply_requires_yes_and_refuses_dirty_git_repo_by_default(tmp_path):
@@ -120,3 +131,104 @@ def test_analyzer_json_input_and_selected_unsupported_modules(tmp_path):
     assert result["selected_modules"] == ["provider_adapter"]
     assert result["plan"]["unsupported_items"][0]["module"] == "live_llm_provider"
     assert result["planned_operations"]
+
+
+def test_markdown_and_json_preview_include_stable_sections_and_fields(tmp_path):
+    repo = _copy_repo(FIXTURES / "fastapi_react", tmp_path / "repo")
+    result = prepare_extension(repo, PrepareExtensionOptions(dry_run=True, apply=True, modules=("agent_runtime",)))
+
+    md = render_prepare_result(result, "md")
+    for heading in ["## Summary", "## Selected Modules", "## Planned Operations", "## Apply-Eligible Files", "## Refused / Skipped Operations", "## Safety Checks", "## Validation Checklist", "## Next Steps"]:
+        assert heading in md
+
+    payload = json.loads(render_prepare_result(result, "json"))
+    for key in ["mode", "target_repo", "selected_modules", "planned_operations", "apply_eligible_operations", "refused_operations", "skipped_operations", "safety_checks", "warnings", "next_steps"]:
+        assert key in payload
+    assert payload["mode"] == "dry-run"
+    assert payload["planned_operations"] == payload["apply_eligible_operations"]
+
+
+def test_dirty_repo_dry_run_allowed_and_reports_dirty_files(tmp_path):
+    repo = _copy_repo(FIXTURES / "unknown_minimal", tmp_path / "repo")
+    subprocess.run(["git", "init"], cwd=repo, check=True, capture_output=True)
+    subprocess.run(["git", "config", "user.email", "a@example.test"], cwd=repo, check=True)
+    subprocess.run(["git", "config", "user.name", "A"], cwd=repo, check=True)
+    subprocess.run(["git", "add", "."], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-m", "init"], cwd=repo, check=True, capture_output=True)
+    (repo / "README.md").write_text("dirty\n", encoding="utf-8")
+
+    result = prepare_extension(repo, PrepareExtensionOptions(dry_run=True, apply=True, modules=("deterministic_test_harness",)))
+
+    assert result["mode"] == "dry-run"
+    assert result["dirty_repo_status"]["dirty"] is True
+    assert any("README.md" in item for item in result["dirty_repo_status"]["files"])
+    assert not (repo / "AGENTFORGE_MIGRATION.md").exists()
+
+
+def test_overwrite_conflict_report_lists_apply_eligibility(tmp_path):
+    repo = _copy_repo(FIXTURES / "fastapi_react", tmp_path / "repo")
+    (repo / "AGENTFORGE_MIGRATION.md").write_text("existing\n", encoding="utf-8")
+
+    result = prepare_extension(repo, PrepareExtensionOptions(dry_run=True, apply=True, modules=("agent_runtime",)))
+
+    assert result["overwrite_conflicts"]
+    conflict = next(item for item in result["overwrite_conflicts"] if item["path"] == "AGENTFORGE_MIGRATION.md")
+    assert conflict["apply_eligible"] is True
+    rendered = render_prepare_result(result, "text")
+    assert "Overwrite conflicts" in rendered
+    assert "AGENTFORGE_MIGRATION.md" in rendered
+
+
+def _prepare_args(repo: Path, **overrides):
+    data = dict(
+        target=str(repo),
+        from_report=False,
+        modules="deterministic_test_harness",
+        output=None,
+        format="text",
+        json=False,
+        dry_run=False,
+        apply=True,
+        yes=False,
+        allow_dirty=False,
+        overwrite=False,
+        max_files=100,
+        include_tests=False,
+    )
+    data.update(overrides)
+    return Namespace(**data)
+
+
+def test_cli_interactive_decline_writes_nothing(tmp_path, monkeypatch, capsys):
+    repo = _copy_repo(FIXTURES / "unknown_minimal", tmp_path / "repo")
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+    monkeypatch.setattr("builtins.input", lambda _prompt: "no")
+
+    code = cmd_prepare_extension(_prepare_args(repo))
+
+    assert code == 1
+    assert "Apply cancelled" in capsys.readouterr().out
+    assert not (repo / "AGENTFORGE_MIGRATION.md").exists()
+
+
+def test_cli_interactive_yes_writes_low_risk_files(tmp_path, monkeypatch):
+    repo = _copy_repo(FIXTURES / "unknown_minimal", tmp_path / "repo")
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+    monkeypatch.setattr("builtins.input", lambda _prompt: "yes")
+
+    code = cmd_prepare_extension(_prepare_args(repo))
+
+    assert code == 0
+    assert (repo / "AGENTFORGE_MIGRATION.md").exists()
+    assert not (repo / "backend" / "app" / "api" / "agent.py").exists()
+
+
+def test_cli_non_interactive_apply_without_yes_fails_safely(tmp_path, monkeypatch, capsys):
+    repo = _copy_repo(FIXTURES / "unknown_minimal", tmp_path / "repo")
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: False)
+
+    code = cmd_prepare_extension(_prepare_args(repo))
+
+    assert code == 1
+    assert "stdin is not a TTY" in capsys.readouterr().err
+    assert not (repo / "AGENTFORGE_MIGRATION.md").exists()

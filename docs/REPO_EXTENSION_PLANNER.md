@@ -15,6 +15,7 @@ agentforge plan-extension ../my-project --json
 agentforge prepare-extension ../my-project --output agentforge-output/my-project-extension
 agentforge prepare-extension analysis.json --from-report --output agentforge-output/from-report
 agentforge prepare-extension ../my-project --modules agent_runtime,dashboard_workspace --dry-run
+agentforge prepare-extension ../my-project --modules agent_runtime --apply
 agentforge prepare-extension ../my-project --modules agent_runtime --apply --yes
 ```
 
@@ -28,7 +29,7 @@ Options:
 - `--max-files <n>`: scan cap when the target is a repo path.
 - `--include-tests`: include deep test directory content sniffing when analyzing a repo path.
 
-`prepare-extension` also supports `--output`, `--dry-run`, `--apply`, `--yes`, `--allow-dirty`, and `--overwrite`. Default mode writes only a bundle to the explicit output directory and does not modify the target repo.
+`prepare-extension` also supports `--output`, `--dry-run`, `--apply`, `--yes`, `--allow-dirty`, and `--overwrite`. Default mode writes only a bundle to the explicit output directory and does not modify the target repo. Dry-run writes nothing and reports planned operations, apply-eligible files, dirty git status, overwrite conflicts, safety checks, validation commands, and next steps.
 
 ## Safety boundaries
 
@@ -47,7 +48,7 @@ The planner does **not**:
 - call live LLMs or external APIs;
 - require internet or GitHub API access.
 
-Patch-related planner output is a patch plan/preview only. v0.8.1/v0.8.2 adds `agentforge prepare-extension`, which reuses planner output to create a safe bundle and can explicitly apply only low-risk docs/blueprint/checklist files.
+Patch-related planner output is a patch plan/preview only. v0.8.1-v0.8.3 adds `agentforge prepare-extension`, which reuses planner output to create a safe bundle, provide richer previews, and explicitly apply only low-risk docs/blueprint/checklist files.
 
 ## Supported desired modules
 
@@ -110,7 +111,7 @@ repo path or analyzer JSON
 → user approval before any future modification
 ```
 
-Use the plan as a review artifact. Use `prepare-extension` bundle mode for a safe preview. Only use `prepare-extension --apply --yes` when you explicitly want low-risk docs/blueprint/checklist files copied into the target repo; runtime integration patches remain future work.
+Use the plan as a review artifact. Use `prepare-extension` bundle mode for a safe preview and `--dry-run` to inspect what would happen without writing. Only use `prepare-extension --apply` after typing `yes`, or `--apply --yes` for scripted local workflows, when you explicitly want low-risk docs/blueprint/checklist files copied into the target repo; runtime integration patches remain future work.
 
 ## Builder handoff
 

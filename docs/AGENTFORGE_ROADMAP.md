@@ -213,6 +213,10 @@ v0.8.1 adds `agentforge prepare-extension` bundle/preview generation. It reuses 
 
 v0.8.2 adds explicit `prepare-extension --apply --yes` for approved low-risk files only: App Blueprint seed files, AgentForge migration/extension docs, validation checklists, module TODOs, and env suggestion docs. It refuses dirty git repos and overwrites by default, never stages/commits/pushes/deploys/installs/runs target scripts, and does not edit runtime code, package files, lockfiles, routers, components, CI workflows, or business logic.
 
+## v0.8.3 Patch Preview and Confirmation Polish
+
+v0.8.3 improves `prepare-extension` without expanding apply scope. It adds richer text/Markdown/JSON previews, explicit apply-eligible operations, better dry-run reporting, dirty git and overwrite conflict details, bundle README/manifest safety metadata, and interactive `yes` confirmation for `--apply` when `--yes` is omitted. Non-interactive apply without `--yes` fails safely.
+
 ## Implementation Milestones
 
 ### Milestone 1: Spec Stabilization

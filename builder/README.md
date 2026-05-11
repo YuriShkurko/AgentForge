@@ -44,10 +44,11 @@ agentforge plan-extension ../my-project --modules agent_runtime,dashboard_worksp
 agentforge prepare-extension ../my-project --output agentforge-output/my-project-extension
 agentforge prepare-extension ../my-project --modules agent_runtime --dry-run
 # Explicit low-risk docs/blueprint/checklist apply only:
+agentforge prepare-extension ../my-project --modules agent_runtime --apply
 agentforge prepare-extension ../my-project --modules agent_runtime --apply --yes
 ```
 
-The analyzer is analysis-only and the extension planner is planning-only. `prepare-extension` bundle mode is a safe preview. Apply mode requires explicit `--apply --yes`, refuses dirty repos/overwrites by default, and only writes low-risk docs/blueprint/checklist files. None of these commands deploy anything, call live LLMs, call external APIs, or require internet access.
+The analyzer is analysis-only and the extension planner is planning-only. `prepare-extension` bundle mode is a safe preview, and `--dry-run` reports planned writes, apply-eligible files, dirty repo state, overwrite conflicts, safety checks, and next steps without writing files. Apply mode requires `--apply` plus interactive `yes` or `--yes`, refuses dirty repos/overwrites by default, and only writes low-risk docs/blueprint/checklist files. None of these commands deploy anything, call live LLMs, call external APIs, or require internet access.
 
 When pasted into the builder, analyzer JSON can show:
 

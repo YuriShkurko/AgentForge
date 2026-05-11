@@ -289,8 +289,33 @@ def cmd_prepare_extension(args: argparse.Namespace) -> int:
         return 1
     report_format = "json" if args.json else args.format
     modules = tuple(args.modules.split(",")) if args.modules else ()
-    if args.apply and not args.yes:
-        print("Planned low-risk apply requires explicit approval. Re-run with --apply --yes to write files.", file=sys.stderr)
+    effective_yes = args.yes
+    if args.apply and not args.dry_run and not args.yes:
+        preview = prepare_extension(
+            target,
+            PrepareExtensionOptions(
+                modules=modules,
+                max_files=args.max_files,
+                include_tests=args.include_tests,
+                from_report=args.from_report,
+                output=args.output,
+                format=report_format,
+                dry_run=True,
+                apply=True,
+                yes=False,
+                allow_dirty=args.allow_dirty,
+                overwrite=args.overwrite,
+            ),
+        )
+        print(render_prepare_result(preview, report_format), end="")
+        if not sys.stdin.isatty():
+            print("error: apply requires interactive confirmation; stdin is not a TTY. Re-run with --yes after review.", file=sys.stderr)
+            return 1
+        answer = input("Type 'yes' to apply the low-risk AgentForge files: ")
+        if answer.strip().lower() != "yes":
+            print("Apply cancelled. No target repo files were written.")
+            return 1
+        effective_yes = True
     try:
         result = prepare_extension(
             target,
@@ -303,7 +328,7 @@ def cmd_prepare_extension(args: argparse.Namespace) -> int:
                 format=report_format,
                 dry_run=args.dry_run,
                 apply=args.apply,
-                yes=args.yes,
+                yes=effective_yes,
                 allow_dirty=args.allow_dirty,
                 overwrite=args.overwrite,
             ),
