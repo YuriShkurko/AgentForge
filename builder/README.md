@@ -46,9 +46,11 @@ agentforge prepare-extension ../my-project --modules agent_runtime --dry-run
 # Explicit low-risk docs/blueprint/checklist apply only:
 agentforge prepare-extension ../my-project --modules agent_runtime --apply
 agentforge prepare-extension ../my-project --modules agent_runtime --apply --yes
+agentforge plan-deployment ../my-project --format md
+agentforge plan-deployment report.json --from-report --format json
 ```
 
-The analyzer is analysis-only and the extension planner is planning-only. `prepare-extension` bundle mode is a safe preview, and `--dry-run` reports planned writes, apply-eligible files, dirty repo state, overwrite conflicts, safety checks, and next steps without writing files. Apply mode requires `--apply` plus interactive `yes` or `--yes`, refuses dirty repos/overwrites by default, and only writes low-risk docs/blueprint/checklist files. None of these commands deploy anything, call live LLMs, call external APIs, or require internet access.
+The analyzer, extension planner, and deployment planner are planning-only. `prepare-extension` bundle mode is a safe preview, and `--dry-run` reports planned writes, apply-eligible files, dirty repo state, overwrite conflicts, safety checks, and next steps without writing files. Apply mode requires `--apply` plus interactive `yes` or `--yes`, refuses dirty repos/overwrites by default, and only writes low-risk docs/blueprint/checklist files. `plan-deployment` reports readiness and platform recommendations only; it does not deploy, provision resources, run cloud CLIs, store secrets, or run target scripts. None of these commands call live LLMs, call external APIs, or require internet access.
 
 When pasted into the builder, analyzer JSON can show:
 
@@ -58,7 +60,7 @@ When pasted into the builder, analyzer JSON can show:
 - advisory migration phases;
 - draft Blueprint seed, if present.
 
-The seed still needs review before it becomes a real `domain-pack.yaml`. Extension planner JSON can also show selected modules, migration phases, file impact, risks, and the explicit no-files-modified statement.
+The seed still needs review before it becomes a real `domain-pack.yaml`. Extension planner JSON can also show selected modules, migration phases, file impact, risks, and the explicit no-files-modified statement. Deployment planner JSON can show readiness summary, platform recommendations, env/Docker/CI checklists, risk notes, and the explicit no-deployment-performed warning.
 
 ## What will be generated
 
@@ -75,7 +77,7 @@ agentforge generate path/to/domain-pack.yaml
 
 ## Boundaries
 
-The builder does not call a live LLM, inspect local repositories from the browser, run extension planning in the browser, convert existing apps, deploy infrastructure, apply patches from the browser, modify files automatically, or replace CLI validation. Patch bundle/apply remains CLI-only and explicit.
+The builder does not call a live LLM, inspect local repositories from the browser, run extension/deployment planning in the browser, convert existing apps, deploy infrastructure, apply patches from the browser, modify files automatically, or replace CLI validation. Patch bundle/apply and deployment planning remain CLI-only and explicit.
 
 For a CLI-only starter file:
 

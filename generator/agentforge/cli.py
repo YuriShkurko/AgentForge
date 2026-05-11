@@ -8,6 +8,7 @@ Usage:
   agentforge analyze-repo <path> [--format text|md|json]
   agentforge plan-extension <path-or-report> [--format text|md|json]
   agentforge prepare-extension <path-or-report> [--output <dir>] [--apply]
+  agentforge plan-deployment <path-or-report> [--format text|md|json]
   agentforge serve-builder [--host <host>] [--port <port>]
 """
 import argparse
@@ -17,6 +18,7 @@ from pathlib import Path
 
 from agentforge.analyzer import AnalyzeOptions, analyze_repo, render_report, result_to_jsonable
 from agentforge.blueprints import create_starter_blueprint, write_starter_blueprint
+from agentforge.deployment_planner import DeploymentPlanOptions, plan_deployment, render_deployment_plan, write_deployment_docs_bundle
 from agentforge.extension_planner import ExtensionPlanOptions, plan_extension, render_extension_plan, result_to_jsonable as extension_result_to_jsonable
 from agentforge.generator import generate
 from agentforge.modules import select_modules
@@ -281,6 +283,62 @@ def cmd_plan_extension(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_plan_deployment(args: argparse.Namespace) -> int:
+    target = Path(args.target)
+    if not target.exists():
+        label = "analysis report" if args.from_report else "repository path"
+        print(f"error: {label} not found: {target}", file=sys.stderr)
+        return 1
+    report_format = "json" if args.json else args.format
+    try:
+        plan = plan_deployment(
+            target,
+            DeploymentPlanOptions(
+                from_report=args.from_report,
+                platform=args.platform,
+                include_cost_notes=args.include_cost_notes,
+                docs_bundle=args.docs_bundle,
+                output=args.output,
+                max_files=args.max_files,
+                include_tests=args.include_tests,
+            ),
+        )
+        output_text = render_deployment_plan(plan, report_format)
+    except Exception as exc:
+        print(f"error: deployment planning failed - {exc}", file=sys.stderr)
+        return 1
+
+    if args.docs_bundle:
+        if not args.output:
+            print("error: --docs-bundle requires --output <dir>", file=sys.stderr)
+            return 1
+        try:
+            written = write_deployment_docs_bundle(plan, args.output)
+        except Exception as exc:
+            print(f"error: could not write deployment docs bundle - {exc}", file=sys.stderr)
+            return 1
+        print(f"Wrote deployment docs bundle: {args.output}")
+        for rel in written:
+            print(f"  - {rel}")
+        return 0
+
+    if args.output:
+        output_path = Path(args.output)
+        if any(part in {"node_modules", ".git", ".venv", "venv", "dist", "build", ".next"} for part in output_path.parts):
+            print(f"error: refusing to write deployment plan inside ignored/vendor path: {output_path}", file=sys.stderr)
+            return 1
+        try:
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            output_path.write_text(output_text, encoding="utf-8")
+        except Exception as exc:
+            print(f"error: could not write deployment plan - {exc}", file=sys.stderr)
+            return 1
+        print(f"Wrote deployment plan: {output_path}")
+    else:
+        print(output_text, end="")
+    return 0
+
+
 def cmd_prepare_extension(args: argparse.Namespace) -> int:
     target = Path(args.target)
     if not target.exists():
@@ -441,6 +499,18 @@ def main() -> None:
     prepare.add_argument("--max-files", type=int, default=1000, help="Maximum files to scan when target is a repo")
     prepare.add_argument("--include-tests", action="store_true", help="Include deep test directory content sniffing when analyzing a repo")
 
+    deploy = sub.add_parser("plan-deployment", help="Plan deployment readiness without deploying or provisioning resources")
+    deploy.add_argument("target", help="Local repository path, or analyzer JSON report when --from-report is used")
+    deploy.add_argument("--from-report", action="store_true", help="Read target as agentforge analyze-repo JSON output")
+    deploy.add_argument("--format", choices=["text", "md", "json"], default="text", help="Report format")
+    deploy.add_argument("--json", action="store_true", help="Shortcut for --format json")
+    deploy.add_argument("--output", "-o", help="Write report file or docs bundle directory")
+    deploy.add_argument("--platform", choices=["railway", "render", "fly", "aws-ecs", "docker-vps", "auto"], default="auto", help="Preferred deployment platform recommendation")
+    deploy.add_argument("--include-cost-notes", action="store_true", help="Include extra advisory cost notes")
+    deploy.add_argument("--docs-bundle", action="store_true", help="Write deployment docs bundle to --output directory")
+    deploy.add_argument("--max-files", type=int, default=1000, help="Maximum files to scan when target is a repo")
+    deploy.add_argument("--include-tests", action="store_true", help="Include deep test directory content sniffing when analyzing a repo")
+
     serve = sub.add_parser("serve-builder", help="Serve the static builder with scripted planner endpoints")
     serve.add_argument("--host", default="127.0.0.1", help="Host to bind")
     serve.add_argument("--port", type=int, default=8765, help="Port to bind")
@@ -461,6 +531,8 @@ def main() -> None:
         sys.exit(cmd_plan_extension(args))
     elif args.command == "prepare-extension":
         sys.exit(cmd_prepare_extension(args))
+    elif args.command == "plan-deployment":
+        sys.exit(cmd_plan_deployment(args))
     elif args.command == "serve-builder":
         sys.exit(cmd_serve_builder(args))
 

@@ -217,6 +217,10 @@ v0.8.2 adds explicit `prepare-extension --apply --yes` for approved low-risk fil
 
 v0.8.3 improves `prepare-extension` without expanding apply scope. It adds richer text/Markdown/JSON previews, explicit apply-eligible operations, better dry-run reporting, dirty git and overwrite conflict details, bundle README/manifest safety metadata, and interactive `yes` confirmation for `--apply` when `--yes` is omitted. Non-interactive apply without `--yes` fails safely.
 
+## v0.9 Deployment Planner
+
+v0.9 adds `agentforge plan-deployment`, a deterministic planning-only deployment readiness planner for generated apps and existing repositories. It detects backend/frontend/database/Docker/CI/env/health signals, produces readiness checks and scores, recommends platforms, emits env/Docker/CI checklists, and can write a deployment docs bundle. It does not deploy, provision resources, run cloud CLIs, install packages, run target scripts, read/store secrets, stage/commit/push, or modify target repos by default.
+
 ## Implementation Milestones
 
 ### Milestone 1: Spec Stabilization

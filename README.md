@@ -172,6 +172,21 @@ The planner answers what AgentForge modules could be added, what prerequisites a
 
 See [docs/REPO_EXTENSION_PLANNER.md](docs/REPO_EXTENSION_PLANNER.md) and [docs/SAFE_PATCH_APPLICATION.md](docs/SAFE_PATCH_APPLICATION.md) for details.
 
+## Deployment Planner
+
+v0.9 adds a planning-only deployment readiness planner:
+
+```bash
+agentforge plan-deployment path/to/repo
+agentforge plan-deployment analysis.json --from-report --format md
+agentforge plan-deployment path/to/repo --platform railway --output deploy-plan.md
+agentforge plan-deployment path/to/repo --docs-bundle --output agentforge-output/deploy-plan
+```
+
+It detects backend/frontend/database/Docker/CI/env/health signals, scores readiness, recommends platforms, and writes optional deployment docs bundles. It does **not** deploy, provision cloud resources, run cloud CLIs, store secrets, run target scripts/package installs, or modify the target repo by default.
+
+See [docs/DEPLOYMENT_PLANNER.md](docs/DEPLOYMENT_PLANNER.md) for details.
+
 ## Generated Demo Flow
 
 The generated `hybrid-scoring-demo` app demonstrates a full deterministic workflow:
@@ -248,6 +263,7 @@ agentforge init-blueprint my-app --optional-module agent_runtime
 agentforge analyze-repo path/to/local/repo --format md
 agentforge plan-extension path/to/local/repo --format md
 agentforge prepare-extension path/to/local/repo --output agentforge-output/repo-extension
+agentforge plan-deployment path/to/local/repo --format md
 ```
 
 ## Running the Generated App
@@ -343,6 +359,7 @@ AgentForge/
       blueprints.py              Starter blueprint helpers
       extension_planner.py       Planning-only repo extension planner
       patch_bundle.py            Safe bundle and approved low-risk apply logic
+      deployment_planner.py      Planning-only deployment readiness planner
       cli.py                     agentforge plan/generate/init-blueprint/analyze-repo/plan-extension/prepare-extension
       generator.py               Copy and substitution logic
       modules.py                 Archetype to module selection
@@ -385,6 +402,7 @@ The generator skips local build/runtime directories such as `__pycache__`, `node
 | v0.8.1 | Safe patch bundle generation with manifest, plan, file impact, migration phases, validation checklist, proposed files, and safety notes |
 | v0.8.2 | Explicit approved apply mode for low-risk docs/blueprint/checklist files only, with dirty-repo and overwrite refusal by default |
 | v0.8.3 | Richer prepare-extension previews, stable JSON preview fields, better dry-run/dirty/overwrite reporting, and interactive apply confirmation |
+| v0.9 | Planning-only Deployment Planner with readiness checks, env/Docker/CI checklists, platform recommendations, docs bundle output, and no deployment/provisioning behavior |
 
 ## Further Reading
 
@@ -395,4 +413,5 @@ The generator skips local build/runtime directories such as `__pycache__`, `node
 - [Repo Analyzer](docs/REPO_ANALYZER.md)
 - [Repo Extension Planner](docs/REPO_EXTENSION_PLANNER.md)
 - [Safe Patch Application](docs/SAFE_PATCH_APPLICATION.md)
+- [Deployment Planner](docs/DEPLOYMENT_PLANNER.md)
 - [Blueprint Builder README](builder/README.md)
