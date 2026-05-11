@@ -20,7 +20,7 @@ SUPPORTED_MODULES = [
     "ci_local_validation",
 ]
 UNSUPPORTED_MODULES = {
-    "repo_patch_apply": "Patch application is future v0.8.1+ scope.",
+    "repo_patch_apply": "Runtime patch application is future scope; v0.8.2 only permits low-risk docs/blueprint/checklist apply.",
     "deploy_planner": "Deployment planning is future scope.",
     "real_provider_integrations": "Real external integrations are future scope.",
     "live_llm_provider": "Live LLM providers are not required for local deterministic planning.",
@@ -85,6 +85,7 @@ def plan_extension(target: str | Path, options: ExtensionPlanOptions | None = No
             "files_modified": 0,
         },
         "source_analysis_summary": _analysis_summary(analysis),
+        "blueprint_seed": analysis.get("blueprint_seed"),
         "selected_modules": desired,
         "recommended_modules": recommended,
         "module_plans": module_plans,
@@ -304,7 +305,7 @@ def _manual_steps() -> list[str]:
         "Create or update an App Blueprint outside the target repo unless intentionally adding one later.",
         "Implement one patch group at a time in a separate future change set.",
         "Run validation after each module group.",
-        "Do not apply generated patch plans without explicit approval in a future v0.8.1+ flow.",
+        "Use agentforge prepare-extension for a safe bundle preview; only use --apply for explicitly approved low-risk docs/blueprint/checklist files.",
     ]
 
 

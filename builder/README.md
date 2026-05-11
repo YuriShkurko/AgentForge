@@ -41,9 +41,13 @@ agentforge analyze-repo ../my-project --json --output report.json
 agentforge plan-extension ../my-project
 agentforge plan-extension report.json --from-report
 agentforge plan-extension ../my-project --modules agent_runtime,dashboard_workspace --format md --output extension-plan.md
+agentforge prepare-extension ../my-project --output agentforge-output/my-project-extension
+agentforge prepare-extension ../my-project --modules agent_runtime --dry-run
+# Explicit low-risk docs/blueprint/checklist apply only:
+agentforge prepare-extension ../my-project --modules agent_runtime --apply --yes
 ```
 
-The analyzer is analysis-only and the extension planner is planning-only. They do not modify the repository, apply patches, convert code, deploy anything, call live LLMs, call external APIs, or require internet access.
+The analyzer is analysis-only and the extension planner is planning-only. `prepare-extension` bundle mode is a safe preview. Apply mode requires explicit `--apply --yes`, refuses dirty repos/overwrites by default, and only writes low-risk docs/blueprint/checklist files. None of these commands deploy anything, call live LLMs, call external APIs, or require internet access.
 
 When pasted into the builder, analyzer JSON can show:
 
@@ -70,7 +74,7 @@ agentforge generate path/to/domain-pack.yaml
 
 ## Boundaries
 
-The builder does not call a live LLM, inspect local repositories from the browser, run extension planning in the browser, convert existing apps, deploy infrastructure, modify files automatically, or replace CLI validation. Patch application and deployment planning are future scope, not v0.8 behavior.
+The builder does not call a live LLM, inspect local repositories from the browser, run extension planning in the browser, convert existing apps, deploy infrastructure, apply patches from the browser, modify files automatically, or replace CLI validation. Patch bundle/apply remains CLI-only and explicit.
 
 For a CLI-only starter file:
 

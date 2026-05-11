@@ -203,7 +203,15 @@ Implemented v0.8 scope:
 - Builder existing-repo guidance and pasted extension-plan JSON preview.
 - Tests proving report input, direct repo input, module selection, unsupported gaps, deterministic phases, report shape, CLI behavior, and no target repo file modification.
 
-Out of scope for v0.8: applying patches, modifying target repos, overwriting files, creating branches, installing packages, running autonomous code execution, deployment planning, live LLM/API dependencies, real provider integrations, and generated runtime/template changes. Safe patch application remains future v0.8.1+ scope.
+Out of scope for v0.8: applying patches, modifying target repos, overwriting files, creating branches, installing packages, running autonomous code execution, deployment planning, live LLM/API dependencies, real provider integrations, and generated runtime/template changes.
+
+## v0.8.1 Safe Patch Bundle
+
+v0.8.1 adds `agentforge prepare-extension` bundle/preview generation. It reuses v0.8 planner output and writes a safe bundle to an explicit output directory with manifest, extension plan, file impact, migration phases, validation checklist, safety notes, patch preview, and proposed low-risk files. Default behavior still does not modify target repos.
+
+## v0.8.2 Approved Low-Risk Apply
+
+v0.8.2 adds explicit `prepare-extension --apply --yes` for approved low-risk files only: App Blueprint seed files, AgentForge migration/extension docs, validation checklists, module TODOs, and env suggestion docs. It refuses dirty git repos and overwrites by default, never stages/commits/pushes/deploys/installs/runs target scripts, and does not edit runtime code, package files, lockfiles, routers, components, CI workflows, or business logic.
 
 ## Implementation Milestones
 

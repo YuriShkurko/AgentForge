@@ -8,7 +8,7 @@ The project is intentionally narrow right now. It proves reusable application mo
 App Blueprint YAML + Application Template = Generated App
 ```
 
-**Current version:** v0.8 adds a planning-only Repo Extension Planner. `agentforge plan-extension <path>` consumes a local repo or analyzer JSON report and produces module recommendations, file impact, migration phases, risks, and patch-plan groups without modifying the target repository.
+**Current version:** v0.8.2 adds `agentforge prepare-extension` for safe patch bundles and explicit approved low-risk apply. Default behavior still never modifies the target repository; apply mode requires `--apply --yes` and only writes docs/blueprint/checklist files.
 
 ## Table of Contents
 
@@ -160,11 +160,16 @@ agentforge plan-extension path/to/repo
 agentforge plan-extension analysis.json --from-report
 agentforge plan-extension path/to/repo --modules agent_runtime,dashboard_workspace --format md --output extension-plan.md
 agentforge plan-extension path/to/repo --json
+agentforge prepare-extension path/to/repo --output agentforge-output/repo-extension
+agentforge prepare-extension path/to/repo --modules agent_runtime --dry-run
+agentforge prepare-extension path/to/repo --modules agent_runtime --apply --yes
 ```
 
 The planner answers what AgentForge modules could be added, what prerequisites are missing, what files would likely be added/modified later, what migration phases should run first, and what risks need review. It does not modify target repos, overwrite files, install packages, apply patches, create branches, call live LLMs/APIs, or require internet access.
 
-See [docs/REPO_EXTENSION_PLANNER.md](docs/REPO_EXTENSION_PLANNER.md) for details.
+`agentforge prepare-extension` reuses this planner output. In bundle mode it writes a preview bundle with a manifest, plan, file impact, migration phases, validation checklist, safety notes, and proposed low-risk files. In apply mode it requires explicit approval, refuses dirty git repos and overwrites by default, never stages/commits/pushes/deploys/installs/runs scripts, and only writes AgentForge docs, checklists, and App Blueprint seed files.
+
+See [docs/REPO_EXTENSION_PLANNER.md](docs/REPO_EXTENSION_PLANNER.md) and [docs/SAFE_PATCH_APPLICATION.md](docs/SAFE_PATCH_APPLICATION.md) for details.
 
 ## Generated Demo Flow
 
@@ -241,6 +246,7 @@ agentforge generate domain-packs/hybrid-scoring-demo/domain-pack.yaml --force
 agentforge init-blueprint my-app --optional-module agent_runtime
 agentforge analyze-repo path/to/local/repo --format md
 agentforge plan-extension path/to/local/repo --format md
+agentforge prepare-extension path/to/local/repo --output agentforge-output/repo-extension
 ```
 
 ## Running the Generated App
@@ -270,17 +276,17 @@ docker-compose up
 
 ## Validation Snapshot
 
-Latest local validation for v0.5:
+Latest local validation for v0.8.2:
 
 | Command | Result |
 | --- | --- |
-| `python -m pytest tests/generator/ -v --basetemp=.tmp/pytest-generator-v05` | 29 passed |
+| `python -m pytest tests/generator/ -v` | see task validation output |
 | `make validate` | passed |
 | Generated backend tests | 72 passed |
 | Generated frontend build | passed |
 | Generated frontend lint | passed |
 
-Playwright was not rerun for v0.5 because the generated app flows were not changed. Existing Playwright coverage remains in the generated frontend and can be run with:
+Playwright was not rerun for v0.8.2 because generated runtime/template flows were not changed. Existing Playwright coverage remains in the generated frontend and can be run with:
 
 ```bash
 make run-e2e
@@ -293,7 +299,7 @@ AgentForge is still early and deliberately constrained.
 Not built yet:
 
 - Live LLM provider integration.
-- Repository analysis or repository conversion.
+- Repository conversion or invasive runtime patch application.
 - Autonomous code modification.
 - Deployment planning or production mutation.
 - Real Telegram/email/Slack notification delivery.
@@ -307,7 +313,7 @@ Current limitations:
 - The only full Application Template is `fastapi-react`.
 - Some modules are represented as planned/future gaps.
 - Token substitution is still simple string replacement.
-- The v0.5 builder mirrors a small schema subset in browser code for live YAML preview; the generator schema and `agentforge plan` remain authoritative.
+- The builder mirrors a small schema subset in browser code for live YAML preview; the generator schema and CLI planner remain authoritative.
 - `examples/hybrid-scoring-demo/` is a committed generated snapshot for convenience.
 
 ## Terminology
@@ -335,7 +341,8 @@ AgentForge/
       analyzer.py                Analysis-only local Repo Analyzer
       blueprints.py              Starter blueprint helpers
       extension_planner.py       Planning-only repo extension planner
-      cli.py                     agentforge plan/generate/init-blueprint/analyze-repo/plan-extension
+      patch_bundle.py            Safe bundle and approved low-risk apply logic
+      cli.py                     agentforge plan/generate/init-blueprint/analyze-repo/plan-extension/prepare-extension
       generator.py               Copy and substitution logic
       modules.py                 Archetype to module selection
       pack.py                    Pydantic App Blueprint model
@@ -374,6 +381,8 @@ The generator skips local build/runtime directories such as `__pycache__`, `node
 | v0.7 | Analysis-only Repo Analyzer with local stack detection, AgentForge module compatibility, archetype guesses, advisory migration plans, JSON/text/Markdown reports, and draft Blueprint seed output |
 | v0.7.1 | Builder UX clarity pass: product front door, two starting paths, new-app flow polish, existing-repo analyzer guidance/pasted JSON preview, generation preview, and advanced Blueprint Source framing |
 | v0.8 | Planning-only Repo Extension Planner with repo/report inputs, module selection, file impact, migration phases, risks, patch-plan previews, Markdown/text/JSON reports, and no target repo modifications |
+| v0.8.1 | Safe patch bundle generation with manifest, plan, file impact, migration phases, validation checklist, proposed files, and safety notes |
+| v0.8.2 | Explicit approved apply mode for low-risk docs/blueprint/checklist files only, with dirty-repo and overwrite refusal by default |
 
 ## Further Reading
 
@@ -383,4 +392,5 @@ The generator skips local build/runtime directories such as `__pycache__`, `node
 - [Roadmap](docs/AGENTFORGE_ROADMAP.md)
 - [Repo Analyzer](docs/REPO_ANALYZER.md)
 - [Repo Extension Planner](docs/REPO_EXTENSION_PLANNER.md)
+- [Safe Patch Application](docs/SAFE_PATCH_APPLICATION.md)
 - [Blueprint Builder README](builder/README.md)

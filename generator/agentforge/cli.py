@@ -7,6 +7,7 @@ Usage:
   agentforge init-blueprint <name> [--output <path>]
   agentforge analyze-repo <path> [--format text|md|json]
   agentforge plan-extension <path-or-report> [--format text|md|json]
+  agentforge prepare-extension <path-or-report> [--output <dir>] [--apply]
   agentforge serve-builder [--host <host>] [--port <port>]
 """
 import argparse
@@ -20,6 +21,7 @@ from agentforge.extension_planner import ExtensionPlanOptions, plan_extension, r
 from agentforge.generator import generate
 from agentforge.modules import select_modules
 from agentforge.pack import load_pack
+from agentforge.patch_bundle import PrepareExtensionOptions, prepare_extension, render_prepare_result
 from agentforge.planner.scripted import ScriptedPlanner
 from agentforge.planner.server import serve_builder
 
@@ -279,6 +281,41 @@ def cmd_plan_extension(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_prepare_extension(args: argparse.Namespace) -> int:
+    target = Path(args.target)
+    if not target.exists():
+        label = "analysis report" if args.from_report else "repository path"
+        print(f"error: {label} not found: {target}", file=sys.stderr)
+        return 1
+    report_format = "json" if args.json else args.format
+    modules = tuple(args.modules.split(",")) if args.modules else ()
+    if args.apply and not args.yes:
+        print("Planned low-risk apply requires explicit approval. Re-run with --apply --yes to write files.", file=sys.stderr)
+    try:
+        result = prepare_extension(
+            target,
+            PrepareExtensionOptions(
+                modules=modules,
+                max_files=args.max_files,
+                include_tests=args.include_tests,
+                from_report=args.from_report,
+                output=args.output,
+                format=report_format,
+                dry_run=args.dry_run,
+                apply=args.apply,
+                yes=args.yes,
+                allow_dirty=args.allow_dirty,
+                overwrite=args.overwrite,
+            ),
+        )
+        output = render_prepare_result(result, report_format)
+    except Exception as exc:
+        print(f"error: prepare extension failed - {exc}", file=sys.stderr)
+        return 1
+    print(output, end="")
+    return 1 if result.get("refused_operations") else 0
+
+
 def cmd_serve_builder(args: argparse.Namespace) -> int:
     try:
         serve_builder(host=args.host, port=args.port)
@@ -364,6 +401,21 @@ def main() -> None:
     extension.add_argument("--max-files", type=int, default=1000, help="Maximum files to scan when target is a repo")
     extension.add_argument("--include-tests", action="store_true", help="Include deep test directory content sniffing when analyzing a repo")
 
+    prepare = sub.add_parser("prepare-extension", help="Create a safe extension patch bundle or explicitly apply low-risk docs")
+    prepare.add_argument("target", help="Local repository path, or analyzer JSON report when --from-report is used")
+    prepare.add_argument("--from-report", action="store_true", help="Read target as agentforge analyze-repo JSON output")
+    prepare.add_argument("--modules", help="Comma-separated desired modules to plan")
+    prepare.add_argument("--output", "-o", help="Patch bundle output directory (default: agentforge-output/<repo>-extension)")
+    prepare.add_argument("--format", choices=["text", "md", "json"], default="text", help="Report format")
+    prepare.add_argument("--json", action="store_true", help="Shortcut for --format json")
+    prepare.add_argument("--dry-run", action="store_true", help="Show planned writes without writing bundle or target files")
+    prepare.add_argument("--apply", action="store_true", help="Explicitly apply approved low-risk docs/blueprint/checklist files to the target repo")
+    prepare.add_argument("--yes", action="store_true", help="Confirm --apply without an interactive prompt")
+    prepare.add_argument("--allow-dirty", action="store_true", help="Allow apply when git status --short is dirty")
+    prepare.add_argument("--overwrite", action="store_true", help="Allow apply to overwrite existing approved low-risk files")
+    prepare.add_argument("--max-files", type=int, default=1000, help="Maximum files to scan when target is a repo")
+    prepare.add_argument("--include-tests", action="store_true", help="Include deep test directory content sniffing when analyzing a repo")
+
     serve = sub.add_parser("serve-builder", help="Serve the static builder with scripted planner endpoints")
     serve.add_argument("--host", default="127.0.0.1", help="Host to bind")
     serve.add_argument("--port", type=int, default=8765, help="Port to bind")
@@ -382,6 +434,8 @@ def main() -> None:
         sys.exit(cmd_analyze_repo(args))
     elif args.command == "plan-extension":
         sys.exit(cmd_plan_extension(args))
+    elif args.command == "prepare-extension":
+        sys.exit(cmd_prepare_extension(args))
     elif args.command == "serve-builder":
         sys.exit(cmd_serve_builder(args))
 
