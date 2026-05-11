@@ -2,19 +2,20 @@
 
 AgentForge is an opinionated generator for local-first full-stack AI/product apps. It reads a structured **App Blueprint** (`domain-pack.yaml`) and produces a runnable FastAPI + React project with provider adapters, deterministic scoring, notification triage, an optional scripted Agent Runtime Module, a persisted Dashboard/Workspace Module, tests, and CI-ready project structure.
 
-The project is intentionally narrow right now. It proves reusable application modules and a simple local Blueprint Builder before adding live LLM integrations, deployment automation, repository conversion, or AI-assisted app design. The generated demo runs locally and deterministically. No paid API or live LLM key is required.
+The project is intentionally narrow right now. It proves reusable application modules, a simple local Blueprint Builder, and the first scripted App Blueprint planner contract before adding live LLM integrations, deployment automation, repository conversion, or AI-assisted builder flows. The generated demo runs locally and deterministically. No paid API or live LLM key is required.
 
 ```text
 App Blueprint YAML + Application Template = Generated App
 ```
 
-**Current version:** v0.5 adds a static local **Blueprint Builder** for drafting App Blueprints and previewing the CLI commands to run next. Generation remains CLI-first through `agentforge plan` and `agentforge generate`.
+**Current version:** v0.6 Phase 1 adds a Python planner contract and deterministic scripted planner for drafting schema-valid App Blueprints. Generation remains CLI-first through `agentforge plan` and `agentforge generate`.
 
 ## Table of Contents
 
 - [What You Can Do Today](#what-you-can-do-today)
 - [Quickstart](#quickstart)
 - [Blueprint Builder](#blueprint-builder)
+- [Scripted Planner](#scripted-planner)
 - [Generated Demo Flow](#generated-demo-flow)
 - [What Gets Generated](#what-gets-generated)
 - [How AgentForge Works](#how-agentforge-works)
@@ -46,7 +47,7 @@ The demo proves these reusable pieces:
 - Persisted generic workspace widgets.
 - Generator tests, backend tests, frontend build/lint, and Playwright E2E coverage.
 
-The v0.5 builder also helps you draft new App Blueprint YAML without hand-writing every field from scratch.
+The v0.5 builder helps you draft new App Blueprint YAML without hand-writing every field from scratch. v0.6 Phase 1 adds the generator-side scripted planner foundation that future builder assistance will use.
 
 ## Quickstart
 
@@ -96,6 +97,20 @@ You can also create a starter blueprint from the CLI:
 agentforge init-blueprint my-app --optional-module agent_runtime --optional-module workspace
 agentforge plan domain-packs/my-app/domain-pack.yaml
 ```
+
+## Scripted Planner
+
+v0.6 Phase 1 adds a Python planner contract under `generator/agentforge/planner/`. It is intentionally not wired into the builder UI or CLI yet.
+
+The scripted planner can:
+
+- return a structured `PlannerResult`;
+- draft deterministic App Blueprints for supported archetypes;
+- ask clarifying questions for vague ideas;
+- refine an existing blueprint for bounded requests such as adding `agent_runtime` or `workspace`;
+- validate every draft through the generator schema before returning `status="draft"`.
+
+It does not call live LLMs, make network requests, write files, modify repositories, run generation, or replace `agentforge plan`.
 
 ## Generated Demo Flow
 
@@ -298,6 +313,7 @@ The generator skips local build/runtime directories such as `__pycache__`, `node
 | v0.4 | Dashboard/Workspace Module with persisted generic widgets, compatibility validation, agent pinning, remove/reorder APIs, and workspace UI |
 | v0.4.1 | Workspace UI polish with clearer states, readable widget cards/renderers, and clearer agent pin success/failure activity |
 | v0.5 | Simple static Blueprint Builder UI plus `agentforge init-blueprint`; generation remains CLI-first |
+| v0.6 Phase 1 | Python planner contract plus deterministic scripted App Blueprint drafts/refinements; no UI, CLI, live LLM, network, template, or example changes |
 
 ## Further Reading
 

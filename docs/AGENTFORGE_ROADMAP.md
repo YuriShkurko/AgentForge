@@ -143,6 +143,8 @@ Use v0.5's stable App Blueprint draft flow as the foundation for guided AI assis
 
 The v0.6 direction is to help users refine App Blueprint intent, module choices, validation gaps, and test expectations while keeping `agentforge plan` and `agentforge generate` authoritative. Repo conversion, deployment automation, and autonomous code modification remain separate future decisions rather than implicit v0.6 scope.
 
+Phase 1 in progress: add the Python planner contract and scripted backend first, without UI, CLI, live LLM, network, template, or example changes.
+
 ## Implementation Milestones
 
 ### Milestone 1: Spec Stabilization
