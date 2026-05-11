@@ -8,7 +8,7 @@ The project is intentionally narrow right now. It proves reusable application mo
 App Blueprint YAML + Application Template = Generated App
 ```
 
-**Current version:** v0.7 adds an analysis-only Repo Analyzer. `agentforge analyze-repo <path>` inspects a local repository and reports stack signals, AgentForge module compatibility, migration risks, an advisory migration plan, and a draft App Blueprint seed without modifying the analyzed repository.
+**Current version:** v0.7.1 makes the Blueprint Builder the product front door. It now presents two starting paths—describe a new app idea or analyze an existing repository—while keeping generation CLI-first and repo analysis strictly read-only.
 
 ## Table of Contents
 
@@ -48,7 +48,7 @@ The demo proves these reusable pieces:
 - Persisted generic workspace widgets.
 - Generator tests, backend tests, frontend build/lint, and Playwright E2E coverage.
 
-The v0.6 builder can draft, clarify, refine, and validate App Blueprints through the local scripted planner, while still supporting the static v0.5 manual-editing path.
+The v0.7.1 builder is the recommended starting point. It explains what AgentForge can generate, offers a new-app idea flow, shows existing-repo analyzer guidance, previews generated modules/gaps, and keeps Blueprint YAML available as the advanced source view.
 
 ## Quickstart
 
@@ -69,7 +69,7 @@ examples/hybrid-scoring-demo/
 
 ## Blueprint Builder
 
-The Blueprint Builder is a static local developer tool. It lives in [builder/](builder/).
+The Blueprint Builder is the local product front door for AgentForge. It lives in [builder/](builder/) and supports two starting paths: describe a new app idea, or analyze an existing repository with the v0.7 Repo Analyzer and paste the JSON report for review.
 
 Open it directly in your browser for static/manual mode:
 
@@ -87,12 +87,16 @@ agentforge serve-builder
 
 Use the builder to:
 
+- understand what AgentForge generates before reading the full repo;
+- start from an app idea with example prompts and scripted drafting;
+- start from an existing repo with safe `agentforge analyze-repo` guidance and pasted report preview;
 - enter app metadata, display name, description, and target persona;
 - choose an app archetype;
 - select supported Feature Modules;
 - see future/planned modules as disabled options;
 - configure deterministic defaults such as `preview_only`, `scripted`, fixture provider mode, action labels, and workspace mode;
-- preview valid App Blueprint YAML;
+- preview generated app pieces, supported modules, planned gaps, and next CLI commands;
+- preview valid App Blueprint YAML as the advanced Blueprint Source;
 - copy or download `domain-pack.yaml`;
 - see the `agentforge plan <file>` and `agentforge generate <file>` commands to run next;
 - draft a blueprint from a short idea when the local planner server is running;
@@ -350,6 +354,7 @@ The generator skips local build/runtime directories such as `__pycache__`, `node
 | v0.5 | Simple static Blueprint Builder UI plus `agentforge init-blueprint`; generation remains CLI-first |
 | v0.6 | Scripted AI-assisted Blueprint Builder with idea drafting, clarification, refinement, local schema validation, `serve-builder`, and `draft-blueprint`; generation remains CLI-first |
 | v0.7 | Analysis-only Repo Analyzer with local stack detection, AgentForge module compatibility, archetype guesses, advisory migration plans, JSON/text/Markdown reports, and draft Blueprint seed output |
+| v0.7.1 | Builder UX clarity pass: product front door, two starting paths, new-app flow polish, existing-repo analyzer guidance/pasted JSON preview, generation preview, and advanced Blueprint Source framing |
 
 ## Further Reading
 

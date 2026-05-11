@@ -2,7 +2,7 @@
 
 `agentforge analyze-repo` is the v0.7 analysis-only local repository analyzer.
 
-It inspects a local project directory and prints an advisory AgentForge compatibility and migration report. It does **not** modify the analyzed repository.
+It inspects a local project directory and prints an advisory AgentForge compatibility and migration report. It does **not** modify the analyzed repository. In v0.7.1, the Blueprint Builder can also display pasted analyzer JSON output so the existing-repo path is visible from the product front door.
 
 ## Commands
 
@@ -84,3 +84,15 @@ The analyzer is conservative. A `partial` or `missing` status is not a failure; 
 The migration plan is advisory only. Treat it as a review checklist before creating or editing an App Blueprint. It generally starts with Blueprint alignment and deterministic tests, then moves toward provider/adapter boundaries, pipeline/scoring, agent runtime, workspace/dashboard, notification/triage, and CI/local validation as relevant.
 
 The draft Blueprint seed is not written to the analyzed repo and is not guaranteed to be a complete `domain-pack.yaml`. Review it, then use `agentforge init-blueprint`, the Blueprint Builder, or manual editing to create a real App Blueprint.
+
+## Builder handoff
+
+For existing repositories, the intended v0.7.1 flow is:
+
+1. Run `agentforge analyze-repo ../my-project --json --output report.json`.
+2. Open the Blueprint Builder.
+3. Paste the JSON report into **Start from an existing repo**.
+4. Review detected stack, archetype, module compatibility, migration phases, and the draft Blueprint seed.
+5. Create/review a real App Blueprint, then run `agentforge plan` and `agentforge generate` from the CLI.
+
+The browser builder does not perform filesystem analysis itself; it only displays report text you explicitly paste.

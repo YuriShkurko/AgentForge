@@ -129,9 +129,102 @@ textarea {
   resize: vertical;
 }
 
-.planner-panel {
+.hero-panel,
+.planner-panel,
+.repo-panel,
+.generation-panel {
   display: grid;
   gap: 14px;
+}
+
+.path-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.path-card {
+  display: grid;
+  gap: 8px;
+  min-height: 128px;
+  border: 1px solid #c7d7f7;
+  border-radius: 12px;
+  padding: 16px;
+  color: inherit;
+  background: linear-gradient(180deg, #f7faff, #ffffff);
+  text-decoration: none;
+}
+
+.path-card strong {
+  font-size: 1.02rem;
+}
+
+.path-card small,
+.helper-copy {
+  color: #68707d;
+  font-size: 0.86rem;
+  font-weight: 600;
+  line-height: 1.45;
+}
+
+.path-kicker {
+  width: max-content;
+  border-radius: 999px;
+  padding: 4px 8px;
+  background: #eaf1ff;
+  color: #1f5dc8;
+  font-size: 0.72rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.idea-label textarea {
+  min-height: 118px;
+  font-size: 1rem;
+}
+
+.example-row,
+.chip-row,
+.command-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.example-chip,
+.chip,
+.command-grid code {
+  border: 1px solid #d9dee7;
+  border-radius: 999px;
+  padding: 7px 10px;
+  background: #f7f9fc;
+  color: #273142;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.example-chip {
+  cursor: pointer;
+}
+
+.chip.partial {
+  border-color: #f1cc82;
+  background: #fff7e6;
+}
+
+.chip.missing {
+  border-color: #f2b8b5;
+  background: #fff1f0;
+}
+
+.chip.compatible {
+  border-color: #b7dbc8;
+  background: #eefaf3;
+}
+
+.command-grid code {
+  border-radius: 8px;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
 }
 
 .planner-output {
@@ -267,6 +360,48 @@ pre {
   max-height: 160px;
 }
 
+.generation-preview {
+  display: grid;
+  gap: 12px;
+}
+
+.preview-block {
+  display: grid;
+  gap: 8px;
+  border: 1px solid #e3e7ef;
+  border-radius: 8px;
+  padding: 12px;
+  background: #fbfcfe;
+}
+
+.preview-block ul {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+  padding-left: 18px;
+  color: #3b414c;
+  font-size: 0.86rem;
+  line-height: 1.45;
+}
+
+.mini-pre {
+  max-height: 220px;
+  font-size: 0.78rem;
+}
+
+.subtle {
+  color: #697386;
+  font-size: 0.74rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.error-text {
+  color: #9b1c1c;
+  font-size: 0.86rem;
+  font-weight: 700;
+}
+
 .actions {
   display: flex;
   gap: 10px;
@@ -321,7 +456,8 @@ button + button {
   .form-grid,
   .config-grid,
   .result-grid,
-  .module-list {
+  .module-list,
+  .path-grid {
     grid-template-columns: 1fr;
   }
 

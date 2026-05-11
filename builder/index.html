@@ -11,24 +11,44 @@
       <section class="builder">
         <header class="topbar">
           <div>
-            <p class="eyebrow">AgentForge dev tool</p>
-            <h1>Blueprint Builder</h1>
+            <p class="eyebrow">AgentForge product front door</p>
+            <h1>Start an AgentForge app</h1>
           </div>
           <div class="status-pill" id="status-pill">Valid draft</div>
         </header>
 
-        <section class="panel planner-panel">
+        <section class="panel hero-panel">
           <div class="section-head">
-            <h2>Planner</h2>
+            <h2>What is AgentForge?</h2>
+            <p>AgentForge turns a reviewed App Blueprint into a local-first FastAPI + React product shell with deterministic providers, scoring, optional agent runtime, workspace UI, tests, and CLI validation.</p>
+          </div>
+          <div class="path-grid">
+            <a class="path-card" href="#new-app-flow">
+              <span class="path-kicker">Path 1</span>
+              <strong>Start from an app idea</strong>
+              <small>Describe the product, draft a Blueprint, review modules, then run plan/generate.</small>
+            </a>
+            <a class="path-card" href="#existing-repo-flow">
+              <span class="path-kicker">Path 2</span>
+              <strong>Start from an existing repo</strong>
+              <small>Run the v0.7 analysis-only Repo Analyzer, paste JSON output, and turn findings into a reviewed Blueprint.</small>
+            </a>
+          </div>
+        </section>
+
+        <section id="new-app-flow" class="panel planner-panel">
+          <div class="section-head">
+            <h2>Start from an app idea</h2>
             <p id="planner-status">Static mode. Start `agentforge serve-builder` to enable scripted drafting.</p>
           </div>
-          <label>
-            App idea
+          <label class="idea-label">
+            Describe the app you want to build
             <textarea id="planner-idea">Score incoming support tickets and help an operator triage the most urgent requests.</textarea>
           </label>
+          <div id="idea-examples" class="example-row" aria-label="Example app ideas"></div>
           <div class="actions">
-            <button id="draft-blueprint" type="button">Draft Blueprint</button>
-            <button id="clarify-idea" type="button">Clarify</button>
+            <button id="draft-blueprint" type="button">Draft from idea</button>
+            <button id="clarify-idea" type="button">Ask clarifying questions</button>
           </div>
           <div id="clarification-panel" class="planner-output hidden">
             <h3>Questions</h3>
@@ -40,6 +60,7 @@
           <div id="draft-panel" class="planner-output hidden">
             <h3>Draft Review</h3>
             <p id="draft-summary"></p>
+            <div id="draft-chips" class="chip-row"></div>
             <div class="result-grid">
               <div>
                 <h4>Assumptions</h4>
@@ -52,19 +73,37 @@
             </div>
           </div>
           <label>
-            Refinement
+            Refine this blueprint
             <textarea id="planner-refine" placeholder="Add workspace widgets, add agent runtime, add notification triage"></textarea>
           </label>
           <div class="actions">
-            <button id="refine-blueprint" type="button">Refine Draft</button>
-            <button id="validate-blueprint" type="button">Validate Draft</button>
+            <button id="refine-blueprint" type="button">Refine blueprint</button>
+            <button id="validate-blueprint" type="button">Validate blueprint</button>
           </div>
+        </section>
+
+        <section id="existing-repo-flow" class="panel repo-panel">
+          <div class="section-head">
+            <h2>Start from an existing repo</h2>
+            <p>The v0.7 Repo Analyzer is analysis-only: it inspects local files, reports compatibility and risks, and never modifies the analyzed repository.</p>
+          </div>
+          <div class="command-grid" id="analyzer-commands"></div>
+          <p class="helper-copy">Reports include detected stack, archetype guess, AgentForge module compatibility, migration phases, and a draft Blueprint seed for review.</p>
+          <label>
+            Paste analyzer JSON report
+            <textarea id="analyzer-report" placeholder="Run: agentforge analyze-repo ../my-project --json\nThen paste the JSON here."></textarea>
+          </label>
+          <div class="actions">
+            <button id="parse-analyzer-report" type="button">Preview analyzer report</button>
+            <button id="copy-blueprint-seed" type="button">Copy blueprint seed</button>
+          </div>
+          <div id="analyzer-output" class="planner-output hidden"></div>
         </section>
 
         <section class="panel metadata-panel">
           <div class="section-head">
-            <h2>App Metadata</h2>
-            <p>Define the public identity and target user for this App Blueprint.</p>
+            <h2>Blueprint details</h2>
+            <p>Review the product identity and target user after drafting from an idea or repo analysis.</p>
           </div>
           <div class="form-grid">
             <label>
@@ -147,9 +186,17 @@
       </section>
 
       <aside class="preview">
+        <section class="panel generation-panel">
+          <div class="section-head">
+            <h2>What will be generated</h2>
+            <p>Preview the tangible app pieces, supported modules, planned gaps, and next CLI commands.</p>
+          </div>
+          <div id="generation-preview" class="generation-preview"></div>
+        </section>
+
         <section class="panel preview-panel">
           <div class="section-head">
-            <h2>Blueprint YAML</h2>
+            <h2>Blueprint Source <span class="subtle">Advanced</span></h2>
             <p id="validation-summary">Ready for `agentforge plan`.</p>
           </div>
           <pre id="yaml-preview" tabindex="0"></pre>

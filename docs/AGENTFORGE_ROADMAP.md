@@ -172,6 +172,22 @@ Implemented v0.7 scope:
 
 Out of scope for v0.7: repo conversion, source rewriting, automatic patch generation, deployment planning, autonomous code execution, live LLM/API analysis, GitHub API usage, and secret content extraction. Repo extension or patch planning remains a future v0.8+ decision.
 
+## v0.7.1 Builder UX Clarity and Product Front Door
+
+v0.7.1 makes the local Blueprint Builder the clearest first stop for AgentForge.
+
+Implemented v0.7.1 scope:
+
+- Builder landing/front-door panel that explains what AgentForge generates.
+- Two explicit starting paths: start from a new app idea, or start from an existing repo.
+- New-app flow polish with example ideas, clearer action labels, stronger draft review, and module/archetype chips.
+- Existing-repo flow guidance for `agentforge analyze-repo`, including analysis-only safety copy and command examples.
+- Pasted analyzer JSON preview for detected stack, archetype, module compatibility, migration phases, and draft Blueprint seed.
+- Generation preview panel for app pieces, supported modules, planned gaps, and next CLI commands.
+- YAML reframed as advanced Blueprint Source while preserving copy/download and validation behavior.
+
+Out of scope for v0.7.1: browser filesystem access, repo modification, patch generation, repo conversion, deployment planning, live LLM/API dependencies, autonomous code execution, real provider integrations, and generated runtime/template changes. Repo extension/patch planning remains future v0.8+ scope.
+
 ## Implementation Milestones
 
 ### Milestone 1: Spec Stabilization

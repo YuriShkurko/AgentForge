@@ -1,4 +1,4 @@
-import { archetypes, modules, createBlueprint, createBlueprintYaml, sanitizeName, validateBuilderState } from "./blueprint-builder.mjs";
+import { analyzerCommandExamples, archetypes, exampleIdeas, getGenerationPreview, modules, parseAnalyzerReport, createBlueprint, createBlueprintYaml, sanitizeName, validateBuilderState } from "./blueprint-builder.mjs";
 
 const form = {
   name: document.querySelector("#app-name"),
@@ -37,6 +37,14 @@ const plannerWarnings = document.querySelector("#planner-warnings");
 const plannerRefine = document.querySelector("#planner-refine");
 const refineButton = document.querySelector("#refine-blueprint");
 const validateButton = document.querySelector("#validate-blueprint");
+const ideaExamples = document.querySelector("#idea-examples");
+const draftChips = document.querySelector("#draft-chips");
+const analyzerCommands = document.querySelector("#analyzer-commands");
+const analyzerReport = document.querySelector("#analyzer-report");
+const parseAnalyzerButton = document.querySelector("#parse-analyzer-report");
+const copyBlueprintSeedButton = document.querySelector("#copy-blueprint-seed");
+const analyzerOutput = document.querySelector("#analyzer-output");
+const generationPreview = document.querySelector("#generation-preview");
 
 const plannerApi = window.location.protocol.startsWith("http") ? `${window.location.origin}/api/planner` : "http://127.0.0.1:8765/api/planner";
 let plannerAvailable = false;
@@ -44,6 +52,7 @@ let plannerBlueprint = null;
 let plannerYaml = "";
 let plannerCommands = [];
 let activeQuestions = [];
+let parsedBlueprintSeed = "";
 
 function state() {
   return {
@@ -67,6 +76,15 @@ function state() {
 function renderArchetypes() {
   form.archetype.innerHTML = archetypes
     .map((item) => `<option value="${item.id}" ${item.status === "planned" ? "disabled" : ""}>${item.label}${item.status === "planned" ? " (planned)" : ""}</option>`)
+    .join("");
+}
+
+function renderEntryHelpers() {
+  ideaExamples.innerHTML = exampleIdeas
+    .map((idea) => `<button class="example-chip" type="button" data-idea="${escapeHtml(idea)}">${escapeHtml(idea)}</button>`)
+    .join("");
+  analyzerCommands.innerHTML = analyzerCommandExamples
+    .map((command) => `<code>${escapeHtml(command)}</code>`)
     .join("");
 }
 
@@ -95,12 +113,35 @@ function updatePreview() {
   const current = state();
   const yaml = createBlueprintYaml(current);
   const issues = validateBuilderState(current);
-  const filename = `domain-packs/${sanitizeName(current.name)}/domain-pack.yaml`;
+  const preview = getGenerationPreview(current);
   yamlPreview.textContent = plannerYaml || yaml;
-  planPreview.textContent = plannerCommands.length ? plannerCommands.join("\n") : `agentforge plan ${filename}\nagentforge generate ${filename}`;
+  planPreview.textContent = plannerCommands.length ? plannerCommands.join("\n") : preview.commands.join("\n");
   statusPill.textContent = issues.length ? `${issues.length} issue${issues.length === 1 ? "" : "s"}` : "Valid draft";
   statusPill.classList.toggle("warning", issues.length > 0);
-  validationSummary.textContent = issues.length ? issues.join(" ") : "Ready for `agentforge plan`.";
+  validationSummary.textContent = issues.length ? issues.join(" ") : "Blueprint source is ready for `agentforge plan`.";
+  renderGenerationPreview(preview);
+}
+
+function renderGenerationPreview(preview) {
+  generationPreview.innerHTML = `
+    <div class="preview-block">
+      <h3>${escapeHtml(preview.archetype)}</h3>
+      <p class="helper-copy">Generated app pieces</p>
+      <ul>${preview.outputs.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>
+    </div>
+    <div class="preview-block">
+      <h3>Supported modules</h3>
+      <div class="chip-row">${preview.supportedModules.map((item) => `<span class="chip">${escapeHtml(item)}</span>`).join("")}</div>
+    </div>
+    <div class="preview-block">
+      <h3>Gaps / planned</h3>
+      <ul>${(preview.gaps.length ? preview.gaps : ["No planned/unsupported modules selected."]).map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>
+    </div>
+    <div class="preview-block">
+      <h3>Next commands</h3>
+      <pre class="mini-pre">${escapeHtml((plannerCommands.length ? plannerCommands : preview.commands).join("\n"))}</pre>
+    </div>
+  `;
 }
 
 async function plannerRequest(action, payload) {
@@ -233,8 +274,10 @@ function collectAnswers() {
 }
 
 function renderDraftResult(result) {
-  const modules = result.suggested_modules?.length ? result.suggested_modules.join(", ") : "No modules suggested.";
-  draftSummary.textContent = `${result.status}: ${modules}`;
+  const modules = result.suggested_modules || [];
+  const archetype = result.blueprint?.app_archetype || form.archetype.value;
+  draftSummary.textContent = `${result.status}: review the recommended archetype, modules, assumptions, and Blueprint Source before running the CLI.`;
+  draftChips.innerHTML = [`Archetype: ${archetype}`, ...modules].map((item) => `<span class="chip">${escapeHtml(item)}</span>`).join("");
   renderList(plannerAssumptions, result.assumptions || []);
   renderList(plannerWarnings, result.warnings || []);
 }
@@ -242,6 +285,48 @@ function renderDraftResult(result) {
 function renderList(target, items) {
   const values = items.length ? items : ["None."];
   target.innerHTML = values.map((item) => `<li>${escapeHtml(item)}</li>`).join("");
+}
+
+function previewAnalyzerReport() {
+  const parsed = parseAnalyzerReport(analyzerReport.value);
+  analyzerOutput.classList.remove("hidden");
+  if (!parsed.ok) {
+    parsedBlueprintSeed = "";
+    analyzerOutput.innerHTML = `<h3>Analyzer report</h3><p class="error-text">${escapeHtml(parsed.error)}</p>`;
+    return;
+  }
+  parsedBlueprintSeed = parsed.blueprintSeed || "";
+  const stackItems = Object.entries(parsed.detectedStack)
+    .map(([group, items]) => `<li><strong>${escapeHtml(group)}</strong>: ${escapeHtml((items || []).slice(0, 4).join(", ") || "none detected")}</li>`)
+    .join("");
+  const modules = parsed.moduleCompatibility
+    .map((item) => `<span class="chip ${escapeHtml(item.status || "unknown")}">${escapeHtml(item.module)}: ${escapeHtml(item.status || "unknown")}</span>`)
+    .join("");
+  const phases = parsed.migrationPlan
+    .slice(0, 6)
+    .map((phase) => `<li>${escapeHtml(phase.phase || "Phase")}: ${escapeHtml(phase.title || phase.step || "Review migration step")}</li>`)
+    .join("");
+  analyzerOutput.innerHTML = `
+    <h3>${escapeHtml(parsed.repoName)} analysis</h3>
+    <p class="helper-copy">Likely archetype: <strong>${escapeHtml(parsed.archetype)}</strong> (${escapeHtml(parsed.confidence)} confidence)</p>
+    <div class="result-grid">
+      <div><h4>Detected stack</h4><ul>${stackItems}</ul></div>
+      <div><h4>Migration phases</h4><ul>${phases || "<li>No phases reported.</li>"}</ul></div>
+    </div>
+    <h4>Module compatibility</h4>
+    <div class="chip-row">${modules || '<span class="chip">No module compatibility reported</span>'}</div>
+    ${parsedBlueprintSeed ? '<h4>Blueprint seed</h4><pre class="mini-pre">' + escapeHtml(parsedBlueprintSeed) + '</pre>' : '<p class="helper-copy">No blueprint seed was included.</p>'}
+  `;
+}
+
+async function copyBlueprintSeed() {
+  if (!parsedBlueprintSeed) previewAnalyzerReport();
+  if (!parsedBlueprintSeed) return;
+  await navigator.clipboard.writeText(parsedBlueprintSeed);
+  copyBlueprintSeedButton.textContent = "Copied seed";
+  window.setTimeout(() => {
+    copyBlueprintSeedButton.textContent = "Copy blueprint seed";
+  }, 1200);
 }
 
 function applyBlueprintToForm(blueprint) {
@@ -303,6 +388,7 @@ function downloadYaml() {
 }
 
 renderArchetypes();
+renderEntryHelpers();
 renderModules();
 updatePreview();
 checkPlannerStatus();
@@ -328,3 +414,11 @@ clarifyButton.addEventListener("click", clarifyIdea);
 submitAnswersButton.addEventListener("click", draftBlueprint);
 refineButton.addEventListener("click", refineBlueprint);
 validateButton.addEventListener("click", validateBlueprint);
+parseAnalyzerButton.addEventListener("click", previewAnalyzerReport);
+copyBlueprintSeedButton.addEventListener("click", copyBlueprintSeed);
+ideaExamples.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-idea]");
+  if (!button) return;
+  plannerIdea.value = button.dataset.idea;
+  plannerIdea.focus();
+});

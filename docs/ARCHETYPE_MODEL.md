@@ -166,6 +166,6 @@ As of v0.4, `workspace` is supported as a generic Dashboard/Workspace Module. It
 
 ## Blueprint Builder Mapping
 
-The v0.5 Blueprint Builder is a local/dev drafting tool for this same archetype model. It presents public labels such as Application Template, Feature Modules, Integration Adapters, and Test Harness, then emits the existing internal config fields such as `app_archetype`, `required_shell_modules`, `optional_shell_modules`, `agent_runtime`, `workspace`, and `tool_widget_compatibility`.
+The v0.7.1 Blueprint Builder is the local product front door for this same archetype model. It presents public labels such as Application Template, Feature Modules, Integration Adapters, and Test Harness, then emits the existing internal config fields such as `app_archetype`, `required_shell_modules`, `optional_shell_modules`, `agent_runtime`, `workspace`, and `tool_widget_compatibility`.
 
-The builder does not define a separate archetype schema. Its generated YAML must still load through `agentforge.pack.load_pack`, and `agentforge plan` remains the authoritative module support/gap check.
+The builder can display pasted Repo Analyzer JSON and show advisory archetype guesses, but it does not define a separate archetype schema. Its generated YAML must still load through `agentforge.pack.load_pack`, and `agentforge plan` remains the authoritative module support/gap check.

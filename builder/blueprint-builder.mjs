@@ -32,23 +32,90 @@ export const archetypes = [
 ];
 
 export const modules = [
-  { id: "provider_adapter", label: "Integration Adapters", supported: true },
-  { id: "pipeline", label: "Pipeline", supported: true },
-  { id: "scoring_explanation", label: "Scoring / Explanation", supported: true },
-  { id: "notification_action", label: "Notification Actions", supported: true },
-  { id: "triage_ui", label: "Triage UI", supported: true },
-  { id: "agent_runtime", label: "Agent Runtime", supported: true },
-  { id: "workspace", label: "Dashboard / Workspace", supported: true },
-  { id: "test", label: "Deterministic Test Harness", supported: true },
-  { id: "operations_ui", label: "Operations UI", supported: true },
-  { id: "persistence", label: "Persistence", supported: true },
-  { id: "observability_debug", label: "Local Validation / Debug", supported: false },
-  { id: "repo_analyzer", label: "Repo Analyzer", supported: false },
-  { id: "deploy_planner", label: "Deploy Planner", supported: false },
-  { id: "real_delivery_adapters", label: "Real Delivery Adapters", supported: false },
-  { id: "live_llm_provider", label: "Live LLM Provider", supported: false },
-  { id: "advanced_workspace_renderers", label: "Advanced Workspace Renderers", supported: false },
+  { id: "provider_adapter", label: "Integration Adapters", supported: true, generates: "Provider interfaces and normalization adapters" },
+  { id: "pipeline", label: "Pipeline", supported: true, generates: "Ingest, normalize, run history, and deterministic processing flow" },
+  { id: "scoring_explanation", label: "Scoring / Explanation", supported: true, generates: "Fit scores, labels, drivers, risks, and explanation DTOs" },
+  { id: "notification_action", label: "Notification Actions", supported: true, generates: "Preview-only notifications and append-only action history" },
+  { id: "triage_ui", label: "Triage UI", supported: true, generates: "Decision cards, action buttons, and triage history" },
+  { id: "agent_runtime", label: "Agent Runtime", supported: true, generates: "Scripted chat, tool registry, typed validation, and SSE streaming" },
+  { id: "workspace", label: "Dashboard / Workspace", supported: true, generates: "Persisted generic widgets and workspace panel" },
+  { id: "test", label: "Deterministic Test Harness", supported: true, generates: "Offline fixture tests with no live LLM/API dependency" },
+  { id: "operations_ui", label: "Operations UI", supported: true, generates: "React operations panels for runs and results" },
+  { id: "persistence", label: "Persistence", supported: true, generates: "SQLite-local/PostgreSQL-ready persistence models" },
+  { id: "observability_debug", label: "Local Validation / Debug", supported: false, generates: "Future richer observability/debug tooling" },
+  { id: "repo_analyzer", label: "Repo Analyzer", supported: false, generates: "Analysis-only CLI report; not generated into apps" },
+  { id: "deploy_planner", label: "Deploy Planner", supported: false, generates: "Future dry-run deployment planning" },
+  { id: "real_delivery_adapters", label: "Real Delivery Adapters", supported: false, generates: "Future external email/Slack/etc. delivery" },
+  { id: "live_llm_provider", label: "Live LLM Provider", supported: false, generates: "Future live provider configuration" },
+  { id: "advanced_workspace_renderers", label: "Advanced Workspace Renderers", supported: false, generates: "Future domain-specific dashboards" },
 ];
+
+export const analyzerCommandExamples = [
+  "agentforge analyze-repo ../my-project",
+  "agentforge analyze-repo ../my-project --format md",
+  "agentforge analyze-repo ../my-project --json --output report.json",
+];
+
+export const exampleIdeas = [
+  "Score incoming support tickets and help an operator triage urgent requests.",
+  "Build a dashboard where an agent summarizes scored records and pins useful widgets.",
+  "Ingest fixture leads, normalize them, score fit, and generate preview notifications.",
+];
+
+export function getGenerationPreview(state) {
+  const archetype = archetypes.find((item) => item.id === state.archetype) || archetypes[0];
+  const selected = unique([...(archetype.required || []), ...(state.selectedModules || [])]);
+  const byId = new Map(modules.map((module) => [module.id, module]));
+  const supportedModules = selected.filter((id) => byId.get(id)?.supported !== false);
+  const plannedModules = selected.filter((id) => byId.get(id)?.supported === false);
+  const outputs = [
+    "FastAPI backend",
+    "React + TypeScript frontend",
+    "SQLite-local/PostgreSQL-ready persistence",
+    "Generator, backend, frontend, and CI-ready validation commands",
+  ];
+  if (supportedModules.includes("provider_adapter")) outputs.push("Provider/adapter layer");
+  if (supportedModules.includes("pipeline")) outputs.push("Ingestion pipeline and run history");
+  if (supportedModules.includes("scoring_explanation")) outputs.push("Deterministic scoring and explanations");
+  if (supportedModules.includes("notification_action") || supportedModules.includes("triage_ui")) outputs.push("Preview notification and triage surfaces");
+  if (supportedModules.includes("agent_runtime") || supportedModules.includes("agent")) outputs.push("Scripted Agent Runtime with typed tools");
+  if (supportedModules.includes("workspace")) outputs.push("Dashboard/workspace widgets");
+  if (supportedModules.includes("test")) outputs.push("Deterministic test harness");
+  const name = sanitizeName(state.name);
+  const blueprintPath = `domain-packs/${name}/domain-pack.yaml`;
+  const gaps = plannedModules.map((id) => `${byId.get(id)?.label || id} is planned/unsupported in current generation.`);
+  if (archetype.status === "planned") gaps.push(`${archetype.label} is a future archetype.`);
+  return {
+    archetype: archetype.label,
+    supportedModules: supportedModules.map((id) => byId.get(id)?.label || id),
+    plannedModules: plannedModules.map((id) => byId.get(id)?.label || id),
+    outputs: unique(outputs),
+    gaps,
+    commands: [`agentforge plan ${blueprintPath}`, `agentforge generate ${blueprintPath}`],
+  };
+}
+
+export function parseAnalyzerReport(text) {
+  const raw = String(text || "").trim();
+  if (!raw) return { ok: false, error: "Paste JSON output from `agentforge analyze-repo --json` to preview it here." };
+  let data;
+  try {
+    data = JSON.parse(raw);
+  } catch {
+    return { ok: false, error: "Could not parse analyzer JSON. Use `agentforge analyze-repo <path> --json`." };
+  }
+  const archetype = data.archetype_candidates?.[0] || null;
+  return {
+    ok: true,
+    repoName: data.repo?.name || "Unknown repo",
+    detectedStack: data.detected_stack || {},
+    archetype: archetype?.archetype || "unknown/custom",
+    confidence: archetype?.confidence || "low",
+    moduleCompatibility: data.module_compatibility || [],
+    migrationPlan: data.migration_plan || [],
+    blueprintSeed: data.blueprint_seed || "",
+  };
+}
 
 export function sanitizeName(value) {
   const clean = String(value || "")
@@ -290,7 +357,7 @@ export function validateBuilderState(state) {
   if (!archetype) issues.push("Choose a known archetype.");
   if (archetype?.status === "planned") issues.push("This archetype is planned and will report generator gaps.");
   if (!String(state.name || "").trim()) issues.push("App name is required.");
-  if ((state.selectedModules || []).includes("live_llm_provider")) issues.push("Live LLM provider is not supported in v0.5.");
-  if ((state.selectedModules || []).includes("repo_analyzer")) issues.push("Repo analyzer is not part of v0.5.");
+  if ((state.selectedModules || []).includes("live_llm_provider")) issues.push("Live LLM provider is not supported in v0.7.1.");
+  if ((state.selectedModules || []).includes("repo_analyzer")) issues.push("Repo analyzer is an analysis-only CLI report, not a generated app module.");
   return issues;
 }

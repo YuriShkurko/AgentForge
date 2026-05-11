@@ -80,6 +80,57 @@ def test_init_blueprint_cli_writes_loadable_file_and_plan_passes(tmp_path, capsy
     assert "workspace" in plan["active_modules"]
 
 
+def test_builder_generation_preview_and_analyzer_report_helpers():
+    report = {
+        "repo": {"name": "demo"},
+        "detected_stack": {"backend": ["fastapi: app/main.py"], "frontend": ["react: package.json"]},
+        "archetype_candidates": [{"archetype": "hybrid_agent_pipeline", "confidence": "high"}],
+        "module_compatibility": [
+            {"module": "agent_runtime", "status": "partial"},
+            {"module": "pipeline", "status": "compatible"},
+        ],
+        "migration_plan": [{"phase": "Phase 1", "title": "Draft and review App Blueprint"}],
+        "blueprint_seed": "# DRAFT ONLY\nname: demo",
+    }
+    script = f"""
+      import {{ getGenerationPreview, parseAnalyzerReport, analyzerCommandExamples }} from './builder/blueprint-builder.mjs';
+      const preview = getGenerationPreview({{
+        name: 'UX App',
+        archetype: 'hybrid_agent_pipeline',
+        selectedModules: ['agent_runtime', 'workspace'],
+      }});
+      const parsed = parseAnalyzerReport({json.dumps(json.dumps(report))});
+      const invalid = parseAnalyzerReport('not json');
+      process.stdout.write(JSON.stringify({{ preview, parsed, invalid, analyzerCommandExamples }}));
+    """
+    result = subprocess.run(
+        ["node", "--input-type=module", "-e", script],
+        check=True,
+        capture_output=True,
+        text=True,
+        cwd=ROOT,
+    )
+    payload = json.loads(result.stdout)
+
+    assert "FastAPI backend" in payload["preview"]["outputs"]
+    assert "agentforge plan domain-packs/ux-app/domain-pack.yaml" in payload["preview"]["commands"]
+    assert payload["parsed"]["ok"] is True
+    assert payload["parsed"]["archetype"] == "hybrid_agent_pipeline"
+    assert payload["parsed"]["blueprintSeed"].startswith("# DRAFT ONLY")
+    assert payload["invalid"]["ok"] is False
+    assert "--json --output report.json" in payload["analyzerCommandExamples"][-1]
+
+
+def test_builder_html_front_door_copy_present():
+    html = (ROOT / "builder" / "index.html").read_text(encoding="utf-8")
+
+    assert "Start from an app idea" in html
+    assert "Start from an existing repo" in html
+    assert "Blueprint Source" in html
+    assert "What will be generated" in html
+    assert "agentforge analyze-repo ../my-project" in html or "analyzer-commands" in html
+
+
 def test_browser_builder_yaml_loads_with_generator_schema(tmp_path):
     script = """
       import { createBlueprintYaml } from "./builder/blueprint-builder.mjs";
