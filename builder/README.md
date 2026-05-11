@@ -3,7 +3,7 @@
 The Blueprint Builder is the local product front door for AgentForge. It helps you start from either:
 
 1. a new app idea, or
-2. an existing repository that you analyze with `agentforge analyze-repo`.
+2. an existing repository that you analyze with `agentforge analyze-repo` and plan with `agentforge plan-extension`.
 
 It remains local-first and CLI-first. The builder helps draft and review an App Blueprint, but `agentforge plan` and `agentforge generate` remain the source of truth for validation and generation.
 
@@ -32,15 +32,18 @@ Then open the local URL and use **Start from an app idea**.
 
 ## Start from an existing repo
 
-Use the Repo Analyzer outside the browser, then paste JSON output into the builder:
+Use the Repo Analyzer and Repo Extension Planner outside the browser, then paste JSON output into the builder:
 
 ```bash
 agentforge analyze-repo ../my-project
 agentforge analyze-repo ../my-project --format md
 agentforge analyze-repo ../my-project --json --output report.json
+agentforge plan-extension ../my-project
+agentforge plan-extension report.json --from-report
+agentforge plan-extension ../my-project --modules agent_runtime,dashboard_workspace --format md --output extension-plan.md
 ```
 
-The analyzer is analysis-only. It does not modify the repository, generate patches, convert code, deploy anything, call live LLMs, call external APIs, or require internet access.
+The analyzer is analysis-only and the extension planner is planning-only. They do not modify the repository, apply patches, convert code, deploy anything, call live LLMs, call external APIs, or require internet access.
 
 When pasted into the builder, analyzer JSON can show:
 
@@ -50,7 +53,7 @@ When pasted into the builder, analyzer JSON can show:
 - advisory migration phases;
 - draft Blueprint seed, if present.
 
-The seed still needs review before it becomes a real `domain-pack.yaml`.
+The seed still needs review before it becomes a real `domain-pack.yaml`. Extension planner JSON can also show selected modules, migration phases, file impact, risks, and the explicit no-files-modified statement.
 
 ## What will be generated
 
@@ -67,7 +70,7 @@ agentforge generate path/to/domain-pack.yaml
 
 ## Boundaries
 
-The builder does not call a live LLM, inspect local repositories from the browser, convert existing apps, deploy infrastructure, modify files automatically, or replace CLI validation. Repo extension/patch planning and deployment planning are future scope, not v0.7.1 behavior.
+The builder does not call a live LLM, inspect local repositories from the browser, run extension planning in the browser, convert existing apps, deploy infrastructure, modify files automatically, or replace CLI validation. Patch application and deployment planning are future scope, not v0.8 behavior.
 
 For a CLI-only starter file:
 

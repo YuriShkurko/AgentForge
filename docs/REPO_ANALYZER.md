@@ -2,7 +2,7 @@
 
 `agentforge analyze-repo` is the v0.7 analysis-only local repository analyzer.
 
-It inspects a local project directory and prints an advisory AgentForge compatibility and migration report. It does **not** modify the analyzed repository. In v0.7.1, the Blueprint Builder can also display pasted analyzer JSON output so the existing-repo path is visible from the product front door.
+It inspects a local project directory and prints an advisory AgentForge compatibility and migration report. It does **not** modify the analyzed repository. In v0.8, analyzer JSON can also feed `agentforge plan-extension` to produce a planning-only file impact and migration plan.
 
 ## Commands
 
@@ -93,6 +93,7 @@ For existing repositories, the intended v0.7.1 flow is:
 2. Open the Blueprint Builder.
 3. Paste the JSON report into **Start from an existing repo**.
 4. Review detected stack, archetype, module compatibility, migration phases, and the draft Blueprint seed.
-5. Create/review a real App Blueprint, then run `agentforge plan` and `agentforge generate` from the CLI.
+5. Optionally run `agentforge plan-extension report.json --from-report --format md --output extension-plan.md` for a planning-only file impact and migration sequence.
+6. Create/review a real App Blueprint, then run `agentforge plan` and `agentforge generate` from the CLI.
 
-The browser builder does not perform filesystem analysis itself; it only displays report text you explicitly paste.
+The browser builder does not perform filesystem analysis or extension planning itself; it only displays report text you explicitly paste.

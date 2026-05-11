@@ -93,15 +93,24 @@ def test_builder_generation_preview_and_analyzer_report_helpers():
         "blueprint_seed": "# DRAFT ONLY\nname: demo",
     }
     script = f"""
-      import {{ getGenerationPreview, parseAnalyzerReport, analyzerCommandExamples }} from './builder/blueprint-builder.mjs';
+      import {{ getGenerationPreview, parseAnalyzerReport, parseExtensionPlan, analyzerCommandExamples, extensionCommandExamples }} from './builder/blueprint-builder.mjs';
       const preview = getGenerationPreview({{
         name: 'UX App',
         archetype: 'hybrid_agent_pipeline',
         selectedModules: ['agent_runtime', 'workspace'],
       }});
       const parsed = parseAnalyzerReport({json.dumps(json.dumps(report))});
+      const extension = parseExtensionPlan(JSON.stringify({{
+        target_repo: {{ name: 'demo' }},
+        selected_modules: ['agent_runtime'],
+        module_plans: [{{ module: 'agent_runtime', status: 'partial' }}],
+        migration_phases: [{{ phase: 'Phase 1', title: 'Baseline safety' }}],
+        file_impact: {{ likely_files_to_add: ['backend/app/agent/'] }},
+        risks: [],
+        no_files_modified_statement: 'No files were modified.'
+      }}));
       const invalid = parseAnalyzerReport('not json');
-      process.stdout.write(JSON.stringify({{ preview, parsed, invalid, analyzerCommandExamples }}));
+      process.stdout.write(JSON.stringify({{ preview, parsed, extension, invalid, analyzerCommandExamples, extensionCommandExamples }}));
     """
     result = subprocess.run(
         ["node", "--input-type=module", "-e", script],
@@ -117,8 +126,11 @@ def test_builder_generation_preview_and_analyzer_report_helpers():
     assert payload["parsed"]["ok"] is True
     assert payload["parsed"]["archetype"] == "hybrid_agent_pipeline"
     assert payload["parsed"]["blueprintSeed"].startswith("# DRAFT ONLY")
+    assert payload["extension"]["ok"] is True
+    assert payload["extension"]["modulePlans"][0]["module"] == "agent_runtime"
     assert payload["invalid"]["ok"] is False
     assert "--json --output report.json" in payload["analyzerCommandExamples"][-1]
+    assert "plan-extension" in payload["extensionCommandExamples"][0]
 
 
 def test_builder_html_front_door_copy_present():
@@ -129,6 +141,7 @@ def test_builder_html_front_door_copy_present():
     assert "Blueprint Source" in html
     assert "What will be generated" in html
     assert "agentforge analyze-repo ../my-project" in html or "analyzer-commands" in html
+    assert "plan-extension" in html
 
 
 def test_browser_builder_yaml_loads_with_generator_schema(tmp_path):

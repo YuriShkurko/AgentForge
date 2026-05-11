@@ -188,6 +188,23 @@ Implemented v0.7.1 scope:
 
 Out of scope for v0.7.1: browser filesystem access, repo modification, patch generation, repo conversion, deployment planning, live LLM/API dependencies, autonomous code execution, real provider integrations, and generated runtime/template changes. Repo extension/patch planning remains future v0.8+ scope.
 
+## v0.8 Repo Extension Planner
+
+v0.8 adds a planning-only layer after the v0.7 Repo Analyzer. It helps users understand how AgentForge modules could be added to an existing repo without modifying that repo.
+
+Implemented v0.8 scope:
+
+- `agentforge plan-extension <path-or-report>` CLI command.
+- Direct repo path input that runs the existing read-only analyzer internally.
+- Analyzer JSON input with `--from-report`.
+- Desired module selection with `--modules` and conservative recommendations when omitted.
+- Structured planning model with selected/recommended modules, module plans, prerequisites, file impact, migration phases, risks, unsupported items, manual steps, generated artifact previews, commands, and confidence.
+- Text, Markdown, and JSON report output.
+- Builder existing-repo guidance and pasted extension-plan JSON preview.
+- Tests proving report input, direct repo input, module selection, unsupported gaps, deterministic phases, report shape, CLI behavior, and no target repo file modification.
+
+Out of scope for v0.8: applying patches, modifying target repos, overwriting files, creating branches, installing packages, running autonomous code execution, deployment planning, live LLM/API dependencies, real provider integrations, and generated runtime/template changes. Safe patch application remains future v0.8.1+ scope.
+
 ## Implementation Milestones
 
 ### Milestone 1: Spec Stabilization

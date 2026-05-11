@@ -31,7 +31,7 @@
             <a class="path-card" href="#existing-repo-flow">
               <span class="path-kicker">Path 2</span>
               <strong>Start from an existing repo</strong>
-              <small>Run the v0.7 analysis-only Repo Analyzer, paste JSON output, and turn findings into a reviewed Blueprint.</small>
+              <small>Run the v0.7 analyzer, then the v0.8 extension planner. Review plans before any future patch work.</small>
             </a>
           </div>
         </section>
@@ -85,10 +85,11 @@
         <section id="existing-repo-flow" class="panel repo-panel">
           <div class="section-head">
             <h2>Start from an existing repo</h2>
-            <p>The v0.7 Repo Analyzer is analysis-only: it inspects local files, reports compatibility and risks, and never modifies the analyzed repository.</p>
+            <p>The v0.7 Repo Analyzer and v0.8 Extension Planner are safe planning steps: they inspect, recommend modules, and produce file-impact/migration plans without modifying the analyzed repository.</p>
           </div>
           <div class="command-grid" id="analyzer-commands"></div>
-          <p class="helper-copy">Reports include detected stack, archetype guess, AgentForge module compatibility, migration phases, and a draft Blueprint seed for review.</p>
+          <p class="helper-copy">Analyzer reports include detected stack and module compatibility. Extension plans add selected modules, file impact, risks, migration phases, and patch groups for a future approved flow.</p>
+          <div class="command-grid" id="extension-commands"></div>
           <label>
             Paste analyzer JSON report
             <textarea id="analyzer-report" placeholder="Run: agentforge analyze-repo ../my-project --json\nThen paste the JSON here."></textarea>
@@ -98,6 +99,14 @@
             <button id="copy-blueprint-seed" type="button">Copy blueprint seed</button>
           </div>
           <div id="analyzer-output" class="planner-output hidden"></div>
+          <label>
+            Paste extension planner JSON report
+            <textarea id="extension-plan-report" placeholder="Run: agentforge plan-extension ../my-project --json\nThen paste the JSON here."></textarea>
+          </label>
+          <div class="actions">
+            <button id="parse-extension-plan" type="button">Preview extension plan</button>
+          </div>
+          <div id="extension-plan-output" class="planner-output hidden"></div>
         </section>
 
         <section class="panel metadata-panel">

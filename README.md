@@ -8,7 +8,7 @@ The project is intentionally narrow right now. It proves reusable application mo
 App Blueprint YAML + Application Template = Generated App
 ```
 
-**Current version:** v0.7.1 makes the Blueprint Builder the product front door. It now presents two starting paths—describe a new app idea or analyze an existing repository—while keeping generation CLI-first and repo analysis strictly read-only.
+**Current version:** v0.8 adds a planning-only Repo Extension Planner. `agentforge plan-extension <path>` consumes a local repo or analyzer JSON report and produces module recommendations, file impact, migration phases, risks, and patch-plan groups without modifying the target repository.
 
 ## Table of Contents
 
@@ -17,6 +17,7 @@ App Blueprint YAML + Application Template = Generated App
 - [Blueprint Builder](#blueprint-builder)
 - [Scripted Planner](#scripted-planner)
 - [Repo Analyzer](#repo-analyzer)
+- [Repo Extension Planner](#repo-extension-planner)
 - [Generated Demo Flow](#generated-demo-flow)
 - [What Gets Generated](#what-gets-generated)
 - [How AgentForge Works](#how-agentforge-works)
@@ -48,7 +49,7 @@ The demo proves these reusable pieces:
 - Persisted generic workspace widgets.
 - Generator tests, backend tests, frontend build/lint, and Playwright E2E coverage.
 
-The v0.7.1 builder is the recommended starting point. It explains what AgentForge can generate, offers a new-app idea flow, shows existing-repo analyzer guidance, previews generated modules/gaps, and keeps Blueprint YAML available as the advanced source view.
+The v0.7.1 builder is the recommended starting point. It explains what AgentForge can generate, offers a new-app idea flow, shows existing-repo analyzer and extension-planner guidance, previews generated modules/gaps, and keeps Blueprint YAML available as the advanced source view.
 
 ## Quickstart
 
@@ -69,7 +70,7 @@ examples/hybrid-scoring-demo/
 
 ## Blueprint Builder
 
-The Blueprint Builder is the local product front door for AgentForge. It lives in [builder/](builder/) and supports two starting paths: describe a new app idea, or analyze an existing repository with the v0.7 Repo Analyzer and paste the JSON report for review.
+The Blueprint Builder is the local product front door for AgentForge. It lives in [builder/](builder/) and supports two starting paths: describe a new app idea, or analyze an existing repository with the v0.7 Repo Analyzer and v0.8 Repo Extension Planner, then paste JSON reports for review.
 
 Open it directly in your browser for static/manual mode:
 
@@ -89,7 +90,7 @@ Use the builder to:
 
 - understand what AgentForge generates before reading the full repo;
 - start from an app idea with example prompts and scripted drafting;
-- start from an existing repo with safe `agentforge analyze-repo` guidance and pasted report preview;
+- start from an existing repo with safe `agentforge analyze-repo` / `agentforge plan-extension` guidance and pasted report previews;
 - enter app metadata, display name, description, and target persona;
 - choose an app archetype;
 - select supported Feature Modules;
@@ -149,6 +150,21 @@ The analyzer is advisory and analysis-only. It does not modify the target reposi
 Reports include repository basics, detected stack/config/test/devops/AI/observability signals, architecture signals, AgentForge module compatibility statuses (`compatible`, `partial`, `missing`, `conflict`, `unknown`), likely archetype candidates, risks/blockers, a phased advisory migration plan, and an optional draft App Blueprint seed for review.
 
 See [docs/REPO_ANALYZER.md](docs/REPO_ANALYZER.md) for details.
+
+## Repo Extension Planner
+
+v0.8 adds a planning-only extension layer after analysis:
+
+```bash
+agentforge plan-extension path/to/repo
+agentforge plan-extension analysis.json --from-report
+agentforge plan-extension path/to/repo --modules agent_runtime,dashboard_workspace --format md --output extension-plan.md
+agentforge plan-extension path/to/repo --json
+```
+
+The planner answers what AgentForge modules could be added, what prerequisites are missing, what files would likely be added/modified later, what migration phases should run first, and what risks need review. It does not modify target repos, overwrite files, install packages, apply patches, create branches, call live LLMs/APIs, or require internet access.
+
+See [docs/REPO_EXTENSION_PLANNER.md](docs/REPO_EXTENSION_PLANNER.md) for details.
 
 ## Generated Demo Flow
 
@@ -224,6 +240,7 @@ agentforge plan domain-packs/hybrid-scoring-demo/domain-pack.yaml
 agentforge generate domain-packs/hybrid-scoring-demo/domain-pack.yaml --force
 agentforge init-blueprint my-app --optional-module agent_runtime
 agentforge analyze-repo path/to/local/repo --format md
+agentforge plan-extension path/to/local/repo --format md
 ```
 
 ## Running the Generated App
@@ -317,7 +334,8 @@ AgentForge/
     agentforge/
       analyzer.py                Analysis-only local Repo Analyzer
       blueprints.py              Starter blueprint helpers
-      cli.py                     agentforge plan/generate/init-blueprint/analyze-repo
+      extension_planner.py       Planning-only repo extension planner
+      cli.py                     agentforge plan/generate/init-blueprint/analyze-repo/plan-extension
       generator.py               Copy and substitution logic
       modules.py                 Archetype to module selection
       pack.py                    Pydantic App Blueprint model
@@ -355,6 +373,7 @@ The generator skips local build/runtime directories such as `__pycache__`, `node
 | v0.6 | Scripted AI-assisted Blueprint Builder with idea drafting, clarification, refinement, local schema validation, `serve-builder`, and `draft-blueprint`; generation remains CLI-first |
 | v0.7 | Analysis-only Repo Analyzer with local stack detection, AgentForge module compatibility, archetype guesses, advisory migration plans, JSON/text/Markdown reports, and draft Blueprint seed output |
 | v0.7.1 | Builder UX clarity pass: product front door, two starting paths, new-app flow polish, existing-repo analyzer guidance/pasted JSON preview, generation preview, and advanced Blueprint Source framing |
+| v0.8 | Planning-only Repo Extension Planner with repo/report inputs, module selection, file impact, migration phases, risks, patch-plan previews, Markdown/text/JSON reports, and no target repo modifications |
 
 ## Further Reading
 
@@ -363,4 +382,5 @@ The generator skips local build/runtime directories such as `__pycache__`, `node
 - [Archetype Model](docs/ARCHETYPE_MODEL.md)
 - [Roadmap](docs/AGENTFORGE_ROADMAP.md)
 - [Repo Analyzer](docs/REPO_ANALYZER.md)
+- [Repo Extension Planner](docs/REPO_EXTENSION_PLANNER.md)
 - [Blueprint Builder README](builder/README.md)

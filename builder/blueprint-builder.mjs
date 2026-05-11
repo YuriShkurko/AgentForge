@@ -56,6 +56,12 @@ export const analyzerCommandExamples = [
   "agentforge analyze-repo ../my-project --json --output report.json",
 ];
 
+export const extensionCommandExamples = [
+  "agentforge plan-extension ../my-project",
+  "agentforge plan-extension report.json --from-report",
+  "agentforge plan-extension ../my-project --modules agent_runtime,dashboard_workspace --format md --output extension-plan.md",
+];
+
 export const exampleIdeas = [
   "Score incoming support tickets and help an operator triage urgent requests.",
   "Build a dashboard where an agent summarizes scored records and pins useful widgets.",
@@ -92,6 +98,27 @@ export function getGenerationPreview(state) {
     outputs: unique(outputs),
     gaps,
     commands: [`agentforge plan ${blueprintPath}`, `agentforge generate ${blueprintPath}`],
+  };
+}
+
+export function parseExtensionPlan(text) {
+  const raw = String(text || "").trim();
+  if (!raw) return { ok: false, error: "Paste JSON output from `agentforge plan-extension --json` to preview it here." };
+  let data;
+  try {
+    data = JSON.parse(raw);
+  } catch {
+    return { ok: false, error: "Could not parse extension plan JSON. Use `agentforge plan-extension <path> --json`." };
+  }
+  return {
+    ok: true,
+    repoName: data.target_repo?.name || "Unknown repo",
+    selectedModules: data.selected_modules || [],
+    modulePlans: data.module_plans || [],
+    migrationPhases: data.migration_phases || [],
+    fileImpact: data.file_impact || {},
+    risks: data.risks || [],
+    statement: data.no_files_modified_statement || "No files were modified.",
   };
 }
 

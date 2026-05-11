@@ -6,6 +6,7 @@ Usage:
   agentforge plan    <domain_pack_path>
   agentforge init-blueprint <name> [--output <path>]
   agentforge analyze-repo <path> [--format text|md|json]
+  agentforge plan-extension <path-or-report> [--format text|md|json]
   agentforge serve-builder [--host <host>] [--port <port>]
 """
 import argparse
@@ -15,6 +16,7 @@ from pathlib import Path
 
 from agentforge.analyzer import AnalyzeOptions, analyze_repo, render_report, result_to_jsonable
 from agentforge.blueprints import create_starter_blueprint, write_starter_blueprint
+from agentforge.extension_planner import ExtensionPlanOptions, plan_extension, render_extension_plan, result_to_jsonable as extension_result_to_jsonable
 from agentforge.generator import generate
 from agentforge.modules import select_modules
 from agentforge.pack import load_pack
@@ -236,6 +238,47 @@ def cmd_analyze_repo(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_plan_extension(args: argparse.Namespace) -> int:
+    target = Path(args.target)
+    if not target.exists():
+        label = "analysis report" if args.from_report else "repository path"
+        print(f"error: {label} not found: {target}", file=sys.stderr)
+        return 1
+
+    report_format = "json" if args.json else args.format
+    modules = tuple(args.modules.split(",")) if args.modules else ()
+    try:
+        plan = plan_extension(
+            target,
+            ExtensionPlanOptions(
+                modules=modules,
+                max_files=args.max_files,
+                include_tests=args.include_tests,
+                from_report=args.from_report,
+            ),
+        )
+        output = json.dumps(extension_result_to_jsonable(plan), indent=2) + "\n" if report_format == "json" else render_extension_plan(plan, report_format)
+    except Exception as exc:
+        print(f"error: extension planning failed - {exc}", file=sys.stderr)
+        return 1
+
+    if args.output:
+        output_path = Path(args.output)
+        if any(part in {"node_modules", ".git", ".venv", "venv", "dist", "build", ".next"} for part in output_path.parts):
+            print(f"error: refusing to write plan inside ignored/vendor path: {output_path}", file=sys.stderr)
+            return 1
+        try:
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            output_path.write_text(output, encoding="utf-8")
+        except Exception as exc:
+            print(f"error: could not write extension plan - {exc}", file=sys.stderr)
+            return 1
+        print(f"Wrote repo extension plan: {output_path}")
+    else:
+        print(output, end="")
+    return 0
+
+
 def cmd_serve_builder(args: argparse.Namespace) -> int:
     try:
         serve_builder(host=args.host, port=args.port)
@@ -311,6 +354,16 @@ def main() -> None:
     analyze.add_argument("--include-tests", action="store_true", help="Include deep test directory content sniffing")
     analyze.add_argument("--no-blueprint-draft", action="store_true", help="Omit the draft App Blueprint seed")
 
+    extension = sub.add_parser("plan-extension", help="Plan AgentForge extension for a repo without modifying it")
+    extension.add_argument("target", help="Local repository path, or analyzer JSON report when --from-report is used")
+    extension.add_argument("--from-report", action="store_true", help="Read target as agentforge analyze-repo JSON output")
+    extension.add_argument("--modules", help="Comma-separated desired modules to plan")
+    extension.add_argument("--format", choices=["text", "md", "json"], default="text", help="Report format")
+    extension.add_argument("--json", action="store_true", help="Shortcut for --format json")
+    extension.add_argument("--output", "-o", help="Write extension plan to this path instead of stdout")
+    extension.add_argument("--max-files", type=int, default=1000, help="Maximum files to scan when target is a repo")
+    extension.add_argument("--include-tests", action="store_true", help="Include deep test directory content sniffing when analyzing a repo")
+
     serve = sub.add_parser("serve-builder", help="Serve the static builder with scripted planner endpoints")
     serve.add_argument("--host", default="127.0.0.1", help="Host to bind")
     serve.add_argument("--port", type=int, default=8765, help="Port to bind")
@@ -327,6 +380,8 @@ def main() -> None:
         sys.exit(cmd_draft_blueprint(args))
     elif args.command == "analyze-repo":
         sys.exit(cmd_analyze_repo(args))
+    elif args.command == "plan-extension":
+        sys.exit(cmd_plan_extension(args))
     elif args.command == "serve-builder":
         sys.exit(cmd_serve_builder(args))
 

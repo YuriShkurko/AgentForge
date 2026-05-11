@@ -1,4 +1,4 @@
-import { analyzerCommandExamples, archetypes, exampleIdeas, getGenerationPreview, modules, parseAnalyzerReport, createBlueprint, createBlueprintYaml, sanitizeName, validateBuilderState } from "./blueprint-builder.mjs";
+import { analyzerCommandExamples, archetypes, exampleIdeas, extensionCommandExamples, getGenerationPreview, modules, parseAnalyzerReport, parseExtensionPlan, createBlueprint, createBlueprintYaml, sanitizeName, validateBuilderState } from "./blueprint-builder.mjs";
 
 const form = {
   name: document.querySelector("#app-name"),
@@ -40,10 +40,14 @@ const validateButton = document.querySelector("#validate-blueprint");
 const ideaExamples = document.querySelector("#idea-examples");
 const draftChips = document.querySelector("#draft-chips");
 const analyzerCommands = document.querySelector("#analyzer-commands");
+const extensionCommands = document.querySelector("#extension-commands");
 const analyzerReport = document.querySelector("#analyzer-report");
+const extensionPlanReport = document.querySelector("#extension-plan-report");
 const parseAnalyzerButton = document.querySelector("#parse-analyzer-report");
+const parseExtensionPlanButton = document.querySelector("#parse-extension-plan");
 const copyBlueprintSeedButton = document.querySelector("#copy-blueprint-seed");
 const analyzerOutput = document.querySelector("#analyzer-output");
+const extensionPlanOutput = document.querySelector("#extension-plan-output");
 const generationPreview = document.querySelector("#generation-preview");
 
 const plannerApi = window.location.protocol.startsWith("http") ? `${window.location.origin}/api/planner` : "http://127.0.0.1:8765/api/planner";
@@ -84,6 +88,9 @@ function renderEntryHelpers() {
     .map((idea) => `<button class="example-chip" type="button" data-idea="${escapeHtml(idea)}">${escapeHtml(idea)}</button>`)
     .join("");
   analyzerCommands.innerHTML = analyzerCommandExamples
+    .map((command) => `<code>${escapeHtml(command)}</code>`)
+    .join("");
+  extensionCommands.innerHTML = extensionCommandExamples
     .map((command) => `<code>${escapeHtml(command)}</code>`)
     .join("");
 }
@@ -319,6 +326,34 @@ function previewAnalyzerReport() {
   `;
 }
 
+function previewExtensionPlan() {
+  const parsed = parseExtensionPlan(extensionPlanReport.value);
+  extensionPlanOutput.classList.remove("hidden");
+  if (!parsed.ok) {
+    extensionPlanOutput.innerHTML = `<h3>Extension plan</h3><p class="error-text">${escapeHtml(parsed.error)}</p>`;
+    return;
+  }
+  const modules = parsed.modulePlans
+    .map((item) => `<span class="chip ${escapeHtml(item.status || "unknown")}">${escapeHtml(item.module)}: ${escapeHtml(item.status || "unknown")}</span>`)
+    .join("");
+  const phases = parsed.migrationPhases
+    .slice(0, 7)
+    .map((phase) => `<li>${escapeHtml(phase.phase || "Phase")}: ${escapeHtml(phase.title || "Review migration phase")}</li>`)
+    .join("");
+  const adds = (parsed.fileImpact.likely_files_to_add || []).slice(0, 8).map((item) => `<li>${escapeHtml(item)}</li>`).join("");
+  const risks = parsed.risks.slice(0, 6).map((risk) => `<li>${escapeHtml(risk.risk)}: ${escapeHtml(risk.detail)}</li>`).join("");
+  extensionPlanOutput.innerHTML = `
+    <h3>${escapeHtml(parsed.repoName)} extension plan</h3>
+    <p class="helper-copy">${escapeHtml(parsed.statement)}</p>
+    <div class="chip-row">${modules || '<span class="chip">No module plans reported</span>'}</div>
+    <div class="result-grid">
+      <div><h4>Migration phases</h4><ul>${phases || "<li>No phases reported.</li>"}</ul></div>
+      <div><h4>Likely files to add</h4><ul>${adds || "<li>No file additions reported.</li>"}</ul></div>
+    </div>
+    <h4>Risks</h4><ul>${risks || "<li>No risks reported.</li>"}</ul>
+  `;
+}
+
 async function copyBlueprintSeed() {
   if (!parsedBlueprintSeed) previewAnalyzerReport();
   if (!parsedBlueprintSeed) return;
@@ -415,6 +450,7 @@ submitAnswersButton.addEventListener("click", draftBlueprint);
 refineButton.addEventListener("click", refineBlueprint);
 validateButton.addEventListener("click", validateBlueprint);
 parseAnalyzerButton.addEventListener("click", previewAnalyzerReport);
+parseExtensionPlanButton.addEventListener("click", previewExtensionPlan);
 copyBlueprintSeedButton.addEventListener("click", copyBlueprintSeed);
 ideaExamples.addEventListener("click", (event) => {
   const button = event.target.closest("[data-idea]");
