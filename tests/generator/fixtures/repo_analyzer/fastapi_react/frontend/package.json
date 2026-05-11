@@ -1,0 +1,1 @@
+{"scripts":{"test":"vitest","e2e":"playwright test"},"dependencies":{"@vitejs/plugin-react":"latest","react":"latest","vite":"latest","tailwindcss":"latest"},"devDependencies":{"vitest":"latest","@playwright/test":"latest"}}

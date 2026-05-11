@@ -5,6 +5,7 @@ Usage:
   agentforge generate <domain_pack_path> [--output <dir>] [--dry-run]
   agentforge plan    <domain_pack_path>
   agentforge init-blueprint <name> [--output <path>]
+  agentforge analyze-repo <path> [--format text|md|json]
   agentforge serve-builder [--host <host>] [--port <port>]
 """
 import argparse
@@ -12,6 +13,7 @@ import json
 import sys
 from pathlib import Path
 
+from agentforge.analyzer import AnalyzeOptions, analyze_repo, render_report, result_to_jsonable
 from agentforge.blueprints import create_starter_blueprint, write_starter_blueprint
 from agentforge.generator import generate
 from agentforge.modules import select_modules
@@ -195,6 +197,45 @@ def cmd_draft_blueprint(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_analyze_repo(args: argparse.Namespace) -> int:
+    path = Path(args.path)
+    if not path.exists():
+        print(f"error: repository path not found: {path}", file=sys.stderr)
+        return 1
+
+    report_format = "json" if args.json else args.format
+    try:
+        result = analyze_repo(
+            path,
+            AnalyzeOptions(
+                max_files=args.max_files,
+                include_tests=args.include_tests,
+                include_blueprint_draft=not args.no_blueprint_draft,
+                report_format=report_format,
+            ),
+        )
+        output = json.dumps(result_to_jsonable(result), indent=2) + "\n" if report_format == "json" else render_report(result, report_format)
+    except Exception as exc:
+        print(f"error: repo analysis failed - {exc}", file=sys.stderr)
+        return 1
+
+    if args.output:
+        output_path = Path(args.output)
+        if any(part in {"node_modules", ".git", ".venv", "venv", "dist", "build", ".next"} for part in output_path.parts):
+            print(f"error: refusing to write report inside ignored/vendor path: {output_path}", file=sys.stderr)
+            return 1
+        try:
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            output_path.write_text(output, encoding="utf-8")
+        except Exception as exc:
+            print(f"error: could not write report - {exc}", file=sys.stderr)
+            return 1
+        print(f"Wrote repo analysis report: {output_path}")
+    else:
+        print(output, end="")
+    return 0
+
+
 def cmd_serve_builder(args: argparse.Namespace) -> int:
     try:
         serve_builder(host=args.host, port=args.port)
@@ -261,6 +302,15 @@ def main() -> None:
     draft.add_argument("--planner", default="scripted", choices=["scripted", "live"], help="Planner backend")
     draft.add_argument("--json", action="store_true", help="Output full PlannerResult JSON")
 
+    analyze = sub.add_parser("analyze-repo", help="Analyze a local repository without modifying it")
+    analyze.add_argument("path", help="Local repository or project directory to inspect")
+    analyze.add_argument("--format", choices=["text", "md", "json"], default="text", help="Report format")
+    analyze.add_argument("--json", action="store_true", help="Shortcut for --format json")
+    analyze.add_argument("--output", "-o", help="Write report to this path instead of stdout")
+    analyze.add_argument("--max-files", type=int, default=1000, help="Maximum files to scan")
+    analyze.add_argument("--include-tests", action="store_true", help="Include deep test directory content sniffing")
+    analyze.add_argument("--no-blueprint-draft", action="store_true", help="Omit the draft App Blueprint seed")
+
     serve = sub.add_parser("serve-builder", help="Serve the static builder with scripted planner endpoints")
     serve.add_argument("--host", default="127.0.0.1", help="Host to bind")
     serve.add_argument("--port", type=int, default=8765, help="Port to bind")
@@ -275,6 +325,8 @@ def main() -> None:
         sys.exit(cmd_init_blueprint(args))
     elif args.command == "draft-blueprint":
         sys.exit(cmd_draft_blueprint(args))
+    elif args.command == "analyze-repo":
+        sys.exit(cmd_analyze_repo(args))
     elif args.command == "serve-builder":
         sys.exit(cmd_serve_builder(args))
 

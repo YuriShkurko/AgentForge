@@ -1,0 +1,2 @@
+class ScoredRecordSchema:
+    pass

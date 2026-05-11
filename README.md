@@ -8,7 +8,7 @@ The project is intentionally narrow right now. It proves reusable application mo
 App Blueprint YAML + Application Template = Generated App
 ```
 
-**Current version:** v0.6 adds scripted AI-assisted App Blueprint drafting and refinement through an optional local builder server. Generation remains CLI-first through `agentforge plan` and `agentforge generate`.
+**Current version:** v0.7 adds an analysis-only Repo Analyzer. `agentforge analyze-repo <path>` inspects a local repository and reports stack signals, AgentForge module compatibility, migration risks, an advisory migration plan, and a draft App Blueprint seed without modifying the analyzed repository.
 
 ## Table of Contents
 
@@ -16,6 +16,7 @@ App Blueprint YAML + Application Template = Generated App
 - [Quickstart](#quickstart)
 - [Blueprint Builder](#blueprint-builder)
 - [Scripted Planner](#scripted-planner)
+- [Repo Analyzer](#repo-analyzer)
 - [Generated Demo Flow](#generated-demo-flow)
 - [What Gets Generated](#what-gets-generated)
 - [How AgentForge Works](#how-agentforge-works)
@@ -129,6 +130,22 @@ agentforge plan domain-packs/support-triage/domain-pack.yaml
 
 The scripted planner does not call live LLMs, make network requests, modify repositories, run generation, or replace `agentforge plan`. It writes a file only when the user explicitly passes `--out`.
 
+## Repo Analyzer
+
+v0.7 adds a deterministic, local-only repository analyzer:
+
+```bash
+agentforge analyze-repo path/to/repo
+agentforge analyze-repo path/to/repo --format md --output repo-analysis.md
+agentforge analyze-repo path/to/repo --json
+```
+
+The analyzer is advisory and analysis-only. It does not modify the target repository, generate patches, convert source code, call live LLMs, call external APIs, require internet access, or inspect secret values. It ignores generated/vendor/local directories such as `node_modules`, `.venv`, `.git`, `dist`, `build`, `.next`, `.scribe`, and `.tmp`.
+
+Reports include repository basics, detected stack/config/test/devops/AI/observability signals, architecture signals, AgentForge module compatibility statuses (`compatible`, `partial`, `missing`, `conflict`, `unknown`), likely archetype candidates, risks/blockers, a phased advisory migration plan, and an optional draft App Blueprint seed for review.
+
+See [docs/REPO_ANALYZER.md](docs/REPO_ANALYZER.md) for details.
+
 ## Generated Demo Flow
 
 The generated `hybrid-scoring-demo` app demonstrates a full deterministic workflow:
@@ -202,6 +219,7 @@ Generator CLI:
 agentforge plan domain-packs/hybrid-scoring-demo/domain-pack.yaml
 agentforge generate domain-packs/hybrid-scoring-demo/domain-pack.yaml --force
 agentforge init-blueprint my-app --optional-module agent_runtime
+agentforge analyze-repo path/to/local/repo --format md
 ```
 
 ## Running the Generated App
@@ -293,8 +311,9 @@ AgentForge/
     hybrid-scoring-demo/         Blueprint for the generated demo
   generator/                     Python package for the AgentForge CLI
     agentforge/
+      analyzer.py                Analysis-only local Repo Analyzer
       blueprints.py              Starter blueprint helpers
-      cli.py                     agentforge plan/generate/init-blueprint
+      cli.py                     agentforge plan/generate/init-blueprint/analyze-repo
       generator.py               Copy and substitution logic
       modules.py                 Archetype to module selection
       pack.py                    Pydantic App Blueprint model
@@ -330,6 +349,7 @@ The generator skips local build/runtime directories such as `__pycache__`, `node
 | v0.4.1 | Workspace UI polish with clearer states, readable widget cards/renderers, and clearer agent pin success/failure activity |
 | v0.5 | Simple static Blueprint Builder UI plus `agentforge init-blueprint`; generation remains CLI-first |
 | v0.6 | Scripted AI-assisted Blueprint Builder with idea drafting, clarification, refinement, local schema validation, `serve-builder`, and `draft-blueprint`; generation remains CLI-first |
+| v0.7 | Analysis-only Repo Analyzer with local stack detection, AgentForge module compatibility, archetype guesses, advisory migration plans, JSON/text/Markdown reports, and draft Blueprint seed output |
 
 ## Further Reading
 
@@ -337,4 +357,5 @@ The generator skips local build/runtime directories such as `__pycache__`, `node
 - [AgentForge v0 Architecture](docs/AGENTFORGE_V0_ARCHITECTURE.md)
 - [Archetype Model](docs/ARCHETYPE_MODEL.md)
 - [Roadmap](docs/AGENTFORGE_ROADMAP.md)
+- [Repo Analyzer](docs/REPO_ANALYZER.md)
 - [Blueprint Builder README](builder/README.md)

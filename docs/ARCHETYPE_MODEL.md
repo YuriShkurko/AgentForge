@@ -1,6 +1,6 @@
 # AgentForge Archetype Model
 
-AgentForge selects an app archetype before selecting feature modules. The archetype tells the generator which application template modules are required and which App Blueprint (`domain-pack.yaml`) fields must be present.
+AgentForge selects an app archetype before selecting feature modules. The archetype tells the generator which application template modules are required and which App Blueprint (`domain-pack.yaml`) fields must be present. The v0.7 Repo Analyzer can guess likely archetypes from an existing repository, but those guesses are advisory and must be reviewed before creating or changing an App Blueprint.
 
 > **Terms:** "shell module" = feature module (pipeline, scoring, agent runtime, etc.); "Product Shell" = Application Template; "Domain Pack" = App Blueprint. See [README terminology table](../README.md#terminology).
 

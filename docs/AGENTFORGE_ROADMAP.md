@@ -154,6 +154,24 @@ Implemented v0.6 scope:
 
 Out of scope for v0.6 remains: live LLM integration, repo analysis/conversion, deployment planning, hosted builder state, autonomous edits, and replacing `agentforge plan` as the validation source of truth.
 
+## v0.7 Repo Analyzer
+
+v0.7 adds an analysis-only local Repo Analyzer. It inspects an existing local repository and produces an AgentForge compatibility and migration report without modifying the analyzed repository.
+
+Implemented v0.7 scope:
+
+- `agentforge analyze-repo <path>` CLI command.
+- Deterministic local filesystem scan with safe generated/vendor/cache directory ignores.
+- Stack, config, test, devops, AI/agent, observability, and architecture signal detection.
+- AgentForge module compatibility statuses with path evidence and suggested migration steps.
+- Advisory archetype guesses with confidence and evidence.
+- Advisory phased migration plan based on detected gaps.
+- Optional draft App Blueprint seed in the report only.
+- Text, Markdown, and JSON report output, with optional `--output` when explicitly requested.
+- Fixture-based analyzer tests with no internet, live LLM, or external API dependency.
+
+Out of scope for v0.7: repo conversion, source rewriting, automatic patch generation, deployment planning, autonomous code execution, live LLM/API analysis, GitHub API usage, and secret content extraction. Repo extension or patch planning remains a future v0.8+ decision.
+
 ## Implementation Milestones
 
 ### Milestone 1: Spec Stabilization

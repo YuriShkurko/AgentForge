@@ -1,15 +1,31 @@
 ---
-description: Check Scribe for AgentForge project context
+description: Gather AgentForge task context with Scribe and Locus
 alwaysApply: true
 ---
 
-# Scribe Project Context
+# Scribe + Locus Context Gathering
 
-- At the start of meaningful work in this repository, check Scribe for current project context.
-- Use the local Scribe service on port 8800 through the `user-scribe` MCP tools when available.
-- Follow the Scribe workflow from `github.com/dpopsuev/scribe`: artifacts are the source of truth, goals/specs/bugs define work, tasks implement specs/bugs, and graph edges drive execution order.
-- Start with `admin` action `motd`, then list artifacts scoped to `agentforge` and read any relevant active goal, spec, task, bug, or ref before planning or editing.
-- For execution, prefer `graph` actions such as `next`, `topo_sort`, or `briefing` when tasks/dependencies exist; otherwise use the latest active high-priority spec as the plan.
-- Keep Scribe current while working: update the active artifact with progress notes, design decisions, validation results, remaining limitations, and status changes using `artifact` actions.
-- Before finishing significant work, run Scribe consistency checks when practical (`admin detect`/`lint`) and record final validation results in the relevant artifact.
-- If Scribe is unavailable, say so briefly and continue with repository context.
+Use Scribe and Locus for meaningful tasks in this repository before planning or editing. If either tool is unavailable, say so briefly and continue with repository context.
+
+## Scribe: project memory and work graph
+
+- Use the local AgentForge Scribe service on port `8800` through the `user-scribe` MCP tools when available.
+- If MCP tools are unavailable, use the local CLI with this repository's store, e.g. `scribe --config ./scribe.yaml --db ./.scribe/scribe.sqlite ...` or `./scribe-local.cmd`.
+- Follow Scribe's documented workflow: artifacts are the source of truth; goals/specs/bugs define work; tasks implement specs/bugs; graph edges drive execution order.
+- Start sessions with `admin` action `motd` (or `scribe motd`), then list artifacts scoped to `agentforge` and read relevant active goals, specs, tasks, bugs, and refs before making a plan.
+- For execution planning, prefer graph context: `graph briefing`, `graph topo_sort`, `graph tree`, and dependency/implementation edges (`parent_of`, `depends_on`, `follows`, `justifies`, `implements`, `documents`).
+- Keep Scribe current during significant work: update the active artifact with progress notes, design decisions, validation results, remaining limitations, and status changes.
+- Before finishing significant work, run consistency checks when practical (`admin detect`/`lint`, or `scribe orphans`/`overlaps`/`lint`) and record final validation results in the relevant artifact.
+
+## Locus: codebase context and impact
+
+- Use Locus for repository/context analysis before non-trivial code changes. Prefer MCP tools if available; otherwise use the CLI.
+- Start with `locus triage "<task intent>" .` to choose the best Locus tool chain for the task.
+- Use `locus scan . --format md --budget <tokens>` (or JSON when structured output is useful) to gather architecture, dependencies, git history/churn, hotspots, symbols, `.cursor` rules, and skills.
+- Use focused Locus commands as relevant:
+  - `locus impact . --component <path-or-component>` before changing a component to estimate blast radius and risk.
+  - `locus conventions .` before matching style in unfamiliar areas.
+  - `locus gaps .` when looking for under-documented or under-tested components.
+  - `locus diagram .` or MCP `render_diagram` when architecture visualization helps.
+  - `locus diff`, `history`, or `validate` when branch drift, previous codographs, or desired-state checks matter.
+- Incorporate Locus findings into the plan and final summary, especially affected components, dependency risks, and validation targets.
