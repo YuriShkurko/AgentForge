@@ -140,6 +140,9 @@ def test_builder_html_front_door_copy_present():
     assert "Understand an existing repo" in html
     assert "Blueprint Source" in html
     assert "Live app plan" in html
+    assert "./assets/agentforge-mark.png" in html
+    assert "./assets/favicon.png" in html
+    assert "agentforge-wordmark.png" not in html
     assert "No repo mutation by default" in html
     assert "data-step-target=\"start\"" in html
     assert "data-step=\"start\"" in html

@@ -56,17 +56,14 @@ body {
 }
 
 .brand-mark {
-  display: grid;
-  place-items: center;
+  display: block;
+  flex: 0 0 auto;
   width: 38px;
   height: 38px;
-  border-radius: 12px;
-  background: #111113;
-  color: #fff;
-  font-size: 0.78rem;
-  font-weight: 900;
-  letter-spacing: -0.03em;
-  box-shadow: 0 14px 32px rgba(17, 17, 19, 0.16);
+  border-radius: 10px;
+  object-fit: contain;
+  background: transparent;
+  box-shadow: none;
 }
 
 .app-header > div:nth-child(2) {
@@ -143,7 +140,7 @@ h4 {
   color: #126038;
   font-size: 0.82rem;
   font-weight: 900;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.75);
+  box-shadow: none;
 }
 
 .panel {
@@ -177,7 +174,7 @@ h4 {
   border-radius: 22px;
   padding: 6px;
   background: rgba(255, 255, 255, 0.58);
-  box-shadow: 0 18px 50px rgba(44, 38, 24, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.75);
+  box-shadow: none;
   backdrop-filter: blur(14px);
 }
 
@@ -200,7 +197,7 @@ h4 {
 .flow-rail button.active {
   background: linear-gradient(135deg, #1b1b29 0%, var(--brand-strong) 100%);
   color: #fff;
-  box-shadow: 0 14px 30px rgba(53, 51, 164, 0.22);
+  box-shadow: 0 8px 20px rgba(53, 51, 164, 0.14);
 }
 
 .flow-rail button.active span {
@@ -639,7 +636,7 @@ textarea {
   border-radius: 22px;
   padding: 16px;
   background: rgba(255, 255, 255, 0.62);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
+  box-shadow: none;
 }
 
 .command-card summary,
@@ -647,23 +644,52 @@ textarea {
   display: flex;
   align-items: center;
   gap: 8px;
+  min-height: 42px;
   cursor: pointer;
-  color: #f7f4ec;
-  font-weight: 760;
+  color: #202838;
+  font-weight: 820;
+}
+
+.command-card summary::before,
+.command-preview-block summary::before {
+  content: ">_";
+  display: inline-grid;
+  place-items: center;
+  width: 26px;
+  height: 22px;
+  border: 1px solid rgba(91, 91, 214, 0.18);
+  border-radius: 8px;
+  background: rgba(91, 91, 214, 0.08);
+  color: var(--brand-strong);
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 0.66rem;
+  font-weight: 900;
 }
 
 .command-card,
 .command-preview-block {
-  background: linear-gradient(180deg, rgba(31, 31, 42, 0.98), rgba(15, 16, 24, 0.98));
-  color: #f7f4ec;
+  border-color: rgba(91, 91, 214, 0.16);
+  background: rgba(255, 255, 255, 0.66);
+  color: #202838;
+}
+
+.command-card[open],
+.command-preview-block[open] {
+  background: rgba(255, 255, 255, 0.74);
 }
 
 .command-card pre,
 .command-preview-block pre {
-  border: 0;
+  overflow-x: auto;
+  max-height: none;
+  border: 1px solid rgba(255, 255, 255, 0.10);
   box-shadow: none;
-  background: transparent;
-  padding: 10px 0 0;
+  background: linear-gradient(180deg, rgba(24, 24, 34, 0.98), rgba(15, 16, 24, 0.98));
+  color: #f8f7f2;
+  padding: 14px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .draft-review {
@@ -713,8 +739,7 @@ summary:focus {
   align-items: stretch;
 }
 
-.outcome-block,
-.command-preview-block {
+.outcome-block {
   background: #ffffff;
 }
 
@@ -722,11 +747,28 @@ summary:focus {
   grid-row: span 2;
 }
 
+.command-preview-block {
+  grid-column: 1 / -1;
+}
+
 .module-details summary,
 .inline-advanced summary {
   cursor: pointer;
   color: #253044;
-  font-weight: 900;
+  font-weight: 820;
+}
+
+.inline-advanced:not(.command-card) summary,
+.module-details summary {
+  width: fit-content;
+  border-radius: 10px;
+  padding: 3px 0;
+  color: #202838;
+}
+
+.command-card summary,
+.command-preview-block summary {
+  color: #202838;
 }
 
 .module-details[open] summary,
@@ -846,11 +888,11 @@ pre {
   font-size: 0.82rem;
   line-height: 1.48;
   white-space: pre;
-  box-shadow: 0 18px 42px rgba(17, 17, 19, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  box-shadow: none;
 }
 
 #plan-preview {
-  max-height: 170px;
+  max-height: none;
 }
 
 .mini-pre {
@@ -898,7 +940,7 @@ button {
   font: inherit;
   font-weight: 900;
   cursor: pointer;
-  box-shadow: 0 14px 30px rgba(53, 51, 164, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.18);
+  box-shadow: none;
 }
 
 button + button,
@@ -906,12 +948,20 @@ button + button,
   border-color: var(--line);
   background: rgba(255, 255, 255, 0.78);
   color: #1d2430;
-  box-shadow: 0 8px 22px rgba(44, 38, 24, 0.06);
+  box-shadow: none;
 }
 
 .primary-button {
   min-width: 170px;
-  box-shadow: 0 18px 38px rgba(53, 51, 164, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.18);
+  box-shadow: 0 10px 24px rgba(53, 51, 164, 0.12);
+}
+
+.wizard-actions .primary-button,
+.actions .quiet-button,
+.command-grid code,
+.example-chip,
+.status-pill {
+  box-shadow: none;
 }
 
 .status-pill {
