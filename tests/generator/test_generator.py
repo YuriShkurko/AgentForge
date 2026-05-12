@@ -47,6 +47,7 @@ EXPECTED_BACKEND_FILES = [
 EXPECTED_FRONTEND_FILES = [
     "frontend/src/App.tsx",
     "frontend/src/api.ts",
+    "frontend/src/customization.ts",
     "frontend/src/types.ts",
     "frontend/src/components/OpsPanel.tsx",
     "frontend/src/components/RunHistoryTable.tsx",
@@ -82,6 +83,7 @@ EXPECTED_PROJECT_WORKSPACE_FILES = [
     "backend/tests/integration/test_agent_workspace_flow.py",
     "frontend/src/App.tsx",
     "frontend/src/api.ts",
+    "frontend/src/customization.ts",
     "frontend/src/types.ts",
     "frontend/src/components/WorkspacePanel.tsx",
     "frontend/src/styles.css",
@@ -134,6 +136,29 @@ def test_generate_substitutes_pack_name(tmp_path):
     config_text = (output / "backend" / "app" / "config.py").read_text()
     assert "hybrid-scoring-demo" in config_text
     assert pack.display_name in (output / "frontend" / "index.html").read_text()
+
+
+def test_generate_writes_frontend_customization(tmp_path):
+    pack = load_pack(PACKS_DIR / "hybrid-scoring-demo" / "domain-pack.yaml")
+    output = tmp_path / pack.name
+    generate(pack, output)
+
+    customization = (output / "frontend" / "src" / "customization.ts").read_text()
+    assert '"workflowLabel": "Review workflow"' in customization
+    assert '"plural": "records"' in customization
+    assert '"sampleDataLabel": "demo records"' in customization
+
+
+def test_generate_project_workspace_customization_has_project_labels(tmp_path):
+    pack = load_pack(PACKS_DIR / "project-workspace-demo" / "domain-pack.yaml")
+    output = tmp_path / pack.name
+    generate(pack, output)
+
+    customization = (output / "frontend" / "src" / "customization.ts").read_text()
+    assert '"workflowLabel": "Project command center"' in customization
+    assert '"plural": "projects"' in customization
+    assert '"plural": "tasks"' in customization
+    assert "Scored Records" not in customization
 
 
 def test_run_commands_mentions_pack(tmp_path):

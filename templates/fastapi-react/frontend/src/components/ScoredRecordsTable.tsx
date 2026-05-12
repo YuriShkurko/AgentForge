@@ -1,4 +1,5 @@
 import { api } from "../api";
+import { customization } from "../customization";
 import type { ScoredRecord, TriageAction } from "../types";
 import { ActionStatusBadge } from "./ActionStatusBadge";
 
@@ -13,12 +14,12 @@ export function ScoredRecordsTable({ records, onActionDone }: Props) {
       <section className="panel data-panel">
         <div className="panel-head">
           <div>
-            <h2>Scored Records</h2>
-            <p className="panel-kicker">Ranked review queue with deterministic fit scoring.</p>
+            <h2>{customization.scoring.reviewQueueLabel}</h2>
+            <p className="panel-kicker">Ranked review queue with deterministic {customization.scoring.criteriaLabels.join(", ").toLowerCase()} scoring.</p>
           </div>
         </div>
         <p data-testid="scored-empty" className="empty-card">
-          No scored records yet. Ingest records, then run scoring.
+          No scored {customization.scoring.recordLabel.plural} yet. Ingest {customization.scoring.recordLabel.plural}, then run scoring.
         </p>
       </section>
     );
@@ -33,10 +34,10 @@ export function ScoredRecordsTable({ records, onActionDone }: Props) {
     <section className="panel data-panel">
       <div className="panel-head">
         <div>
-          <h2>Scored Records</h2>
-          <p className="panel-kicker">Highest-fit records stay at the top for quick operator review.</p>
+          <h2>{customization.scoring.reviewQueueLabel}</h2>
+          <p className="panel-kicker">Highest-fit {customization.scoring.recordLabel.plural} stay at the top for quick {customization.app.targetUserLabel} review.</p>
         </div>
-        <span className="status-pill">{records.length} records</span>
+        <span className="status-pill">{records.length} {customization.scoring.recordLabel.plural}</span>
       </div>
       <div className="table-wrap">
         <table data-testid="scored-table">

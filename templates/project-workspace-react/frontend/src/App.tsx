@@ -1,6 +1,7 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "./api";
 import { WorkspacePanel } from "./components/WorkspacePanel";
+import { customization } from "./customization";
 import type { ActivityEvent, AgentMessage, AgentToolEvent, Project, Task, WorkspaceWidget } from "./types";
 import "./styles.css";
 
@@ -14,8 +15,8 @@ export default function App() {
   const [messages, setMessages] = useState<AgentMessage[]>([]);
   const [toolEvents, setToolEvents] = useState<AgentToolEvent[]>([]);
   const [conversationId, setConversationId] = useState<string | undefined>(() => localStorage.getItem(STORAGE_KEY) ?? undefined);
-  const [agentInput, setAgentInput] = useState("summarize the project workspace");
-  const [note, setNote] = useState("Reviewed launch risk and next task owner.");
+  const [agentInput, setAgentInput] = useState<string>(customization.agentStarters[0] ?? "summarize the project workspace");
+  const [note, setNote] = useState(`Reviewed next ${customization.projectWorkspace.taskLabel.singular} owner.`);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -115,11 +116,11 @@ export default function App() {
       <aside className="side-rail" aria-label="Workspace navigation">
         <div>
           <p className="eyebrow">AgentForge</p>
-          <strong>Project Workspace</strong>
+          <strong>{customization.app.name}</strong>
         </div>
         <nav>
           <span>Overview</span>
-          <span>Tasks</span>
+          <span>{titleCase(customization.projectWorkspace.taskLabel.plural)}</span>
           <span>Agent tools</span>
           <span>Activity</span>
         </nav>
@@ -135,19 +136,19 @@ export default function App() {
       <div className="workspace-shell">
         <header className="hero">
           <div>
-            <p className="eyebrow">Project command center</p>
-            <h1>Project Workspace Demo</h1>
-            <p>A local task planning workspace with seeded projects, deterministic persistence, scripted agent tools, and pinned widgets.</p>
+            <p className="eyebrow">{customization.app.workflowLabel}</p>
+            <h1>{customization.app.name}</h1>
+            <p>{customization.app.subtitle}</p>
           </div>
-          <button data-testid="seed-btn" type="button" onClick={seed} disabled={busy}>Seed sample workspace</button>
+          <button data-testid="seed-btn" type="button" onClick={seed} disabled={busy}>Seed {customization.projectWorkspace.sampleDataLabel}</button>
         </header>
 
         {error && <p className="error">{error}</p>}
 
         <section className="stat-grid">
-          <div><span>{projects.length}</span><small>Projects</small></div>
-          <div><span>{tasks.length}</span><small>Total tasks</small></div>
-          <div><span>{stats.open}</span><small>Open tasks</small></div>
+          <div><span>{projects.length}</span><small>{titleCase(customization.projectWorkspace.projectLabel.plural)}</small></div>
+          <div><span>{tasks.length}</span><small>Total {customization.projectWorkspace.taskLabel.plural}</small></div>
+          <div><span>{stats.open}</span><small>Open {customization.projectWorkspace.taskLabel.plural}</small></div>
           <div><span>{stats.done}</span><small>Done</small></div>
           <div><span>{stats.blocked}</span><small>Blocked</small></div>
         </section>
@@ -157,11 +158,11 @@ export default function App() {
             <div className="panel-head">
               <div>
                 <p className="eyebrow">Overview</p>
-                <h2>Projects</h2>
+                <h2>{titleCase(customization.projectWorkspace.projectLabel.plural)}</h2>
               </div>
               <span className="count-pill">{stats.high} high priority</span>
             </div>
-            {projects.length === 0 ? <p className="empty-card">No projects yet. Seed the sample workspace.</p> : projects.map((project) => (
+            {projects.length === 0 ? <p className="empty-card">No {customization.projectWorkspace.projectLabel.plural} yet. Seed {customization.projectWorkspace.sampleDataLabel}.</p> : projects.map((project) => (
               <article key={project.id} className="project-card" data-testid="project-card">
                 <div>
                   <strong>{project.name}</strong>
@@ -178,13 +179,13 @@ export default function App() {
           <section className="panel" data-testid="task-panel">
             <div className="panel-head">
               <div>
-                <p className="eyebrow">Task queue</p>
-                <h2>Tasks</h2>
+                <p className="eyebrow">{titleCase(customization.projectWorkspace.taskLabel.singular)} queue</p>
+                <h2>{titleCase(customization.projectWorkspace.taskLabel.plural)}</h2>
               </div>
               <span className="count-pill">Click status to advance</span>
             </div>
             <div className="task-list">
-              {tasks.length === 0 ? <p className="empty-card">No tasks yet. Seed the sample workspace.</p> : tasks.map((task) => (
+              {tasks.length === 0 ? <p className="empty-card">No {customization.projectWorkspace.taskLabel.plural} yet. Seed {customization.projectWorkspace.sampleDataLabel}.</p> : tasks.map((task) => (
                 <article key={task.id} className={`task-card ${task.priority}`} data-testid="task-card">
                   <div>
                     <strong>{task.title}</strong>
@@ -210,7 +211,7 @@ export default function App() {
               </div>
               <span className="count-pill">Local tools</span>
             </div>
-            <p className="helper">Try “list tasks”, “summarize project”, or “pin task list”.</p>
+            <p className="helper">Try {formatStarters(customization.agentStarters)}.</p>
             <div className="messages" data-testid="agent-messages">
               {messages.length === 0 ? <p className="empty-card">No conversation yet.</p> : messages.map((message) => <p key={message.id} className="message-bubble"><strong>{message.role}:</strong> {message.content}</p>)}
             </div>
@@ -228,7 +229,7 @@ export default function App() {
           <div className="panel-head">
             <div>
               <p className="eyebrow">Project log</p>
-              <h2>Notes and activity</h2>
+              <h2>{customization.projectWorkspace.activityLabel}</h2>
             </div>
           </div>
           <form onSubmit={addNote} className="note-form">
@@ -242,4 +243,12 @@ export default function App() {
       </div>
     </main>
   );
+}
+
+function titleCase(value: string): string {
+  return value.replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function formatStarters(starters: readonly string[]): string {
+  return starters.map((starter) => `“${starter}”`).join(", ");
 }

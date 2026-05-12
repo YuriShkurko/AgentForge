@@ -226,6 +226,7 @@ export function createBlueprint(state) {
     app_archetype: archetype.id,
     required_shell_modules: archetype.required,
     optional_shell_modules: optional,
+    customization: createCustomization(state, archetype.id),
     capabilities: [
       {
         name: "ingest_records",
@@ -403,6 +404,7 @@ function createProjectWorkspaceBlueprint(state, archetype, name, optional) {
     app_archetype: archetype.id,
     required_shell_modules: archetype.required,
     optional_shell_modules: optional,
+    customization: createCustomization(state, archetype.id),
     capabilities: [
       {
         name: "seed_sample_workspace",
@@ -469,6 +471,67 @@ function createProjectWorkspaceBlueprint(state, archetype, name, optional) {
     future_extensions: { features: ["auth", "teams", "calendar_integrations", "live_llm_provider"] },
     compatibility_gaps: [],
   };
+}
+
+function createCustomization(state, archetypeId) {
+  const description = state.description?.trim() || "A local AgentForge app.";
+  const targetUser = state.targetUser?.trim() || (archetypeId === "project_workspace_app" ? "project operator" : "operator");
+  if (archetypeId === "project_workspace_app") {
+    return {
+      app: {
+        subtitle: description,
+        target_user_label: targetUser,
+        workflow_label: "Project command center",
+      },
+      agent_starters: ["list tasks", "summarize project", "pin task list"],
+      workspace: {
+        empty_state: "Ask the agent to pin a project summary or task list.",
+        widget_label: "widgets",
+        pinned_label: "Pinned project context",
+      },
+      project_workspace: {
+        project_label: { singular: "project", plural: "projects" },
+        task_label: { singular: "task", plural: "tasks" },
+        activity_label: "Notes and activity",
+        sample_data_label: "sample workspace",
+      },
+    };
+  }
+  const [singular, plural] = recordLabelsFromText(`${state.name || ""} ${state.displayName || ""} ${description}`);
+  return {
+    app: {
+      subtitle: description,
+      target_user_label: targetUser,
+      workflow_label: `${capitalize(singular)} review`,
+    },
+    agent_starters: [`score the ${plural}`, `show best ${plural}`, `pin the scored ${plural} to the workspace`],
+    workspace: {
+      empty_state: `Ask the agent to pin scored ${plural}, notification previews, or action history.`,
+      widget_label: "widgets",
+      pinned_label: "Pinned context",
+    },
+    scoring: {
+      record_label: { singular, plural },
+      criteria_labels: ["Fit", "Priority", "Risk"],
+      review_queue_label: `Scored ${capitalize(plural)}`,
+      notification_label: "Notification Previews",
+      sample_data_label: `demo ${plural}`,
+    },
+  };
+}
+
+function recordLabelsFromText(value) {
+  const text = String(value || "").toLowerCase();
+  if (text.includes("ticket")) return ["ticket", "tickets"];
+  if (text.includes("candidate") || text.includes("resume") || text.includes("applicant")) return ["candidate", "candidates"];
+  if (text.includes("account") || text.includes("renewal") || text.includes("customer success")) return ["account", "accounts"];
+  if (text.includes("lead") || text.includes("sales")) return ["lead", "leads"];
+  if (text.includes("job") || text.includes("opportunity")) return ["opportunity", "opportunities"];
+  return ["record", "records"];
+}
+
+function capitalize(value) {
+  return String(value || "").replace(/^\w/, (char) => char.toUpperCase());
 }
 
 export function createBlueprintYaml(state) {

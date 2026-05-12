@@ -2,6 +2,8 @@
 
 AgentForge selects an app archetype before selecting feature modules. The archetype tells the generator which application template modules are required and which App Blueprint (`domain-pack.yaml`) fields must be present. The v0.7 Repo Analyzer can guess likely archetypes from an existing repository, but those guesses are advisory and must be reviewed before creating or changing an App Blueprint.
 
+Within supported archetypes, App Blueprints can customize a bounded set of visible labels, app copy, agent starter prompts, workspace empty states, and sample-data wording. This layer is intentionally controlled: it shapes the two current generated app families without adding arbitrary routes, code, components, integrations, or new archetypes.
+
 > **Terms:** "shell module" = feature module (pipeline, scoring, agent runtime, etc.); "Product Shell" = Application Template; "Domain Pack" = App Blueprint. See [README terminology table](../README.md#terminology).
 
 ## Archetype Summary
@@ -195,4 +197,4 @@ As of v0.4, `workspace` is supported as a generic Dashboard/Workspace Module. It
 
 The v0.7.1 Blueprint Builder is the local product front door for this same archetype model. It presents public labels such as Application Template, Feature Modules, Integration Adapters, and Test Harness, then emits the existing internal config fields such as `app_archetype`, `required_shell_modules`, `optional_shell_modules`, `agent_runtime`, `workspace`, and `tool_widget_compatibility`.
 
-The builder can display pasted Repo Analyzer JSON and Repo Extension Planner JSON, including advisory archetype guesses and module plans, but it does not define a separate archetype schema. Its generated YAML must still load through `agentforge.pack.load_pack`, and `agentforge plan` remains the authoritative module support/gap check.
+The builder can display pasted Repo Analyzer JSON and Repo Extension Planner JSON, including advisory archetype guesses and module plans, but it does not define a separate archetype schema. Its generated YAML must still load through `agentforge.pack.load_pack`, and `agentforge plan` remains the authoritative module support/gap check. Builder and scripted planner drafts may include the controlled `customization` block where an idea clearly implies labels such as tickets, candidates, projects, or tasks.

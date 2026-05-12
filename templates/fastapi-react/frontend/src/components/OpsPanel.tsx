@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { api } from "../api";
+import { customization } from "../customization";
 import type { ImportRecordsResult } from "../types";
 
 const SAMPLE_IMPORT_JSON = `[
@@ -36,7 +37,7 @@ export function OpsPanel({ onIngestDone, onScoreDone, onPreviewDone }: Props) {
     setBusy(true);
     try {
       const parsed = JSON.parse(importJson);
-      if (!Array.isArray(parsed)) throw new Error("Paste a JSON array of records.");
+      if (!Array.isArray(parsed)) throw new Error(`Paste a JSON array of ${customization.scoring.recordLabel.plural}.`);
       const r = await api.importRecords(parsed);
       setLastImport(r);
       const errorSummary = r.errors.length ? ` (${r.errors.length} validation issue${r.errors.length === 1 ? "" : "s"})` : "";
@@ -54,7 +55,7 @@ export function OpsPanel({ onIngestDone, onScoreDone, onPreviewDone }: Props) {
     setBusy(true);
     try {
       const r = await api.score();
-      setLog((l) => [`Scored: ${r.scores_written} records`, ...l]);
+      setLog((l) => [`Scored: ${r.scores_written} ${customization.scoring.recordLabel.plural}`, ...l]);
       onScoreDone();
     } catch (e) {
       setLog((l) => [`Score error: ${e}`, ...l]);
@@ -80,22 +81,22 @@ export function OpsPanel({ onIngestDone, onScoreDone, onPreviewDone }: Props) {
     <section data-testid="ops-panel" className="panel">
       <div className="panel-head">
         <div>
-          <h2>Review Operations</h2>
+          <h2>{customization.app.workflowLabel}</h2>
           <p className="panel-kicker">
-            Start with fixture data or paste your own JSON, then score and
+            Start with {customization.scoring.sampleDataLabel} or paste your own JSON, then score and
             generate preview-only notifications.
           </p>
         </div>
       </div>
       <div className="action-row">
         <button data-testid="ingest-btn" onClick={ingest} disabled={busy}>
-          Ingest Demo Data
+          Ingest {titleCase(customization.scoring.sampleDataLabel)}
         </button>
         <button data-testid="import-btn" onClick={importRecords} disabled={busy}>
-          Import JSON Records
+          Import JSON {titleCase(customization.scoring.recordLabel.plural)}
         </button>
         <button data-testid="score-btn" onClick={score} disabled={busy}>
-          Score
+          Score {titleCase(customization.scoring.recordLabel.plural)}
         </button>
         <button data-testid="preview-btn" onClick={previewNotifications} disabled={busy}>
           Preview Notifications
@@ -103,10 +104,10 @@ export function OpsPanel({ onIngestDone, onScoreDone, onPreviewDone }: Props) {
       </div>
       <div className="field-block">
         <label>
-          Your data JSON
+          Your {customization.scoring.recordLabel.plural} JSON
         </label>
         <p className="helper">
-          Works without API keys. Paste an array with <code>title</code>/<code>name</code>, optional <code>category</code>/<code>type</code>, and <code>value</code>/<code>priority</code>.
+          Works without API keys. Paste an array of {customization.scoring.recordLabel.plural} with <code>title</code>/<code>name</code>, optional <code>category</code>/<code>type</code>, and <code>value</code>/<code>priority</code>.
         </p>
       </div>
       <textarea
@@ -141,4 +142,8 @@ export function OpsPanel({ onIngestDone, onScoreDone, onPreviewDone }: Props) {
       )}
     </section>
   );
+}
+
+function titleCase(value: string): string {
+  return value.replace(/\b\w/g, (letter) => letter.toUpperCase());
 }

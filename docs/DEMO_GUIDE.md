@@ -44,6 +44,7 @@ Key trust points:
 - deterministic scripted planner;
 - no live LLM/API required;
 - no repo writes from the browser;
+- controlled Blueprint customization for app copy, labels, and starter prompts within supported archetypes;
 - `agentforge plan` remains the validation source of truth.
 
 If you want a CLI-only fallback:
@@ -97,6 +98,8 @@ In the generated UI:
 10. Show persisted conversations, workspace widgets, and action history.
 
 The generated app demonstrates real application surfaces without external delivery, paid APIs, or a live LLM.
+
+If the drafted Blueprint includes `customization`, point out that it changes visible app wording such as record labels, workflow titles, agent starters, and workspace empty states. It does not create arbitrary app features or live integrations.
 
 ## Alternate generated-app demo: Project Workspace
 

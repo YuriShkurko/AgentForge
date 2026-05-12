@@ -20,6 +20,8 @@ def test_load_hybrid_scoring_demo():
     assert pack.workspace is not None
     assert pack.workspace.enabled is True
     assert "get_scored_records" in pack.tool_widget_compatibility
+    assert pack.customization.scoring.record_label.plural == "records"
+    assert pack.customization.app.workflow_label == "Review workflow"
 
 
 def test_load_business_insight():
@@ -43,6 +45,35 @@ def test_load_project_workspace_demo():
     assert "agent_runtime" in pack.required_shell_modules
     assert pack.workspace is not None
     assert "list_tasks" in pack.tool_widget_compatibility
+    assert pack.customization.project_workspace.task_label.plural == "tasks"
+    assert pack.customization.app.workflow_label == "Project command center"
+
+
+def test_missing_customization_uses_defaults():
+    pack = DomainPack.model_validate({
+        "name": "defaulted",
+        "display_name": "Defaulted",
+        "app_archetype": "ingestion_scoring_pipeline",
+        "required_shell_modules": ["pipeline"],
+        "domain": {"domain_name": "Defaulted", "app_type": "pipeline"},
+    })
+
+    assert pack.customization.scoring.record_label.singular == "record"
+    assert pack.customization.project_workspace.task_label.plural == "tasks"
+
+
+def test_invalid_customization_rejects_unsafe_text():
+    with pytest.raises(Exception, match="unsupported characters"):
+        DomainPack.model_validate({
+            "name": "bad",
+            "display_name": "Bad",
+            "app_archetype": "ingestion_scoring_pipeline",
+            "required_shell_modules": ["pipeline"],
+            "domain": {"domain_name": "Bad", "app_type": "pipeline"},
+            "customization": {
+                "app": {"subtitle": "<script>alert(1)</script>"},
+            },
+        })
 
 
 def test_invalid_archetype_raises():

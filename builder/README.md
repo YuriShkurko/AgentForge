@@ -25,6 +25,7 @@ The Builder asks for one plain-English idea, then the local scripted planner can
 - ask clarifying questions for vague ideas;
 - refine a draft with bounded instructions;
 - show assumptions, warnings, recommended modules, YAML, and CLI commands;
+- include controlled app customization such as labels, workflow copy, starter prompts, and workspace wording when the idea clearly implies them;
 - validate the current draft against the Python generator schema.
 
 Example:
@@ -90,6 +91,8 @@ The generation preview summarizes tangible app pieces such as FastAPI backend, R
 ## Blueprint Source
 
 YAML remains available as **Blueprint Source (Advanced)** with copy/download support. This is still the file format consumed by the CLI.
+
+Builder YAML may include a `customization` block. It is a bounded set of text/list fields for the current supported app families, not a way to define arbitrary routes, components, providers, or deployment behavior.
 
 ## Boundaries
 

@@ -117,6 +117,7 @@ class ScriptedPlanner:
             optional_modules=optional_modules,
             workspace_enabled="workspace" in optional_modules or "workspace" in ARCHETYPE_REQUIRED_MODULES.get(archetype, set()),
             fixture_provider_enabled=True,
+            customization=_customization_from_idea(idea, archetype),
         )
         return validate_blueprint_result(
             blueprint,
@@ -165,6 +166,82 @@ def _target_user_from_idea(idea: str) -> str:
     if "developer" in text or "dev" in text:
         return "developer"
     return "operator"
+
+
+def _customization_from_idea(idea: str, archetype: str) -> dict[str, Any]:
+    text = idea.lower()
+    target_user = _target_user_from_idea(idea)
+    description = _description_from_idea(idea, archetype)
+    if archetype == "project_workspace_app":
+        sample = "game development workspace" if any(term in text for term in ["game", "gaming"]) else "sample workspace"
+        return {
+            "app": {
+                "subtitle": description,
+                "target_user_label": target_user,
+                "workflow_label": "Project command center",
+            },
+            "agent_starters": ["list tasks", "summarize project", "pin task list"],
+            "workspace": {
+                "empty_state": "Ask the agent to pin a project summary or task list.",
+                "widget_label": "widgets",
+                "pinned_label": "Pinned project context",
+            },
+            "project_workspace": {
+                "project_label": {"singular": "project", "plural": "projects"},
+                "task_label": {"singular": "task", "plural": "tasks"},
+                "activity_label": "Notes and activity",
+                "sample_data_label": sample,
+            },
+        }
+
+    singular, plural = _record_labels_from_idea(text)
+    workflow = _workflow_label_from_idea(text, singular)
+    return {
+        "app": {
+            "subtitle": description,
+            "target_user_label": target_user,
+            "workflow_label": workflow,
+        },
+        "agent_starters": [
+            f"score the {plural}",
+            f"show best {plural}",
+            f"pin the scored {plural} to the workspace",
+        ],
+        "workspace": {
+            "empty_state": f"Ask the agent to pin scored {plural}, notification previews, or action history.",
+            "widget_label": "widgets",
+            "pinned_label": "Pinned context",
+        },
+        "scoring": {
+            "record_label": {"singular": singular, "plural": plural},
+            "criteria_labels": ["Fit", "Priority", "Risk"],
+            "review_queue_label": f"Scored {plural.title()}",
+            "notification_label": "Notification Previews",
+            "sample_data_label": f"demo {plural}",
+        },
+    }
+
+
+def _record_labels_from_idea(text: str) -> tuple[str, str]:
+    candidates = [
+        (("support ticket", "ticket", "tickets"), "ticket", "tickets"),
+        (("candidate", "candidates", "resume", "applicant"), "candidate", "candidates"),
+        (("account", "accounts", "customer success", "renewal"), "account", "accounts"),
+        (("lead", "leads", "sales"), "lead", "leads"),
+        (("job", "jobs", "opportunity", "opportunities"), "opportunity", "opportunities"),
+    ]
+    for keywords, singular, plural in candidates:
+        if any(keyword in text for keyword in keywords):
+            return singular, plural
+    return "record", "records"
+
+
+def _workflow_label_from_idea(text: str, singular: str) -> str:
+    if "triage" in text:
+        return f"{singular.title()} triage"
+    if "review" in text:
+        return f"{singular.title()} review"
+    return "Review workflow"
 
 
 def _warnings_for_archetype(archetype: str) -> list[str]:

@@ -46,6 +46,7 @@ def create_starter_blueprint(
     action_labels: list[str] | None = None,
     workspace_enabled: bool = True,
     fixture_provider_enabled: bool = True,
+    customization: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Create a minimal valid App Blueprint dictionary.
 
@@ -74,6 +75,7 @@ def create_starter_blueprint(
             target_user=target_user,
             optional_modules=optional,
             workspace_enabled=workspace_enabled,
+            customization=customization,
         )
 
     pack: dict[str, Any] = {
@@ -94,6 +96,11 @@ def create_starter_blueprint(
         "app_archetype": archetype,
         "required_shell_modules": required_modules,
         "optional_shell_modules": optional,
+        "customization": customization or _default_customization(
+            description=description,
+            target_user=target_user,
+            archetype=archetype,
+        ),
         "capabilities": [
             {
                 "name": "ingest_records",
@@ -267,6 +274,7 @@ def _create_project_workspace_blueprint(
     target_user: str,
     optional_modules: list[str],
     workspace_enabled: bool,
+    customization: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     required_modules = sorted(ARCHETYPE_REQUIRED_MODULES["project_workspace_app"])
     optional = sorted({module for module in optional_modules if module not in required_modules})
@@ -284,6 +292,11 @@ def _create_project_workspace_blueprint(
         "app_archetype": "project_workspace_app",
         "required_shell_modules": required_modules,
         "optional_shell_modules": optional,
+        "customization": customization or _default_customization(
+            description=description,
+            target_user=target_user,
+            archetype="project_workspace_app",
+        ),
         "capabilities": [
             {
                 "name": "seed_sample_workspace",
@@ -366,6 +379,49 @@ def _create_project_workspace_blueprint(
         "compatibility_gaps": [],
     }
     return pack
+
+
+def _default_customization(*, description: str, target_user: str, archetype: str) -> dict[str, Any]:
+    if archetype == "project_workspace_app":
+        return {
+            "app": {
+                "subtitle": description,
+                "target_user_label": target_user or "project operator",
+                "workflow_label": "Project command center",
+            },
+            "agent_starters": ["list tasks", "summarize project", "pin task list"],
+            "workspace": {
+                "empty_state": "Ask the agent to pin a project summary or task list.",
+                "widget_label": "widgets",
+                "pinned_label": "Pinned project context",
+            },
+            "project_workspace": {
+                "project_label": {"singular": "project", "plural": "projects"},
+                "task_label": {"singular": "task", "plural": "tasks"},
+                "activity_label": "Notes and activity",
+                "sample_data_label": "sample workspace",
+            },
+        }
+    return {
+        "app": {
+            "subtitle": description,
+            "target_user_label": target_user or "operator",
+            "workflow_label": "Review workflow",
+        },
+        "agent_starters": ["score the records", "show best records", "pin the scored records to the workspace"],
+        "workspace": {
+            "empty_state": "Ask the agent to pin scored records, notification previews, or action history.",
+            "widget_label": "widgets",
+            "pinned_label": "Pinned context",
+        },
+        "scoring": {
+            "record_label": {"singular": "record", "plural": "records"},
+            "criteria_labels": ["Fit", "Priority", "Risk"],
+            "review_queue_label": "Scored Records",
+            "notification_label": "Notification Previews",
+            "sample_data_label": "demo records",
+        },
+    }
 
 
 def blueprint_to_yaml(blueprint: dict[str, Any]) -> str:

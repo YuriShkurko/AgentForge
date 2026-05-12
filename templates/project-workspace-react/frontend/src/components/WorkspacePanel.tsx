@@ -1,4 +1,5 @@
 import type { WorkspaceWidget } from "../types";
+import { customization } from "../customization";
 
 interface Props {
   widgets: WorkspaceWidget[];
@@ -11,12 +12,12 @@ export function WorkspacePanel({ widgets, onRemove }: Props) {
       <div className="panel-head">
         <div>
           <p className="eyebrow">Workspace</p>
-          <h2>Pinned project context</h2>
+          <h2>{customization.workspace.pinnedLabel}</h2>
         </div>
-        <span className="count-pill">{widgets.length} widgets</span>
+        <span className="count-pill">{widgets.length} {customization.workspace.widgetLabel}</span>
       </div>
       {widgets.length === 0 ? (
-        <p data-testid="workspace-empty" className="empty">Ask the agent to pin a project summary or task list.</p>
+        <p data-testid="workspace-empty" className="empty">{customization.workspace.emptyState}</p>
       ) : (
         <div className="widget-grid">
           {widgets.map((widget) => (
@@ -39,7 +40,7 @@ export function WorkspacePanel({ widgets, onRemove }: Props) {
 function WidgetBody({ widget }: { widget: WorkspaceWidget }) {
   if (widget.widget_type === "task_list") {
     const tasks = getArray(widget.data, "tasks");
-    if (tasks.length === 0) return <p className="empty">No task rows were pinned.</p>;
+    if (tasks.length === 0) return <p className="empty">No {customization.projectWorkspace.taskLabel.singular} rows were pinned.</p>;
     return (
       <ul className="widget-list">
         {tasks.slice(0, 6).map((item, index) => {
@@ -71,7 +72,7 @@ function WidgetBody({ widget }: { widget: WorkspaceWidget }) {
             return (
               <li key={`${String(project.id ?? project.name ?? index)}-${index}`} className="summary-row">
                 <strong>{String(project.name ?? "Project")}</strong>
-                <span className="count-pill">{sumCounts(counts)} tasks</span>
+                <span className="count-pill">{sumCounts(counts)} {customization.projectWorkspace.taskLabel.plural}</span>
               </li>
             );
           })}

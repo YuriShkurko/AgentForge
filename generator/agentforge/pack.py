@@ -3,7 +3,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from pydantic import BaseModel, field_validator, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 VALID_ARCHETYPES = {
     "agent_dashboard_app",
@@ -19,6 +19,29 @@ VALID_MODULES = {
     "operations_ui", "persistence", "test", "notification_action", "triage_ui",
     "observability_debug", "agent_runtime", "deploy_planner",
 }
+
+_DANGEROUS_TEXT_CHARS = set("<>{}`$")
+
+
+def _clean_custom_text(value: str, *, field_name: str, max_length: int = 120) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    if len(text) > max_length:
+        raise ValueError(f"{field_name} must be {max_length} characters or fewer")
+    if any(char in text for char in _DANGEROUS_TEXT_CHARS):
+        raise ValueError(f"{field_name} contains unsupported characters")
+    return text
+
+
+def _clean_custom_list(values: list[str], *, field_name: str, max_items: int = 6, max_length: int = 80) -> list[str]:
+    if len(values) > max_items:
+        raise ValueError(f"{field_name} supports at most {max_items} items")
+    cleaned = [
+        _clean_custom_text(item, field_name=field_name, max_length=max_length)
+        for item in values
+    ]
+    return [item for item in cleaned if item]
 
 
 class DomainInfo(BaseModel):
@@ -64,6 +87,81 @@ class WorkspaceConfig(BaseModel):
     frontend_surface: str = "workspace_panel"
 
 
+class LabelPair(BaseModel):
+    singular: str = ""
+    plural: str = ""
+
+    @field_validator("singular", "plural")
+    @classmethod
+    def labels_are_safe(cls, value: str) -> str:
+        return _clean_custom_text(value, field_name="label", max_length=40)
+
+
+class AppCustomization(BaseModel):
+    subtitle: str = ""
+    target_user_label: str = ""
+    workflow_label: str = ""
+
+    @field_validator("subtitle", "target_user_label", "workflow_label")
+    @classmethod
+    def app_text_is_safe(cls, value: str) -> str:
+        return _clean_custom_text(value, field_name="app customization", max_length=240)
+
+
+class WorkspaceCustomization(BaseModel):
+    empty_state: str = ""
+    widget_label: str = ""
+    pinned_label: str = ""
+
+    @field_validator("empty_state", "widget_label", "pinned_label")
+    @classmethod
+    def workspace_text_is_safe(cls, value: str) -> str:
+        return _clean_custom_text(value, field_name="workspace customization")
+
+
+class ScoringCustomization(BaseModel):
+    record_label: LabelPair = Field(default_factory=lambda: LabelPair(singular="record", plural="records"))
+    criteria_labels: list[str] = Field(default_factory=list)
+    review_queue_label: str = ""
+    notification_label: str = ""
+    sample_data_label: str = ""
+
+    @field_validator("criteria_labels")
+    @classmethod
+    def criteria_are_safe(cls, value: list[str]) -> list[str]:
+        return _clean_custom_list(value, field_name="criteria_labels", max_items=5)
+
+    @field_validator("review_queue_label", "notification_label", "sample_data_label")
+    @classmethod
+    def scoring_text_is_safe(cls, value: str) -> str:
+        return _clean_custom_text(value, field_name="scoring customization")
+
+
+class ProjectWorkspaceCustomization(BaseModel):
+    project_label: LabelPair = Field(default_factory=lambda: LabelPair(singular="project", plural="projects"))
+    task_label: LabelPair = Field(default_factory=lambda: LabelPair(singular="task", plural="tasks"))
+    activity_label: str = ""
+    sample_data_label: str = ""
+
+    @field_validator("activity_label", "sample_data_label")
+    @classmethod
+    def project_text_is_safe(cls, value: str) -> str:
+        return _clean_custom_text(value, field_name="project workspace customization")
+
+
+class BlueprintCustomization(BaseModel):
+    app: AppCustomization = Field(default_factory=AppCustomization)
+    agent_starters: list[str] = Field(default_factory=list)
+    workspace: WorkspaceCustomization = Field(default_factory=WorkspaceCustomization)
+    scoring: ScoringCustomization = Field(default_factory=ScoringCustomization)
+    project_workspace: ProjectWorkspaceCustomization = Field(default_factory=ProjectWorkspaceCustomization)
+
+    @field_validator("agent_starters")
+    @classmethod
+    def starters_are_safe(cls, value: list[str]) -> list[str]:
+        return _clean_custom_list(value, field_name="agent_starters", max_items=4)
+
+
 class DomainPack(BaseModel):
     name: str
     display_name: str
@@ -80,6 +178,7 @@ class DomainPack(BaseModel):
     run_history: RunHistory | None = None
     agent_runtime: AgentRuntimeConfig | None = None
     workspace: WorkspaceConfig | None = None
+    customization: BlueprintCustomization = Field(default_factory=BlueprintCustomization)
     widgets: list[dict[str, Any]] = []
     tool_widget_compatibility: dict[str, list[str]] = {}
     notification_actions: list[dict[str, Any]] = []

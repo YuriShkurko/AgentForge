@@ -43,7 +43,7 @@ Existing repo
 For the generated-app path:
 
 ```text
-App Blueprint YAML + Application Template = Generated App
+App Blueprint YAML + controlled customization + Application Template = Generated App
 ```
 
 ## Screenshot walkthrough
@@ -132,6 +132,8 @@ AgentForge currently includes multiple deterministic generated app examples:
 - `project-workspace-demo` — seeded projects/tasks, status and priority updates, notes/activity, scripted agent tools, and workspace widgets.
 
 Both examples are local-first FastAPI + React apps with backend tests and frontend build/lint validation. Neither requires live LLM/API access for the default path.
+
+Both generated app families now support a small controlled customization layer for app copy, entity labels, workflow wording, agent starter prompts, workspace labels, and sample-data wording. This makes generated apps feel user-shaped within the supported archetypes without claiming arbitrary app generation.
 
 Generated scoring snapshot:
 

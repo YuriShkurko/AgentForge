@@ -35,6 +35,8 @@ def test_starter_blueprint_loads_and_plans_without_gaps():
     assert pack.agent_runtime.provider_mode == "scripted"
     assert pack.workspace is not None
     assert pack.workspace.enabled is True
+    assert pack.customization.scoring.record_label.plural == "records"
+    assert data["customization"]["scoring"]["review_queue_label"] == "Scored Records"
     assert selection.gaps == []
 
 
@@ -199,6 +201,8 @@ def test_browser_builder_project_workspace_yaml_loads_without_scoring(tmp_path):
     raw = yaml.safe_load(result.stdout)
     assert raw["app_archetype"] == "project_workspace_app"
     assert all(item["name"] != "score_records" for item in raw["capabilities"])
+    assert "scoring" not in raw["customization"]
+    assert raw["customization"]["project_workspace"]["task_label"]["plural"] == "tasks"
 
     pack = load_pack(output)
     selection = select_modules(pack)
@@ -239,6 +243,7 @@ def test_browser_builder_yaml_loads_with_generator_schema(tmp_path):
     raw = yaml.safe_load(result.stdout)
     assert raw["name"] == "browser-builder-app"
     assert raw["notification_actions"][0]["decision_states"] == ["pending", "accept", "skip", "maybe"]
+    assert raw["customization"]["scoring"]["record_label"]["plural"] == "records"
 
     pack = load_pack(output)
     selection = select_modules(pack)

@@ -1,4 +1,5 @@
 import { api } from "../api";
+import { customization } from "../customization";
 import type { NotificationPreview, TriageAction } from "../types";
 
 interface Props {
@@ -16,13 +17,13 @@ export function NotificationPreviewPanel({ previews, onActionDone }: Props) {
     <section data-testid="notification-preview-panel" className="panel">
       <div className="panel-head">
         <div>
-          <h2>Notification Previews</h2>
+          <h2>{customization.scoring.notificationLabel}</h2>
           <p className="panel-kicker">Preview-only outreach drafts, with no external delivery.</p>
         </div>
         <span className="status-pill">{previews.length} previews</span>
       </div>
       {previews.length === 0 ? (
-        <p data-testid="preview-empty" className="empty-card">No notification previews. Score records, then preview notifications.</p>
+        <p data-testid="preview-empty" className="empty-card">No notification previews. Score {customization.scoring.recordLabel.plural}, then preview notifications.</p>
       ) : (
         <div className="preview-grid">
           {previews.map((preview) => (

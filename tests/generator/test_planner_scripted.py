@@ -62,6 +62,33 @@ def test_scripted_planner_project_workspace_language(tmp_path):
     assert pack.app_archetype == "project_workspace_app"
     assert "agent_runtime" in pack.required_shell_modules
     assert all(capability.get("name") != "score_records" for capability in pack.capabilities)
+    assert pack.customization.project_workspace.project_label.plural == "projects"
+    assert pack.customization.project_workspace.task_label.plural == "tasks"
+
+
+def test_scripted_planner_support_ticket_customization(tmp_path):
+    result = ScriptedPlanner().draft("support ticket triage dashboard for urgent issues")
+
+    pack = assert_loads_with_generator_schema(tmp_path, result)
+    assert pack.customization.scoring.record_label.singular == "ticket"
+    assert pack.customization.scoring.record_label.plural == "tickets"
+    assert "ticket" in pack.customization.app.workflow_label.lower()
+
+
+def test_scripted_planner_candidate_review_customization(tmp_path):
+    result = ScriptedPlanner().draft("candidate review app for recruiters")
+
+    pack = assert_loads_with_generator_schema(tmp_path, result)
+    assert pack.app_archetype == "ingestion_scoring_pipeline"
+    assert pack.customization.scoring.record_label.plural == "candidates"
+
+
+def test_scripted_planner_project_game_workspace_customization(tmp_path):
+    result = ScriptedPlanner().draft("project workspace for game development tasks")
+
+    pack = assert_loads_with_generator_schema(tmp_path, result)
+    assert pack.app_archetype == "project_workspace_app"
+    assert pack.customization.project_workspace.sample_data_label == "game development workspace"
 
 
 def test_scripted_planner_prior_answers_can_resolve_vague_idea(tmp_path):

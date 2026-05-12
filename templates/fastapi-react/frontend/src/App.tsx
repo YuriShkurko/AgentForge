@@ -7,6 +7,7 @@ import { OpsPanel } from "./components/OpsPanel";
 import { RunHistoryTable } from "./components/RunHistoryTable";
 import { ScoredRecordsTable } from "./components/ScoredRecordsTable";
 import { WorkspacePanel } from "./components/WorkspacePanel";
+import { customization } from "./customization";
 import type {
   ActionEvent,
   NotificationPreview,
@@ -111,11 +112,8 @@ export default function App() {
       <header className="app-hero">
         <div className="hero-copy">
           <p className="eyebrow">AgentForge generated app</p>
-          <h1>Hybrid Scoring Demo</h1>
-          <p>
-            Review fixture or imported records, run deterministic scoring, preview
-            notifications, and pin agent results into a persisted workspace.
-          </p>
+          <h1>{customization.app.name}</h1>
+          <p>{customization.app.subtitle}</p>
         </div>
         <aside className="mode-card" aria-label="Demo mode">
           <span className="mode-dot" />
@@ -126,7 +124,7 @@ export default function App() {
 
       <section className="metric-grid" aria-label="Workflow summary">
         <MetricCard label="Run state" value={summary.activeRun} />
-        <MetricCard label="Scored records" value={summary.scoredCount} />
+        <MetricCard label={`Scored ${customization.scoring.recordLabel.plural}`} value={summary.scoredCount} />
         <MetricCard label="Top fit" value={summary.topFit} />
         <MetricCard label="Previews" value={summary.previewCount} />
         <MetricCard label="Accepted" value={summary.acceptedActions} />

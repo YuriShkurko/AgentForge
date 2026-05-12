@@ -36,6 +36,31 @@ optional_shell_modules:
   - agent_runtime   # command-panel stub only; no live LLM required
   - workspace       # generic Dashboard/Workspace Module with persisted widgets
 
+customization:
+  app:
+    subtitle: Review fixture or imported records, run deterministic scoring, preview notifications, and pin agent results into a persisted workspace.
+    target_user_label: demo operator
+    workflow_label: Review workflow
+  agent_starters:
+    - score the records
+    - show best records
+    - pin the scored records to the workspace
+  workspace:
+    empty_state: Ask the agent to pin scored records, notification previews, or action history.
+    widget_label: widgets
+    pinned_label: Pinned review context
+  scoring:
+    record_label:
+      singular: record
+      plural: records
+    criteria_labels:
+      - Fit
+      - Priority
+      - Risk
+    review_queue_label: Scored Records
+    notification_label: Notification Previews
+    sample_data_label: demo records
+
 agent_runtime:
   enabled: true
   provider_mode: scripted

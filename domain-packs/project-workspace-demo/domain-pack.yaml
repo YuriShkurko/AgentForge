@@ -29,6 +29,29 @@ required_shell_modules:
 
 optional_shell_modules: []
 
+customization:
+  app:
+    subtitle: A local task planning workspace with seeded projects, deterministic persistence, scripted agent tools, and pinned widgets.
+    target_user_label: project operator
+    workflow_label: Project command center
+  agent_starters:
+    - list tasks
+    - summarize project
+    - pin task list
+  workspace:
+    empty_state: Ask the agent to pin a project summary or task list.
+    widget_label: widgets
+    pinned_label: Pinned project context
+  project_workspace:
+    project_label:
+      singular: project
+      plural: projects
+    task_label:
+      singular: task
+      plural: tasks
+    activity_label: Notes and activity
+    sample_data_label: sample workspace
+
 capabilities:
   - name: seed_sample_workspace
     purpose: Create deterministic sample projects and tasks for local validation.

@@ -1,5 +1,6 @@
 import { FormEvent, useEffect, useState } from "react";
 import { api } from "../api";
+import { customization } from "../customization";
 import type { AgentMessage, AgentStreamEvent, AgentToolEvent } from "../types";
 
 const STORAGE_KEY = "hybrid-scoring-demo-agent-conversation";
@@ -16,7 +17,7 @@ export function AgentChatPanel({ onAgentDone }: Props) {
   );
   const [messages, setMessages] = useState<AgentMessage[]>([]);
   const [toolEvents, setToolEvents] = useState<AgentToolEvent[]>([]);
-  const [input, setInput] = useState("score the records");
+  const [input, setInput] = useState<string>(customization.agentStarters[0] ?? "score the records");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -166,8 +167,7 @@ export function AgentChatPanel({ onAgentDone }: Props) {
           <p className="eyebrow">Scripted agent</p>
           <h2>Agent Runtime</h2>
           <p className="panel-kicker">
-            Try: "ingest records", "score the records", "show best records", or
-            "create notification preview".
+            Try: {formatStarters(customization.agentStarters)}.
           </p>
         </div>
         <span className="status-pill">Local tools</span>
@@ -175,8 +175,7 @@ export function AgentChatPanel({ onAgentDone }: Props) {
       <div data-testid="agent-messages" className="messages">
         {messages.length === 0 ? (
           <p data-testid="agent-empty" className="empty-card">
-            No conversation yet. Ask the agent to run or pin part of the review
-            workflow.
+            No conversation yet. Ask the agent to run or pin part of the {customization.app.workflowLabel.toLowerCase()}.
           </p>
         ) : (
           messages
@@ -231,6 +230,10 @@ export function AgentChatPanel({ onAgentDone }: Props) {
       )}
     </section>
   );
+}
+
+function formatStarters(starters: readonly string[]): string {
+  return starters.map((starter) => `"${starter}"`).join(", ");
 }
 
 function describeToolEvent(event: AgentToolEvent): string {

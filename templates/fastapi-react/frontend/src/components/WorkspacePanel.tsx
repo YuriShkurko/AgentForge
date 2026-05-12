@@ -1,4 +1,5 @@
 import { api } from "../api";
+import { customization } from "../customization";
 import type { WorkspaceWidget } from "../types";
 import { WidgetRenderer } from "./WidgetRenderer";
 
@@ -29,19 +30,19 @@ export function WorkspacePanel({ widgets, loading, error, onChanged }: Props) {
       <div className="workspace-top">
         <div>
           <div>
-            <p className="eyebrow">Persisted workspace</p>
+          <p className="eyebrow">Persisted workspace</p>
             <h2>
               Workspace
             <span
               data-testid="workspace-count"
               className="status-pill workspace-count"
             >
-              {widgets.length} {widgets.length === 1 ? "widget" : "widgets"}
+              {widgets.length} {widgets.length === 1 ? "widget" : customization.workspace.widgetLabel}
             </span>
             </h2>
           </div>
           <p className="panel-kicker">
-            Persisted dashboard cards pinned by the scripted agent. Refreshing
+            {customization.workspace.pinnedLabel} pinned by the scripted agent. Refreshing
             the page keeps saved widgets.
           </p>
         </div>
@@ -58,7 +59,7 @@ export function WorkspacePanel({ widgets, loading, error, onChanged }: Props) {
         <StatusMessage
           testId="workspace-loading"
           tone="muted"
-          text="Loading persisted workspace widgets..."
+          text={`Loading persisted workspace ${customization.workspace.widgetLabel}...`}
         />
       )}
       {error && (
@@ -70,10 +71,9 @@ export function WorkspacePanel({ widgets, loading, error, onChanged }: Props) {
           className="empty-card"
         >
           <strong>
-            No widgets pinned yet.
+            No {customization.workspace.widgetLabel} pinned yet.
           </strong>
-          Ask the agent to pin scored records, notification previews, or action
-          history.
+          {customization.workspace.emptyState}
         </div>
       ) : (
         <div className="widget-list">

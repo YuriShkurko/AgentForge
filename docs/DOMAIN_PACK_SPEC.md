@@ -8,6 +8,8 @@ The Application Template provides reusable runtime infrastructure: APIs, persist
 
 The feature modules an app needs depend on its archetype. An agentic dashboard uses the Agent Runtime Module and Dashboard/Workspace Module. A pipeline app uses the Ingestion Pipeline Module and Scoring Module. A notification app uses the Triage/Action Module. A project workspace app uses task/activity persistence with scripted agent tools and workspace widgets. The generator reads `app_archetype` and `required_shell_modules` to decide which modules to wire.
 
+App Blueprints may also include a small `customization` block for supported app copy and labels. This is a controlled configuration layer, not a DSL or arbitrary app generator.
+
 ## Top-Level Fields
 
 `name`: Stable machine name for the pack.
@@ -35,6 +37,15 @@ The feature modules an app needs depend on its archetype. An agentic dashboard u
 `agent_runtime` *(optional when `agent_runtime` is declared as a feature module)*: Configuration for the Agent Runtime Module. Fields include `enabled`, `provider_mode` (`scripted`, `mock`, or `openai_compatible_placeholder`), `scripted_fixture_path` or inline `scripted_turns`, `tools` exposed to the agent, `conversation_persistence`, `streaming`, and `guardrails`. When `streaming.enabled` is true, generated apps expose `/agent/chat/stream` as `text/event-stream` with structured `message_start`, `text_delta`, `tool_call`, `tool_result`, `error`, and `done` events.
 
 `workspace` *(optional when `workspace` is declared as a feature module)*: Configuration for the Dashboard/Workspace Module. Fields include `enabled`, `persistence` (table/field expectations), `default_layout`, `remove_enabled`, `reorder_enabled`, `empty_state`, and `frontend_surface`. v0.4 stores direct widget JSON payloads, validates compatibility on the backend, and supports list/create/remove/reorder operations.
+
+`customization` *(optional)*: Controlled visible-label configuration. Missing fields use deterministic defaults. Supported nested fields:
+- `app.subtitle`, `app.target_user_label`, `app.workflow_label`
+- `agent_starters`
+- `workspace.empty_state`, `workspace.widget_label`, `workspace.pinned_label`
+- `scoring.record_label.singular/plural`, `scoring.criteria_labels`, `scoring.review_queue_label`, `scoring.notification_label`, `scoring.sample_data_label`
+- `project_workspace.project_label.singular/plural`, `project_workspace.task_label.singular/plural`, `project_workspace.activity_label`, `project_workspace.sample_data_label`
+
+Customization values are validated as bounded text/list fields and are emitted into generated frontend configuration. They must not contain code, routes, components, scripts, or live-provider settings.
 
 `agent_shell_contract` *(agent_dashboard_app / hybrid_agent_pipeline only)*: Broader capabilities expected from a full Agent Shell runtime — `chat`, `streaming_sse`, `tool_calling`, `persistent_conversations`, `persistent_workspace_widgets`, `workspace_events`, `dashboard_layout`, `guardrails`, `scripted_llm_testing`.
 
@@ -140,6 +151,7 @@ Rules:
 - Agent runtime tests must use `scripted` or `mock` provider modes; live OpenAI-compatible providers are configuration placeholders only until explicitly implemented.
 - Streaming must be honest `text/event-stream` delivery. Do not claim streaming support from a buffered non-streaming response.
 - Tool arguments must be validated against declared/generated typed schemas before handlers run, and validation errors must be returned as structured tool results.
+- `customization` may alter visible copy, labels, starter prompts, and sample/workspace wording only; it must not create arbitrary frontend code, backend routes, external integrations, or new feature modules.
 
 ## Blueprint Builder And Planner Contract
 
