@@ -48,14 +48,33 @@ App Blueprint YAML + Application Template = Generated App
 
 ## Screenshot walkthrough
 
+The screenshots show the Builder and two concrete generated app families AgentForge can produce today. They are deterministic local demos, not a claim of arbitrary app generation.
+
+Builder flow:
+
 | Step | What to look for |
 | --- | --- |
 | ![Builder idea entry screen](docs/assets/screenshots/builder-start.png) | Start with one app idea in the local Builder. |
 | ![Drafted Blueprint and Live app plan](docs/assets/screenshots/builder-plan.png) | Review the drafted plan, assumptions, warnings, and persistent Live app plan before raw YAML. |
 | ![Generate commands in the Builder](docs/assets/screenshots/builder-commands.png) | Copy the exact local CLI commands; the CLI remains the source of truth for validation and generation. |
-| ![Generated app scoring and triage](docs/assets/screenshots/generated-scoring.png) | Run the generated app, ingest/import records, score them, preview notifications, and triage results. |
+
+Scoring and triage generated app:
+
+| Step | What to look for |
+| --- | --- |
+| ![Generated app scoring and triage](docs/assets/screenshots/generated-scoring.png) | Ingest/import records, score them, preview notifications, and triage results. |
 | ![Agent chat pins a workspace widget](docs/assets/screenshots/generated-agent-workspace.png) | Use the scripted local agent to work with scored records and pin a workspace widget. |
 | ![Workspace widget persists after refresh](docs/assets/screenshots/generated-persistence.png) | Refresh to confirm persisted chat/workspace state and action history. |
+
+Project and task workspace generated app:
+
+| Step | What to look for |
+| --- | --- |
+| ![Project workspace overview dashboard](docs/assets/screenshots/generated-project-overview.png) | Seed projects and tasks, then review the dashboard counts and project cards. |
+| ![Project workspace task status updates](docs/assets/screenshots/generated-project-tasks.png) | Advance task statuses and see project/task state update locally. |
+| ![Project workspace notes and activity](docs/assets/screenshots/generated-project-activity.png) | Add operator notes and review the generated activity feed. |
+| ![Project workspace agent chat and workspace](docs/assets/screenshots/generated-project-agent-workspace.png) | Ask the scripted agent to pin a task list into the workspace. |
+| ![Project workspace pinned widgets after refresh](docs/assets/screenshots/generated-project-persistence.png) | Refresh to confirm pinned workspace widgets persist. |
 
 ## Golden demo path
 
@@ -68,6 +87,8 @@ App Blueprint YAML + Application Template = Generated App
 7. Use the scripted agent chat.
 8. Pin an agent result into the workspace.
 9. Refresh and show persisted chat, widgets, and triage history.
+
+Use the Project Workspace screenshots as the alternate generated-app proof point after the scoring/triage path: seed projects/tasks, update task status, add a note, pin the task list from the scripted agent, and refresh to show persistence.
 
 Follow the full walkthrough in [docs/DEMO_GUIDE.md](docs/DEMO_GUIDE.md).
 

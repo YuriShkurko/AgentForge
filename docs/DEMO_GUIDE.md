@@ -4,7 +4,7 @@ The demo should make AgentForge understandable in a few minutes: local Builder, 
 
 ## Primary Golden Demo Path
 
-Use this as the main story:
+Use scoring/triage as the main generated-app story:
 
 ```text
 Open Builder
@@ -116,6 +116,14 @@ cd ../frontend && npm install && npm run build && npm run lint
 
 The generated Project Workspace app demonstrates seeded projects/tasks, task status and priority updates, notes/activity, scripted agent chat over project tools, and pinned workspace widgets. It does not use scoring, triage, notification previews, live LLMs, or external APIs.
 
+Suggested screenshot flow:
+
+1. Seed the sample workspace and show the project overview/dashboard.
+2. Click a task status to show task list/status updates.
+3. Add an operator note and show notes/activity.
+4. Ask the scripted agent to `pin task list` and show the agent/workspace area.
+5. Refresh and show the pinned widget still present.
+
 ## Secondary Demo Path: existing repo planning
 
 Use this after the primary demo, or when the audience cares about existing applications.
@@ -151,11 +159,16 @@ The README uses a small screenshot walkthrough stored in `docs/assets/screenshot
 - `builder-start.png` — Builder idea entry screen;
 - `builder-plan.png` — drafted Blueprint review and Live app plan;
 - `builder-commands.png` — local generation commands;
-- `generated-scoring.png` — generated app scoring/triage flow;
-- `generated-agent-workspace.png` — scripted agent pinning a workspace widget;
-- `generated-persistence.png` — workspace state after refresh.
+- `generated-scoring.png` — scoring/triage generated app flow;
+- `generated-agent-workspace.png` — scoring app scripted agent pinning a workspace widget;
+- `generated-persistence.png` — scoring app workspace state after refresh;
+- `generated-project-overview.png` — project workspace overview/dashboard;
+- `generated-project-tasks.png` — project workspace task list/status update;
+- `generated-project-activity.png` — project workspace notes/activity;
+- `generated-project-agent-workspace.png` — project workspace scripted agent and workspace;
+- `generated-project-persistence.png` — project workspace pinned widgets after refresh.
 
-Keep screenshots focused on the stable golden path. Defer large GIFs or broad terminal-output galleries if they slow the release or are likely to rot.
+Keep screenshots focused on the stable scoring/triage and project/task workspace paths. Defer large GIFs or broad terminal-output galleries if they slow the release or are likely to rot.
 
 ## Validation before recording or presenting
 
