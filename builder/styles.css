@@ -566,10 +566,26 @@ textarea {
 
 .form-grid,
 .config-grid,
-.result-grid {
+.result-grid,
+.customize-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 14px;
+}
+
+.customize-panel {
+  background: linear-gradient(180deg, #ffffff, #fbfcff);
+}
+
+.customize-group {
+  margin-top: 2px;
+  padding-top: 2px;
+}
+
+.field-hint {
+  color: var(--soft);
+  font-size: 0.76rem;
+  font-weight: 650;
 }
 
 .wide {
@@ -629,7 +645,8 @@ textarea {
 .planner-output,
 .command-card,
 .test-path,
-.preview-block {
+.preview-block,
+.customize-panel {
   display: grid;
   gap: 10px;
   border: 1px solid var(--line);
@@ -992,6 +1009,7 @@ button + button,
   .form-grid,
   .config-grid,
   .result-grid,
+  .customize-grid,
   .module-list {
     grid-template-columns: 1fr;
   }

@@ -51,7 +51,8 @@ The scoring demo shows ingest/score/triage plus agent/workspace persistence. The
 
 The Builder treats generated outcomes as the main review surface before raw YAML or module details:
 
-- app type in plain language;
+- detected app family/archetype in plain language;
+- a focused **Customize app details** panel for safe labels, app subtitle, starter prompts, and workspace/sample wording;
 - what AgentForge will generate;
 - assumptions and warnings;
 - concise safety cues;
@@ -87,6 +88,12 @@ The analyzer, extension planner, and deployment planner are planning-only. `prep
 ## What will be generated
 
 The generation preview summarizes tangible app pieces such as FastAPI backend, React frontend, included sample data, app-specific workflow surfaces, scripted local agent chat, dashboard/workspace, tests, Docker/CI/local validation, supported modules, planned gaps, and next commands. No external provider setup is needed for the demo path.
+
+## Customize app details
+
+After drafting a Blueprint, the review step shows a compact customization panel before generation. It displays the detected family as either **Scoring / triage workflow** or **Project / task workspace**, then exposes only bounded text/list fields for that family. Scoring apps show record/review/notification/sample/criteria labels; project workspace apps show project/task/activity/sample labels. Common app subtitle, target user label, workflow label, agent starter prompts, and workspace empty-state wording are available for both.
+
+The panel writes into the same `customization` block shown in the advanced YAML preview. If users leave the fields alone, Builder defaults are preserved.
 
 ## Blueprint Source
 

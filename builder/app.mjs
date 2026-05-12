@@ -1,4 +1,4 @@
-import { analyzerCommandExamples, archetypes, exampleIdeas, extensionCommandExamples, getGenerationPreview, modules, parseAnalyzerReport, parseExtensionPlan, createBlueprint, createBlueprintYaml, sanitizeName, validateBuilderState } from "./blueprint-builder.mjs";
+import { analyzerCommandExamples, archetypes, createDefaultCustomization, exampleIdeas, extensionCommandExamples, getArchetypeFamilyLabel, getGenerationPreview, modules, parseAnalyzerReport, parseExtensionPlan, createBlueprint, createBlueprintYaml, sanitizeName, validateBuilderState } from "./blueprint-builder.mjs";
 
 const form = {
   name: document.querySelector("#app-name"),
@@ -54,6 +54,10 @@ const summaryArchetype = document.querySelector("#summary-archetype");
 const summaryStatus = document.querySelector("#summary-status");
 const summaryCapabilityGroups = document.querySelector("#summary-capability-groups");
 const summaryCommands = document.querySelector("#summary-commands");
+const customizePanel = document.querySelector("#customize-panel");
+const customizeFamily = document.querySelector("#customize-family");
+const customizeFields = document.querySelector("#customize-fields");
+const resetCustomizationButton = document.querySelector("#reset-customization");
 
 const plannerApi = window.location.protocol.startsWith("http") ? `${window.location.origin}/api/planner` : "http://127.0.0.1:8765/api/planner";
 let plannerAvailable = false;
@@ -63,6 +67,9 @@ let plannerCommands = [];
 let activeQuestions = [];
 let parsedBlueprintSeed = "";
 let activeStep = "start";
+let customizationValues = null;
+let customizationDirty = false;
+let renderedCustomizationArchetype = "";
 
 function state() {
   return {
@@ -80,7 +87,20 @@ function state() {
     widgetPreset: form.widgetPreset.value,
     workspaceEnabled: form.workspaceEnabled.checked,
     fixtureEnabled: form.fixtureEnabled.checked,
+    customization: customizationDirty && customizationValues ? customizationValues : createDefaultCustomizationFromForm(),
   };
+}
+
+function createDefaultCustomizationFromForm() {
+  return createDefaultCustomization(
+    {
+      name: form.name.value,
+      displayName: form.displayName.value,
+      description: form.description.value,
+      targetUser: form.targetUser.value,
+    },
+    form.archetype.value,
+  );
 }
 
 function renderArchetypes() {
@@ -122,6 +142,76 @@ function renderModules() {
     .join("");
 }
 
+function renderCustomizationPanel(current) {
+  if (!customizePanel) return;
+  const currentDefaults = createDefaultCustomizationFromForm();
+  if (!customizationDirty) customizationValues = currentDefaults;
+  customizeFamily.textContent = `Detected app family: ${getArchetypeFamilyLabel(current.archetype)}`;
+  if (renderedCustomizationArchetype === current.archetype && customizationDirty) return;
+  renderedCustomizationArchetype = current.archetype;
+  const c = customizationDirty && customizationValues ? customizationValues : currentDefaults;
+  const common = `
+    <div class="customize-group wide"><h3>Common app details</h3></div>
+    <label>App subtitle<input data-custom-path="app.subtitle" value="${escapeHtml(c.app?.subtitle || "")}" /></label>
+    <label>Target user label<input data-custom-path="app.target_user_label" value="${escapeHtml(c.app?.target_user_label || "")}" /></label>
+    <label>Workflow label<input data-custom-path="app.workflow_label" value="${escapeHtml(c.app?.workflow_label || "")}" /></label>
+    <label>Workspace empty state<input data-custom-path="workspace.empty_state" value="${escapeHtml(c.workspace?.empty_state || "")}" /></label>
+    <label class="wide">Agent starter prompts <span class="field-hint">One per line.</span><textarea data-custom-path="agent_starters">${escapeHtml((c.agent_starters || []).join("\n"))}</textarea></label>
+  `;
+  const archetypeFields = current.archetype === "project_workspace_app"
+    ? `
+      <div class="customize-group wide"><h3>Project workspace labels</h3></div>
+      <label>Project singular<input data-custom-path="project_workspace.project_label.singular" value="${escapeHtml(c.project_workspace?.project_label?.singular || "")}" /></label>
+      <label>Project plural<input data-custom-path="project_workspace.project_label.plural" value="${escapeHtml(c.project_workspace?.project_label?.plural || "")}" /></label>
+      <label>Task singular<input data-custom-path="project_workspace.task_label.singular" value="${escapeHtml(c.project_workspace?.task_label?.singular || "")}" /></label>
+      <label>Task plural<input data-custom-path="project_workspace.task_label.plural" value="${escapeHtml(c.project_workspace?.task_label?.plural || "")}" /></label>
+      <label>Activity label<input data-custom-path="project_workspace.activity_label" value="${escapeHtml(c.project_workspace?.activity_label || "")}" /></label>
+      <label>Sample workspace label<input data-custom-path="project_workspace.sample_data_label" value="${escapeHtml(c.project_workspace?.sample_data_label || "")}" /></label>
+    `
+    : `
+      <div class="customize-group wide"><h3>Scoring / triage labels</h3></div>
+      <label>Record singular<input data-custom-path="scoring.record_label.singular" value="${escapeHtml(c.scoring?.record_label?.singular || "")}" /></label>
+      <label>Record plural<input data-custom-path="scoring.record_label.plural" value="${escapeHtml(c.scoring?.record_label?.plural || "")}" /></label>
+      <label>Review queue label<input data-custom-path="scoring.review_queue_label" value="${escapeHtml(c.scoring?.review_queue_label || "")}" /></label>
+      <label>Notification label<input data-custom-path="scoring.notification_label" value="${escapeHtml(c.scoring?.notification_label || "")}" /></label>
+      <label>Sample data label<input data-custom-path="scoring.sample_data_label" value="${escapeHtml(c.scoring?.sample_data_label || "")}" /></label>
+      <label>Scoring criteria labels <span class="field-hint">One per line.</span><textarea data-custom-path="scoring.criteria_labels">${escapeHtml((c.scoring?.criteria_labels || []).join("\n"))}</textarea></label>
+    `;
+  customizeFields.innerHTML = common + archetypeFields;
+}
+
+function readCustomizationInputs() {
+  const defaults = createDefaultCustomizationFromForm();
+  const next = JSON.parse(JSON.stringify(defaults));
+  customizeFields?.querySelectorAll("[data-custom-path]").forEach((input) => {
+    const path = input.dataset.customPath;
+    const value = path === "agent_starters" || path === "scoring.criteria_labels"
+      ? input.value.split("\n").map((item) => item.trim()).filter(Boolean)
+      : input.value;
+    setNested(next, path.split("."), value);
+  });
+  customizationValues = next;
+  customizationDirty = true;
+}
+
+function setNested(target, path, value) {
+  const key = path[0];
+  if (path.length === 1) {
+    target[key] = value;
+    return;
+  }
+  target[key] = target[key] || {};
+  setNested(target[key], path.slice(1), value);
+}
+
+function resetCustomization() {
+  customizationValues = createDefaultCustomizationFromForm();
+  customizationDirty = false;
+  renderedCustomizationArchetype = "";
+  clearPlannerDraft();
+  updatePreview();
+}
+
 function updatePreview() {
   const current = state();
   const yaml = createBlueprintYaml(current);
@@ -134,6 +224,7 @@ function updatePreview() {
   validationSummary.textContent = issues.length ? issues.join(" ") : "Blueprint source is ready for `agentforge plan`.";
   renderGenerationPreview(preview);
   renderBuildSummary(current, preview, issues);
+  renderCustomizationPanel(current);
 }
 
 function renderBuildSummary(current, preview, issues) {
@@ -456,7 +547,10 @@ function applyBlueprintToForm(blueprint) {
     if (!input.disabled) input.checked = selected.has(input.dataset.module);
   });
   form.workspaceEnabled.checked = Boolean(blueprint.workspace?.enabled);
-  form.fixtureEnabled.checked = Boolean(blueprint.seed_data?.fixture_provider_records);
+  form.fixtureEnabled.checked = Boolean(blueprint.seed_data?.fixture_provider_records || blueprint.seed_data?.sample_projects);
+  customizationValues = blueprint.customization || createDefaultCustomizationFromForm();
+  customizationDirty = Boolean(blueprint.customization);
+  renderedCustomizationArchetype = "";
 }
 
 function clearPlannerDraft() {
@@ -511,15 +605,20 @@ checkPlannerStatus();
 
 form.archetype.addEventListener("change", () => {
   clearPlannerDraft();
+  customizationValues = createDefaultCustomizationFromForm();
+  customizationDirty = false;
+  renderedCustomizationArchetype = "";
   renderModules();
   updatePreview();
 });
 
 document.addEventListener("input", (event) => {
+  if (event.target.closest("#customize-panel")) readCustomizationInputs();
   if (!event.target.closest(".planner-panel")) clearPlannerDraft();
   updatePreview();
 });
 document.addEventListener("change", (event) => {
+  if (event.target.closest("#customize-panel")) readCustomizationInputs();
   if (!event.target.closest(".planner-panel")) clearPlannerDraft();
   updatePreview();
 });
@@ -539,6 +638,7 @@ validateButton.addEventListener("click", validateBlueprint);
 parseAnalyzerButton.addEventListener("click", previewAnalyzerReport);
 parseExtensionPlanButton.addEventListener("click", previewExtensionPlan);
 copyBlueprintSeedButton.addEventListener("click", copyBlueprintSeed);
+resetCustomizationButton.addEventListener("click", resetCustomization);
 ideaExamples.addEventListener("click", (event) => {
   const button = event.target.closest("[data-idea]");
   if (!button) return;

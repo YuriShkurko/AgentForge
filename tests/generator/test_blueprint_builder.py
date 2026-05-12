@@ -138,6 +138,9 @@ def test_builder_generation_preview_and_analyzer_report_helpers():
 def test_builder_html_front_door_copy_present():
     html = (ROOT / "builder" / "index.html").read_text(encoding="utf-8")
 
+    assert "Customize app details" in html
+    assert "customize-panel" in html
+    assert "reset-customization" in html
     assert "Start from an app idea" in html
     assert "Understand an existing repo" in html
     assert "Blueprint Source" in html
@@ -172,6 +175,61 @@ def test_builder_example_ideas_are_plain_language():
     assert any("Customer feedback" in idea for idea in ideas)
 
 
+def test_browser_builder_customization_round_trips_for_scoring_yaml(tmp_path):
+    script = """
+      import { createBlueprintYaml, getArchetypeFamilyLabel } from "./builder/blueprint-builder.mjs";
+      const yaml = createBlueprintYaml({
+        name: "Ticket Triage",
+        displayName: "Ticket Triage",
+        description: "Triage support work.",
+        targetUser: "support lead",
+        archetype: "ingestion_scoring_pipeline",
+        selectedModules: ["notification_action", "triage_ui", "agent_runtime", "workspace"],
+        actionAccept: "accept",
+        actionSkip: "skip",
+        actionMaybe: "maybe",
+        notificationMode: "preview_only",
+        llmMode: "scripted",
+        workspaceEnabled: true,
+        fixtureEnabled: true,
+        customization: {
+          app: { subtitle: "Prioritize urgent support tickets", target_user_label: "support lead", workflow_label: "Ticket review" },
+          agent_starters: ["score tickets", "show urgent tickets"],
+          workspace: { empty_state: "Pin ticket insights here.", widget_label: "widgets", pinned_label: "Pinned ticket context" },
+          scoring: {
+            record_label: { singular: "ticket", plural: "tickets" },
+            criteria_labels: ["Urgency", "Customer impact"],
+            review_queue_label: "Ticket queue",
+            notification_label: "Ticket notifications",
+            sample_data_label: "sample tickets"
+          }
+        }
+      });
+      process.stdout.write(JSON.stringify({ yaml, family: getArchetypeFamilyLabel("ingestion_scoring_pipeline") }));
+    """
+    result = subprocess.run(
+        ["node", "--input-type=module", "-e", script],
+        check=True,
+        capture_output=True,
+        text=True,
+        cwd=ROOT,
+    )
+    payload = json.loads(result.stdout)
+    output = tmp_path / "domain-pack.yaml"
+    output.write_text(payload["yaml"], encoding="utf-8")
+
+    raw = yaml.safe_load(payload["yaml"])
+    assert payload["family"] == "Scoring / triage workflow"
+    assert raw["customization"]["app"]["subtitle"] == "Prioritize urgent support tickets"
+    assert raw["customization"]["agent_starters"] == ["score tickets", "show urgent tickets"]
+    assert raw["customization"]["scoring"]["record_label"]["plural"] == "tickets"
+    assert raw["customization"]["scoring"]["criteria_labels"] == ["Urgency", "Customer impact"]
+    assert "project_workspace" not in raw["customization"]
+
+    pack = load_pack(output)
+    assert pack.customization.scoring.review_queue_label == "Ticket queue"
+
+
 def test_browser_builder_project_workspace_yaml_loads_without_scoring(tmp_path):
     script = """
       import { createBlueprintYaml } from "./builder/blueprint-builder.mjs";
@@ -203,11 +261,60 @@ def test_browser_builder_project_workspace_yaml_loads_without_scoring(tmp_path):
     assert all(item["name"] != "score_records" for item in raw["capabilities"])
     assert "scoring" not in raw["customization"]
     assert raw["customization"]["project_workspace"]["task_label"]["plural"] == "tasks"
+    assert raw["customization"]["agent_starters"] == ["list tasks", "summarize project", "pin task list"]
 
     pack = load_pack(output)
     selection = select_modules(pack)
     assert selection.template == "project-workspace-react"
     assert selection.gaps == []
+
+
+def test_browser_builder_project_workspace_customization_does_not_emit_scoring(tmp_path):
+    script = """
+      import { createBlueprintYaml, getArchetypeFamilyLabel } from "./builder/blueprint-builder.mjs";
+      const yaml = createBlueprintYaml({
+        name: "Launch Workspace",
+        displayName: "Launch Workspace",
+        description: "Track launches and action items.",
+        targetUser: "launch lead",
+        archetype: "project_workspace_app",
+        selectedModules: ["agent_runtime", "workspace"],
+        llmMode: "scripted",
+        workspaceEnabled: true,
+        fixtureEnabled: true,
+        customization: {
+          app: { subtitle: "Coordinate launches", target_user_label: "launch lead", workflow_label: "Launch command center" },
+          agent_starters: ["list action items", "summarize launch"],
+          workspace: { empty_state: "Pin launch summaries here.", widget_label: "widgets", pinned_label: "Pinned launch context" },
+          project_workspace: {
+            project_label: { singular: "launch", plural: "launches" },
+            task_label: { singular: "action item", plural: "action items" },
+            activity_label: "Launch activity",
+            sample_data_label: "sample launch workspace"
+          }
+        }
+      });
+      process.stdout.write(JSON.stringify({ yaml, family: getArchetypeFamilyLabel("project_workspace_app") }));
+    """
+    result = subprocess.run(
+        ["node", "--input-type=module", "-e", script],
+        check=True,
+        capture_output=True,
+        text=True,
+        cwd=ROOT,
+    )
+    payload = json.loads(result.stdout)
+    raw = yaml.safe_load(payload["yaml"])
+
+    assert payload["family"] == "Project / task workspace"
+    assert raw["customization"]["project_workspace"]["project_label"]["plural"] == "launches"
+    assert raw["customization"]["project_workspace"]["task_label"]["singular"] == "action item"
+    assert raw["customization"]["agent_starters"] == ["list action items", "summarize launch"]
+    assert "scoring" not in raw["customization"]
+    assert all(item["name"] != "score_records" for item in raw["capabilities"])
+
+    pack = DomainPack.model_validate(raw)
+    assert pack.customization.project_workspace.activity_label == "Launch activity"
 
 
 def test_browser_builder_yaml_loads_with_generator_schema(tmp_path):

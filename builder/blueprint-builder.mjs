@@ -77,6 +77,10 @@ export const exampleIdeas = [
   "Project workspace for tracking tasks, owners, due dates, notes, and activity."
 ];
 
+export function getArchetypeFamilyLabel(archetypeId) {
+  return archetypeId === "project_workspace_app" ? "Project / task workspace" : "Scoring / triage workflow";
+}
+
 export function getGenerationPreview(state) {
   const archetype = archetypes.find((item) => item.id === state.archetype) || archetypes[0];
   const selected = unique([...(archetype.required || []), ...(state.selectedModules || [])]);
@@ -473,7 +477,7 @@ function createProjectWorkspaceBlueprint(state, archetype, name, optional) {
   };
 }
 
-function createCustomization(state, archetypeId) {
+export function createDefaultCustomization(state, archetypeId) {
   const description = state.description?.trim() || "A local AgentForge app.";
   const targetUser = state.targetUser?.trim() || (archetypeId === "project_workspace_app" ? "project operator" : "operator");
   if (archetypeId === "project_workspace_app") {
@@ -518,6 +522,34 @@ function createCustomization(state, archetypeId) {
       sample_data_label: `demo ${plural}`,
     },
   };
+}
+
+function createCustomization(state, archetypeId) {
+  return mergeCustomization(createDefaultCustomization(state, archetypeId), state.customization || {}, archetypeId);
+}
+
+function mergeCustomization(defaults, custom, archetypeId) {
+  const merged = {
+    app: { ...defaults.app, ...(custom.app || {}) },
+    agent_starters: Array.isArray(custom.agent_starters) ? custom.agent_starters.filter(Boolean) : defaults.agent_starters,
+    workspace: { ...defaults.workspace, ...(custom.workspace || {}) },
+  };
+  if (archetypeId === "project_workspace_app") {
+    merged.project_workspace = {
+      ...defaults.project_workspace,
+      ...(custom.project_workspace || {}),
+      project_label: { ...defaults.project_workspace.project_label, ...(custom.project_workspace?.project_label || {}) },
+      task_label: { ...defaults.project_workspace.task_label, ...(custom.project_workspace?.task_label || {}) },
+    };
+  } else {
+    merged.scoring = {
+      ...defaults.scoring,
+      ...(custom.scoring || {}),
+      record_label: { ...defaults.scoring.record_label, ...(custom.scoring?.record_label || {}) },
+      criteria_labels: Array.isArray(custom.scoring?.criteria_labels) ? custom.scoring.criteria_labels.filter(Boolean) : defaults.scoring.criteria_labels,
+    };
+  }
+  return merged;
 }
 
 function recordLabelsFromText(value) {
