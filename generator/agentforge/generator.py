@@ -22,6 +22,9 @@ def _build_substitutions(pack: DomainPack) -> list[tuple[str, str]]:
         ("Hybrid Scoring Demo", pack.display_name),
         ("hybrid_scoring_demo", slug),
         ("scoring_demo",        slug),
+        ("project-workspace-demo", pack.name),
+        ("Project Workspace Demo", pack.display_name),
+        ("project_workspace_demo", slug),
     ]
 
 # File extensions we consider "text" for substitution
@@ -34,8 +37,8 @@ _TEXT_EXTENSIONS = {
 _SKIP_NAMES = {"__pycache__", ".pytest_cache", "node_modules", "dist", ".venv", "venv"}
 
 
-def _template_root() -> Path:
-    return Path(__file__).parent.parent.parent / "templates" / "fastapi-react"
+def _template_root(template: str = "fastapi-react") -> Path:
+    return Path(__file__).parent.parent.parent / "templates" / template
 
 
 def _docker_compose_template() -> Path:
@@ -54,7 +57,7 @@ def generate(pack: DomainPack, output_dir: Path, *, dry_run: bool = False) -> di
     Raises if output_dir already exists (use --force to overwrite).
     """
     selection = select_modules(pack)
-    template_root = _template_root()
+    template_root = _template_root(selection.template)
 
     if not template_root.exists():
         raise FileNotFoundError(f"template not found: {template_root}")

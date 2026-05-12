@@ -15,10 +15,12 @@ CANONICAL_IDEAS: dict[str, str] = {
     "agent_dashboard_app": "agent dashboard that can run tools and pin useful results to a workspace",
     "hybrid_agent_pipeline": "pipeline app with an agent that explains deterministic scoring runs",
     "deploy_planner_app": "deployment planning checklist app with deterministic validation only",
+    "project_workspace_app": "project workspace task planner for owners, due dates, notes, activity, and pinned agent widgets",
 }
 
 _ARCHETYPE_KEYWORDS: list[tuple[str, tuple[str, ...]]] = [
     ("notification_triage_app", ("triage", "notification", "notify", "decision", "approve", "reject")),
+    ("project_workspace_app", ("project workspace", "task planner", "task tracker", "project management", "projects", "due date", "owners")),
     ("agent_dashboard_app", ("agent dashboard", "dashboard", "workspace", "pin", "widget")),
     ("hybrid_agent_pipeline", ("hybrid", "agent pipeline", "agent explain", "explain pipeline", "with an agent")),
     ("deploy_planner_app", ("deploy", "deployment", "release", "infra")),
@@ -31,6 +33,7 @@ _DEFAULT_OPTIONAL_MODULES: dict[str, list[str]] = {
     "agent_dashboard_app": ["agent_runtime", "pipeline", "scoring_explanation", "operations_ui", "persistence"],
     "hybrid_agent_pipeline": ["agent_runtime", "workspace", "scoring_explanation", "persistence", "test"],
     "deploy_planner_app": ["operations_ui"],
+    "project_workspace_app": [],
 }
 
 _CLARIFYING_QUESTIONS = [

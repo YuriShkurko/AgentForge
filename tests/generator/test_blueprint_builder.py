@@ -170,6 +170,42 @@ def test_builder_example_ideas_are_plain_language():
     assert any("Customer feedback" in idea for idea in ideas)
 
 
+def test_browser_builder_project_workspace_yaml_loads_without_scoring(tmp_path):
+    script = """
+      import { createBlueprintYaml } from "./builder/blueprint-builder.mjs";
+      const yaml = createBlueprintYaml({
+        name: "Project Workspace App",
+        displayName: "Project Workspace App",
+        description: "Track projects, tasks, owners, due dates, notes, and activity.",
+        targetUser: "project operator",
+        archetype: "project_workspace_app",
+        selectedModules: ["agent_runtime", "workspace"],
+        llmMode: "scripted",
+        workspaceEnabled: true,
+        fixtureEnabled: true,
+      });
+      process.stdout.write(yaml);
+    """
+    result = subprocess.run(
+        ["node", "--input-type=module", "-e", script],
+        check=True,
+        capture_output=True,
+        text=True,
+        cwd=ROOT,
+    )
+    output = tmp_path / "domain-pack.yaml"
+    output.write_text(result.stdout, encoding="utf-8")
+
+    raw = yaml.safe_load(result.stdout)
+    assert raw["app_archetype"] == "project_workspace_app"
+    assert all(item["name"] != "score_records" for item in raw["capabilities"])
+
+    pack = load_pack(output)
+    selection = select_modules(pack)
+    assert selection.template == "project-workspace-react"
+    assert selection.gaps == []
+
+
 def test_browser_builder_yaml_loads_with_generator_schema(tmp_path):
     script = """
       import { createBlueprintYaml } from "./builder/blueprint-builder.mjs";

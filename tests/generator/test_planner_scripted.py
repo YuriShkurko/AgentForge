@@ -55,6 +55,15 @@ def test_scripted_planner_clarify_returns_targeted_questions():
     assert any("workspace" in question.lower() for question in result.questions)
 
 
+def test_scripted_planner_project_workspace_language(tmp_path):
+    result = ScriptedPlanner().draft("project workspace task planner for owners and due dates")
+
+    pack = assert_loads_with_generator_schema(tmp_path, result)
+    assert pack.app_archetype == "project_workspace_app"
+    assert "agent_runtime" in pack.required_shell_modules
+    assert all(capability.get("name") != "score_records" for capability in pack.capabilities)
+
+
 def test_scripted_planner_prior_answers_can_resolve_vague_idea(tmp_path):
     result = ScriptedPlanner().draft(
         "app",

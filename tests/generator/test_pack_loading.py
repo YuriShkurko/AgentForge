@@ -36,6 +36,15 @@ def test_load_ai_job_radar():
     assert "pipeline" in pack.required_shell_modules
 
 
+def test_load_project_workspace_demo():
+    pack = load_pack(PACKS_DIR / "project-workspace-demo" / "domain-pack.yaml")
+    assert pack.name == "project-workspace-demo"
+    assert pack.app_archetype == "project_workspace_app"
+    assert "agent_runtime" in pack.required_shell_modules
+    assert pack.workspace is not None
+    assert "list_tasks" in pack.tool_widget_compatibility
+
+
 def test_invalid_archetype_raises():
     with pytest.raises(Exception, match="unknown app_archetype"):
         DomainPack.model_validate({

@@ -37,15 +37,14 @@ Then open the local URL and describe the app you want to build.
 
 ## Fastest test path
 
-Use the committed demo when you want to prove the app works without external services:
+Use a committed demo Blueprint when you want to prove generation works without external services:
 
 ```bash
 agentforge generate domain-packs/hybrid-scoring-demo/domain-pack.yaml --force
-make run-backend
-make run-frontend
+agentforge generate domain-packs/project-workspace-demo/domain-pack.yaml --output .tmp/project-workspace-demo --force
 ```
 
-Then open the generated app, ingest included sample records, score them, use agent chat, pin a workspace widget, and refresh to confirm persistence.
+The scoring demo shows ingest/score/triage plus agent/workspace persistence. The project workspace demo shows projects, tasks, notes/activity, scripted agent tools, and pinned widgets.
 
 ## Review and generate
 
@@ -86,7 +85,7 @@ The analyzer, extension planner, and deployment planner are planning-only. `prep
 
 ## What will be generated
 
-The generation preview summarizes tangible app pieces such as FastAPI backend, React frontend, included sample records, deterministic scoring, notification/triage, scripted local agent chat, dashboard/workspace, tests, Docker/CI/local validation, supported modules, planned gaps, and next commands. No external provider setup is needed for the demo path.
+The generation preview summarizes tangible app pieces such as FastAPI backend, React frontend, included sample data, app-specific workflow surfaces, scripted local agent chat, dashboard/workspace, tests, Docker/CI/local validation, supported modules, planned gaps, and next commands. No external provider setup is needed for the demo path.
 
 ## Blueprint Source
 

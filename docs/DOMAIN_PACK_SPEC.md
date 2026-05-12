@@ -6,7 +6,7 @@ An **App Blueprint** (config name: `domain-pack`) is the complete machine-readab
 
 The Application Template provides reusable runtime infrastructure: APIs, persistence, run history, integration adapters, deterministic test harness, frontend surfaces, notifications, observability, and local/dev workflow. The App Blueprint provides the variable surface: identity, archetype declaration, required/optional feature modules, capabilities, schemas, providers/adapters, workflows, UI surfaces, seed data, and tests.
 
-The feature modules an app needs depend on its archetype. An agentic dashboard uses the Agent Runtime Module and Dashboard/Workspace Module. A pipeline app uses the Ingestion Pipeline Module and Scoring Module. A notification app uses the Triage/Action Module. The generator reads `app_archetype` and `required_shell_modules` to decide which modules to wire.
+The feature modules an app needs depend on its archetype. An agentic dashboard uses the Agent Runtime Module and Dashboard/Workspace Module. A pipeline app uses the Ingestion Pipeline Module and Scoring Module. A notification app uses the Triage/Action Module. A project workspace app uses task/activity persistence with scripted agent tools and workspace widgets. The generator reads `app_archetype` and `required_shell_modules` to decide which modules to wire.
 
 ## Top-Level Fields
 
@@ -26,6 +26,7 @@ The feature modules an app needs depend on its archetype. An agentic dashboard u
 - `notification_triage_app` — recommendations plus user decisions
 - `hybrid_agent_pipeline` — chat or command UX over a deterministic pipeline
 - `deploy_planner_app` — plan, validate, and stage deployment work *(future)*
+- `project_workspace_app` — local project/task workspace with notes, activity, scripted agent tools, and persisted widgets
 
 `required_shell_modules`: List of feature modules the generator must wire. Example: `[pipeline, provider_adapter, scoring_explanation, operations_ui, persistence, test]`.
 

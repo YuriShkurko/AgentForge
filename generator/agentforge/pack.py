@@ -11,6 +11,7 @@ VALID_ARCHETYPES = {
     "notification_triage_app",
     "hybrid_agent_pipeline",
     "deploy_planner_app",
+    "project_workspace_app",
 }
 
 VALID_MODULES = {

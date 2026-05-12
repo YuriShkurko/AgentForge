@@ -1,0 +1,192 @@
+name: project-workspace-demo
+display_name: Project Workspace Demo
+version: 0.1.0
+
+domain:
+  domain_name: Project Workspace Demo
+  app_type: project_workspace_app
+  target_users:
+    - project operator
+    - developer
+  product_purpose: >
+    Demonstrate a local-first project and task planning workspace with notes,
+    activity, scripted agent tools, and persisted dashboard widgets without live
+    LLM/API requirements.
+  main_user_goals:
+    - seed_sample_workspace
+    - manage_project_tasks
+    - add_notes_and_activity
+    - use_agent_to_summarize_and_pin_widgets
+
+app_archetype: project_workspace_app
+
+required_shell_modules:
+  - operations_ui
+  - persistence
+  - agent_runtime
+  - workspace
+  - test
+
+optional_shell_modules: []
+
+capabilities:
+  - name: seed_sample_workspace
+    purpose: Create deterministic sample projects and tasks for local validation.
+    input_summary: POST /seed
+    output_shape:
+      fields: [created_projects, created_tasks]
+    mutates_state: true
+    data_mode: deterministic_fixture_data
+    deterministic_test_safe: true
+    implementation_status: planned
+  - name: manage_tasks
+    purpose: Create tasks, update status and priority, and add project notes.
+    input_summary: POST /tasks, PATCH /tasks/{task_id}, POST /projects/{project_id}/notes
+    output_shape:
+      fields: [projects, tasks, activity]
+    mutates_state: true
+    data_mode: database
+    deterministic_test_safe: true
+    implementation_status: planned
+
+ui_surfaces:
+  - surface_type: project_overview
+    renderer: ProjectPanel
+    data_source: projects, tasks
+    section: workspace
+    expected_data_shape: Projects with task counts, owners, status, and due dates.
+    empty_state: No projects yet. Seed the sample workspace.
+  - surface_type: task_board
+    renderer: TaskPanel
+    data_source: tasks
+    section: planning
+    expected_data_shape: Task rows with status, priority, owner, and due date.
+    empty_state: No tasks yet.
+  - surface_type: activity_feed
+    renderer: ActivityPanel
+    data_source: activity
+    section: planning
+    expected_data_shape: Notes and activity events.
+    empty_state: No activity yet.
+
+providers:
+  sample_workspace:
+    - name: fixture
+      source: deterministic in-code project/task seed data
+      current_status: planned
+
+adapters: []
+seed_data:
+  sample_projects: backend/app/services/projects.py
+
+agent_runtime:
+  enabled: true
+  provider_mode: scripted
+  scripted_fixture_path: backend/app/agent/runtime.py
+  conversation_persistence:
+    enabled: true
+    tables: [conversations, conversation_messages]
+  streaming:
+    enabled: true
+    endpoint: /agent/chat/stream
+    events: [message_start, tool_call, tool_result, text_delta, done]
+  guardrails:
+    reject_empty_message: true
+  tools:
+    - name: list_tasks
+      purpose: List project workspace tasks.
+      input_schema: {}
+      output_schema:
+        fields: [tasks]
+    - name: summarize_project
+      purpose: Summarize project status counts.
+      input_schema: {}
+      output_schema:
+        fields: [summary, projects]
+    - name: update_task_status
+      purpose: Update a task status.
+      input_schema:
+        task_id: {type: uuid, required: true}
+        status: {type: string, required: true, choices: [todo, in_progress, blocked, done]}
+      output_schema:
+        fields: [task]
+    - name: add_note
+      purpose: Add a project activity note.
+      input_schema:
+        project_id: {type: uuid, required: true}
+        body: {type: string, required: true}
+      output_schema:
+        fields: [event]
+    - name: pin_project_summary
+      purpose: Pin project summary as a workspace widget.
+      input_schema: {}
+      output_schema:
+        fields: [pinned, widget]
+    - name: pin_task_list
+      purpose: Pin current task list as a workspace widget.
+      input_schema: {}
+      output_schema:
+        fields: [pinned, widget]
+  scripted_turns:
+    - match: tasks
+      tool_calls:
+        - name: list_tasks
+          arguments: {}
+      final_text: I listed the current project tasks.
+    - match: summarize
+      tool_calls:
+        - name: summarize_project
+          arguments: {}
+      final_text: I summarized the project workspace.
+    - match: pin task
+      tool_calls:
+        - name: pin_task_list
+          arguments: {}
+      final_text: I pinned the task list to the workspace.
+
+workspace:
+  enabled: true
+  persistence:
+    table_name: workspace_widgets
+    fields: [id, widget_type, title, source_tool, data, position, metadata]
+  default_layout: []
+  remove_enabled: true
+  reorder_enabled: false
+  empty_state: No widgets yet. Ask the agent to pin a project summary or task list.
+  frontend_surface: workspace_panel
+
+tool_widget_compatibility:
+  list_tasks: [task_list, summary_card]
+  summarize_project: [project_summary, summary_card]
+  pin_task_list: [task_list]
+  pin_project_summary: [project_summary]
+
+widgets:
+  - widget_type: project_summary
+    renderer: ProjectSummary
+    compatible_source_tools: [summarize_project, pin_project_summary]
+    section: workspace
+    expected_data_shape: Project summary with task counts.
+    empty_state: No project summary.
+    implementation_status: planned
+  - widget_type: task_list
+    renderer: TaskList
+    compatible_source_tools: [list_tasks, pin_task_list]
+    section: workspace
+    expected_data_shape: Task rows with status and priority.
+    empty_state: No tasks.
+    implementation_status: planned
+
+tests:
+  expectations:
+    no_live_provider_in_tests: true
+    no_live_llm_in_tests: true
+    deterministic_fixture_data: true
+  commands:
+    backend: pytest
+    frontend_build: npm run build
+    frontend_lint: npm run lint
+
+future_extensions:
+  features: [auth, teams, calendar_integrations, live_llm_provider]
+compatibility_gaps: []

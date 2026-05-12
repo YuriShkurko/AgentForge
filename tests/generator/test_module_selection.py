@@ -33,6 +33,13 @@ def test_agent_dashboard_selects_fastapi_react():
     assert sel.template == "fastapi-react"
 
 
+def test_project_workspace_selects_project_template():
+    pack = _pack("project_workspace_app", ["operations_ui", "persistence", "agent_runtime", "workspace", "test"])
+    sel = select_modules(pack)
+    assert sel.template == "project-workspace-react"
+    assert sel.gaps == []
+
+
 def test_required_modules_preserved():
     modules = ["pipeline", "provider_adapter", "scoring_explanation", "operations_ui", "persistence", "test"]
     pack = _pack("ingestion_scoring_pipeline", modules)

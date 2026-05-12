@@ -29,6 +29,12 @@ export const archetypes = [
     required: ["pipeline", "persistence", "test"],
     status: "planned",
   },
+  {
+    id: "project_workspace_app",
+    label: "Project Workspace App",
+    required: ["operations_ui", "persistence", "agent_runtime", "workspace", "test"],
+    status: "supported",
+  },
 ];
 
 export const modules = [
@@ -68,6 +74,7 @@ export const exampleIdeas = [
   "Customer feedback analyzer that groups urgent issues and explains priority.",
   "Internal agent workspace that summarizes records and pins useful widgets.",
   "Existing repo modernization plan for a FastAPI and React project.",
+  "Project workspace for tracking tasks, owners, due dates, notes, and activity."
 ];
 
 export function getGenerationPreview(state) {
@@ -89,6 +96,9 @@ export function getGenerationPreview(state) {
   if (supportedModules.includes("agent_runtime") || supportedModules.includes("agent")) outputs.push("Scripted local agent chat with typed tools");
   if (supportedModules.includes("workspace")) outputs.push("Dashboard/workspace widgets");
   if (supportedModules.includes("test")) outputs.push("Deterministic test harness");
+  if (archetype.id === "project_workspace_app") {
+    outputs.splice(4, 0, "Project/task workspace with notes and activity", "Seeded local projects and task status updates");
+  }
   const name = sanitizeName(state.name);
   const blueprintPath = `domain-packs/${name}/domain-pack.yaml`;
   const gaps = plannedModules.map((id) => `${byId.get(id)?.label || id} is planned/unsupported in current generation.`);
@@ -196,6 +206,7 @@ export function createBlueprint(state) {
   const archetype = archetypes.find((item) => item.id === state.archetype) || archetypes[0];
   const name = sanitizeName(state.name);
   const optional = unique(state.selectedModules || []).filter((module) => !archetype.required.includes(module));
+  if (archetype.id === "project_workspace_app") return createProjectWorkspaceBlueprint(state, archetype, name, optional);
   const actionLabels = unique([state.actionAccept, state.actionSkip, state.actionMaybe].map((item) => sanitizeName(item)));
   const hasAgentRuntime = optional.includes("agent_runtime") || archetype.required.includes("agent");
   const hasWorkspace = state.workspaceEnabled || optional.includes("workspace") || archetype.required.includes("workspace");
@@ -374,6 +385,90 @@ export function createBlueprint(state) {
   }
 
   return pack;
+}
+
+function createProjectWorkspaceBlueprint(state, archetype, name, optional) {
+  const displayName = state.displayName?.trim() || name.replace(/-/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
+  return {
+    name,
+    display_name: displayName,
+    version: "0.1.0",
+    domain: {
+      domain_name: displayName,
+      app_type: archetype.id,
+      target_users: [state.targetUser?.trim() || "project operator"],
+      product_purpose: state.description?.trim() || "A local project workspace for tasks, notes, and agent-assisted planning.",
+      main_user_goals: ["seed_sample_workspace", "manage_project_tasks", "pin_agent_workspace_widgets"],
+    },
+    app_archetype: archetype.id,
+    required_shell_modules: archetype.required,
+    optional_shell_modules: optional,
+    capabilities: [
+      {
+        name: "seed_sample_workspace",
+        purpose: "Create deterministic sample projects and tasks for local validation.",
+        input_summary: "POST /seed",
+        output_shape: { fields: ["created_projects", "created_tasks"] },
+        mutates_state: true,
+        data_mode: "deterministic_fixture_data",
+        deterministic_test_safe: true,
+        implementation_status: "planned",
+      },
+      {
+        name: "manage_tasks",
+        purpose: "Create tasks, update status/priority, and add project notes.",
+        input_summary: "POST /tasks, PATCH /tasks/{task_id}, POST /projects/{project_id}/notes",
+        output_shape: { fields: ["projects", "tasks", "activity"] },
+        mutates_state: true,
+        data_mode: "database",
+        deterministic_test_safe: true,
+        implementation_status: "planned",
+      },
+    ],
+    ui_surfaces: [
+      { surface_type: "project_overview", renderer: "ProjectPanel", data_source: "projects, tasks", section: "workspace", expected_data_shape: "Projects with task counts, owners, status, and due dates.", empty_state: "No projects yet. Seed the sample workspace." },
+      { surface_type: "task_board", renderer: "TaskPanel", data_source: "tasks", section: "planning", expected_data_shape: "Task rows with status, priority, owner, and due date.", empty_state: "No tasks yet." },
+    ],
+    providers: { sample_workspace: [{ name: "fixture", source: "deterministic in-code project/task seed data", current_status: state.fixtureEnabled ? "planned" : "optional" }] },
+    adapters: [],
+    seed_data: state.fixtureEnabled ? { sample_projects: "backend/app/services/projects.py" } : {},
+    agent_runtime: {
+      enabled: true,
+      provider_mode: state.llmMode || "scripted",
+      scripted_fixture_path: "backend/app/agent/runtime.py",
+      conversation_persistence: { enabled: true, tables: ["conversations", "conversation_messages"] },
+      streaming: { enabled: true, endpoint: "/agent/chat/stream", events: ["message_start", "tool_call", "tool_result", "text_delta", "done"] },
+      guardrails: { reject_empty_message: true },
+      tools: [
+        { name: "list_tasks", purpose: "List project tasks.", input_schema: {}, output_schema: { fields: ["tasks"] } },
+        { name: "summarize_project", purpose: "Summarize project status counts.", input_schema: {}, output_schema: { fields: ["summary", "projects"] } },
+        { name: "pin_task_list", purpose: "Pin current task list into the workspace.", input_schema: {}, output_schema: { fields: ["pinned", "widget"] } },
+      ],
+      scripted_turns: [{ match: "tasks", tool_calls: [{ name: "list_tasks", arguments: {} }], final_text: "I listed the current project tasks." }],
+    },
+    workspace: {
+      enabled: true,
+      persistence: { table_name: "workspace_widgets", fields: ["id", "widget_type", "title", "source_tool", "data", "position", "metadata"] },
+      default_layout: [],
+      remove_enabled: true,
+      reorder_enabled: false,
+      empty_state: "No widgets yet. Ask the agent to pin a project summary or task list.",
+      frontend_surface: "workspace_panel",
+    },
+    tool_widget_compatibility: { list_tasks: ["task_list", "summary_card"], summarize_project: ["project_summary", "summary_card"], pin_task_list: ["task_list"] },
+    widgets: ["project_summary", "task_list"].map((widgetType) => ({
+      widget_type: widgetType,
+      renderer: widgetType.split("_").map((part) => part[0].toUpperCase() + part.slice(1)).join(""),
+      compatible_source_tools: widgetType === "task_list" ? ["list_tasks", "pin_task_list"] : ["summarize_project"],
+      section: "workspace",
+      expected_data_shape: widgetType === "task_list" ? "Task rows with status and priority." : "Project summary with task counts.",
+      empty_state: "No widget data.",
+      implementation_status: "planned",
+    })),
+    tests: { expectations: { no_live_provider_in_tests: true, no_live_llm_in_tests: true, deterministic_fixture_data: state.fixtureEnabled }, commands: { backend: "pytest", frontend_build: "npm run build", frontend_lint: "npm run lint" } },
+    future_extensions: { features: ["auth", "teams", "calendar_integrations", "live_llm_provider"] },
+    compatibility_gaps: [],
+  };
 }
 
 export function createBlueprintYaml(state) {

@@ -13,6 +13,7 @@ AgentForge selects an app archetype before selecting feature modules. The archet
 | `notification_triage_app` | AI Job Radar | Recommendations plus user decisions | Notification/Action Shell, Triage UI Shell, Persistence Shell | Current pack proves it |
 | `deploy_planner_app` | Future | Plan, validate, and stage deployment work | Pipeline Shell, Policy/Approval Shell, Audit Shell | Future |
 | `hybrid_agent_pipeline` | Future | Chat or command UX over deterministic pipeline | Pipeline Shell plus optional Agent Shell | Future |
+| `project_workspace_app` | Project Workspace Demo | Projects, tasks, notes/activity, agent tools, and workspace widgets | Operations UI, Persistence, Agent Runtime, Workspace, Test | Current generated template |
 
 ## `agent_dashboard_app`
 
@@ -110,6 +111,32 @@ Expected Domain Pack fields:
 - `tests`
 
 Example generated app: a scored recommendation queue where each item can be previewed, accepted, skipped, saved, and audited without sending to an external channel.
+
+## `project_workspace_app`
+
+Required shell modules:
+
+- Operations UI Shell: project overview, task list, notes/activity controls.
+- Persistence Shell: projects, tasks, activity events, conversations, workspace widgets.
+- Agent Runtime Module: scripted local tools over project/task data.
+- Workspace Shell: persisted project summary and task list widgets.
+- Test Shell: backend API tests and frontend build/lint.
+
+Expected Domain Pack fields:
+
+- `domain`
+- `app_archetype: project_workspace_app`
+- `required_shell_modules`
+- `capabilities`
+- `ui_surfaces`
+- `agent_runtime`
+- `workspace`
+- `widgets`
+- `tool_widget_compatibility`
+- `seed_data`
+- `tests`
+
+Example generated app: a local project/task planning workspace with seeded sample data, task status and priority updates, project notes/activity, scripted agent chat, and pinned workspace widgets.
 
 ## `deploy_planner_app`
 

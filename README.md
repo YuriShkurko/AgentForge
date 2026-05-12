@@ -1,6 +1,6 @@
 # AgentForge
 
-AgentForge is a local-first planner and generator for agentic product demos. Start with a plain-English app idea, draft and validate an App Blueprint, then generate a runnable FastAPI + React app with deterministic tests, sample data, scoring, triage, scripted agent chat, and a persisted workspace.
+AgentForge is a local-first planner and generator for agentic product demos. Start with a plain-English app idea, draft and validate an App Blueprint, then generate a runnable FastAPI + React app with deterministic tests, sample data, scripted agent chat, and persisted workspace surfaces.
 
 AgentForge also helps with existing repositories: it can analyze a repo, plan possible extensions, prepare safe patch bundles, and produce deployment readiness guidance without mutating the target repo by default.
 
@@ -30,7 +30,7 @@ AgentForge is designed for local validation before any risky action:
 New app idea
   → draft / validate App Blueprint
   → generate local FastAPI + React app
-  → import, score, triage records
+  → run a generated local workflow
   → use scripted agent chat and workspace
 
 Existing repo
@@ -105,30 +105,24 @@ See [docs/COMMAND_REFERENCE.md](docs/COMMAND_REFERENCE.md) for examples and deta
 
 ## What AgentForge generates today
 
-AgentForge currently generates and validates one complete deterministic local app: `hybrid-scoring-demo`.
+AgentForge currently includes multiple deterministic generated app examples:
 
-The generated FastAPI + React app includes:
+- `hybrid-scoring-demo` — fixture ingestion, deterministic scoring, notification preview, triage actions, scripted agent chat, and workspace widgets.
+- `project-workspace-demo` — seeded projects/tasks, status and priority updates, notes/activity, scripted agent tools, and workspace widgets.
 
-- fixture ingestion and normalization;
-- deterministic scoring with explanations;
-- preview-only notification payloads;
-- triage actions and append-only action history;
-- scripted Agent Runtime with persisted conversations;
-- SSE streaming at `/agent/chat/stream`;
-- typed tool validation and structured tool errors;
-- persisted workspace widgets;
-- backend tests, frontend build/lint, generator tests, and Playwright coverage.
+Both examples are local-first FastAPI + React apps with backend tests and frontend build/lint validation. Neither requires live LLM/API access for the default path.
 
-Generated snapshot:
+Generated scoring snapshot:
 
 ```text
 examples/hybrid-scoring-demo/
 ```
 
-Regenerate it from the Blueprint:
+Generate either app from its Blueprint:
 
 ```bash
 agentforge generate domain-packs/hybrid-scoring-demo/domain-pack.yaml --force
+agentforge generate domain-packs/project-workspace-demo/domain-pack.yaml --output .tmp/project-workspace-demo --force
 ```
 
 ## Quickstart without the Builder
@@ -137,6 +131,8 @@ agentforge generate domain-packs/hybrid-scoring-demo/domain-pack.yaml --force
 pip install -e generator/
 agentforge plan domain-packs/hybrid-scoring-demo/domain-pack.yaml
 agentforge generate domain-packs/hybrid-scoring-demo/domain-pack.yaml --force
+agentforge plan domain-packs/project-workspace-demo/domain-pack.yaml
+agentforge generate domain-packs/project-workspace-demo/domain-pack.yaml --output .tmp/project-workspace-demo --force
 make validate
 ```
 

@@ -1,6 +1,6 @@
 # AgentForge Demo Guide
 
-The demo should make AgentForge understandable in a few minutes: local Builder, drafted App Blueprint, generated FastAPI + React app, deterministic validation, and safe existing-repo planning.
+The demo should make AgentForge understandable in a few minutes: local Builder, drafted App Blueprint, multiple generated FastAPI + React app shapes, deterministic validation, and safe existing-repo planning.
 
 ## Primary Golden Demo Path
 
@@ -97,6 +97,24 @@ In the generated UI:
 10. Show persisted conversations, workspace widgets, and action history.
 
 The generated app demonstrates real application surfaces without external delivery, paid APIs, or a live LLM.
+
+## Alternate generated-app demo: Project Workspace
+
+Use this after the scoring/triage golden path to show AgentForge can generate a meaningfully different full-stack app:
+
+```bash
+agentforge plan domain-packs/project-workspace-demo/domain-pack.yaml
+agentforge generate domain-packs/project-workspace-demo/domain-pack.yaml --output .tmp/project-workspace-demo --force
+```
+
+Then validate the generated app:
+
+```bash
+cd .tmp/project-workspace-demo/backend && pytest
+cd ../frontend && npm install && npm run build && npm run lint
+```
+
+The generated Project Workspace app demonstrates seeded projects/tasks, task status and priority updates, notes/activity, scripted agent chat over project tools, and pinned workspace widgets. It does not use scoring, triage, notification previews, live LLMs, or external APIs.
 
 ## Secondary Demo Path: existing repo planning
 

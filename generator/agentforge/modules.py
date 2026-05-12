@@ -15,6 +15,7 @@ ARCHETYPE_REQUIRED_MODULES: dict[str, set[str]] = {
     },
     "hybrid_agent_pipeline": {"pipeline", "provider_adapter", "operations_ui"},
     "deploy_planner_app": {"pipeline", "persistence", "test"},
+    "project_workspace_app": {"operations_ui", "persistence", "agent_runtime", "workspace", "test"},
 }
 
 # Which base template directory to use for each archetype
@@ -24,6 +25,7 @@ ARCHETYPE_TEMPLATE: dict[str, str] = {
     "notification_triage_app": "fastapi-react",
     "hybrid_agent_pipeline": "fastapi-react",
     "deploy_planner_app": "fastapi-react",
+    "project_workspace_app": "project-workspace-react",
 }
 
 

@@ -42,9 +42,11 @@ agentforge plan domain-packs/my-app/domain-pack.yaml
 ```bash
 agentforge plan domain-packs/hybrid-scoring-demo/domain-pack.yaml
 agentforge generate domain-packs/hybrid-scoring-demo/domain-pack.yaml --force
+agentforge plan domain-packs/project-workspace-demo/domain-pack.yaml
+agentforge generate domain-packs/project-workspace-demo/domain-pack.yaml --output .tmp/project-workspace-demo --force
 ```
 
-`agentforge plan` is the validation source of truth. `agentforge generate` writes generated output.
+`agentforge plan` is the validation source of truth. `agentforge generate` writes generated output. The project workspace command writes to `.tmp/` above so it does not replace the committed scoring demo.
 
 ## Understand existing repos
 

@@ -66,6 +66,16 @@ def create_starter_blueprint(
         required_modules.append("agent")
 
     actions = action_labels or DEFAULT_ACTION_LABELS
+    if archetype == "project_workspace_app":
+        return _create_project_workspace_blueprint(
+            clean_name,
+            display_name=display_name,
+            description=description,
+            target_user=target_user,
+            optional_modules=optional,
+            workspace_enabled=workspace_enabled,
+        )
+
     pack: dict[str, Any] = {
         "name": clean_name,
         "display_name": _display_name(clean_name, display_name),
@@ -246,6 +256,115 @@ def create_starter_blueprint(
             "empty_state": "No widgets yet.",
         })
 
+    return pack
+
+
+def _create_project_workspace_blueprint(
+    clean_name: str,
+    *,
+    display_name: str | None,
+    description: str,
+    target_user: str,
+    optional_modules: list[str],
+    workspace_enabled: bool,
+) -> dict[str, Any]:
+    required_modules = sorted(ARCHETYPE_REQUIRED_MODULES["project_workspace_app"])
+    optional = sorted({module for module in optional_modules if module not in required_modules})
+    pack: dict[str, Any] = {
+        "name": clean_name,
+        "display_name": _display_name(clean_name, display_name),
+        "version": "0.1.0",
+        "domain": {
+            "domain_name": _display_name(clean_name, display_name),
+            "app_type": "project_workspace_app",
+            "target_users": [target_user.strip() or "project operator"],
+            "product_purpose": description.strip() or "A local project workspace for tasks, notes, and agent-assisted planning.",
+            "main_user_goals": ["seed_sample_workspace", "manage_project_tasks", "pin_agent_workspace_widgets"],
+        },
+        "app_archetype": "project_workspace_app",
+        "required_shell_modules": required_modules,
+        "optional_shell_modules": optional,
+        "capabilities": [
+            {
+                "name": "seed_sample_workspace",
+                "purpose": "Create deterministic sample projects and tasks for local validation.",
+                "input_summary": "POST /seed",
+                "output_shape": {"fields": ["created_projects", "created_tasks"]},
+                "mutates_state": True,
+                "data_mode": "deterministic_fixture_data",
+                "deterministic_test_safe": True,
+                "implementation_status": "planned",
+            },
+            {
+                "name": "manage_tasks",
+                "purpose": "Create tasks, update status/priority, and add project notes.",
+                "input_summary": "POST /tasks, PATCH /tasks/{task_id}, POST /projects/{project_id}/notes",
+                "output_shape": {"fields": ["projects", "tasks", "activity"]},
+                "mutates_state": True,
+                "data_mode": "database",
+                "deterministic_test_safe": True,
+                "implementation_status": "planned",
+            },
+        ],
+        "ui_surfaces": [
+            {
+                "surface_type": "project_overview",
+                "renderer": "ProjectPanel",
+                "data_source": "projects, tasks",
+                "section": "workspace",
+                "expected_data_shape": "Projects with task counts, owners, status, and due dates.",
+                "empty_state": "No projects yet. Seed the sample workspace.",
+            },
+            {
+                "surface_type": "task_board",
+                "renderer": "TaskPanel",
+                "data_source": "tasks",
+                "section": "planning",
+                "expected_data_shape": "Task rows with status, priority, owner, and due date.",
+                "empty_state": "No tasks yet.",
+            },
+        ],
+        "providers": {"sample_workspace": [{"name": "fixture", "source": "deterministic in-code project/task seed data", "current_status": "planned"}]},
+        "adapters": [],
+        "seed_data": {"sample_projects": "backend/app/services/projects.py"},
+        "agent_runtime": {
+            "enabled": True,
+            "provider_mode": "scripted",
+            "scripted_fixture_path": "backend/app/agent/runtime.py",
+            "conversation_persistence": {"enabled": True, "tables": ["conversations", "conversation_messages"]},
+            "streaming": {"enabled": True, "endpoint": "/agent/chat/stream", "events": ["message_start", "tool_call", "tool_result", "text_delta", "done"]},
+            "guardrails": {"reject_empty_message": True},
+            "tools": [
+                {"name": "list_tasks", "purpose": "List project tasks.", "input_schema": {}, "output_schema": {"fields": ["tasks"]}},
+                {"name": "summarize_project", "purpose": "Summarize project status counts.", "input_schema": {}, "output_schema": {"fields": ["summary", "projects"]}},
+                {"name": "pin_task_list", "purpose": "Pin current task list into the workspace.", "input_schema": {}, "output_schema": {"fields": ["pinned", "widget"]}},
+            ],
+            "scripted_turns": [
+                {"match": "tasks", "tool_calls": [{"name": "list_tasks", "arguments": {}}], "final_text": "I listed the current project tasks."},
+                {"match": "pin task", "tool_calls": [{"name": "pin_task_list", "arguments": {}}], "final_text": "I pinned the task list to the workspace."},
+            ],
+        },
+        "workspace": {
+            "enabled": workspace_enabled,
+            "persistence": {"table_name": "workspace_widgets", "fields": ["id", "widget_type", "title", "source_tool", "data", "position", "metadata"]},
+            "default_layout": [],
+            "remove_enabled": True,
+            "reorder_enabled": False,
+            "empty_state": "No widgets yet. Ask the agent to pin a project summary or task list.",
+            "frontend_surface": "workspace_panel",
+        },
+        "tool_widget_compatibility": {"list_tasks": ["task_list", "summary_card"], "summarize_project": ["project_summary", "summary_card"], "pin_task_list": ["task_list"]},
+        "widgets": [
+            {"widget_type": "project_summary", "renderer": "ProjectSummary", "compatible_source_tools": ["summarize_project"], "section": "workspace", "expected_data_shape": "Project summary with task counts.", "empty_state": "No project summary.", "implementation_status": "planned"},
+            {"widget_type": "task_list", "renderer": "TaskList", "compatible_source_tools": ["list_tasks", "pin_task_list"], "section": "workspace", "expected_data_shape": "Task rows with status and priority.", "empty_state": "No tasks.", "implementation_status": "planned"},
+        ],
+        "tests": {
+            "expectations": {"no_live_provider_in_tests": True, "no_live_llm_in_tests": True, "deterministic_fixture_data": True},
+            "commands": {"backend": "pytest", "frontend_build": "npm run build", "frontend_lint": "npm run lint"},
+        },
+        "future_extensions": {"features": ["auth", "teams", "calendar_integrations", "live_llm_provider"]},
+        "compatibility_gaps": [],
+    }
     return pack
 
 
