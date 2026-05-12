@@ -55,7 +55,7 @@ Builder flow:
 | Step | What to look for |
 | --- | --- |
 | ![Builder idea entry screen](docs/assets/screenshots/builder-start.png) | Start with one app idea in the local Builder. |
-| ![Drafted Blueprint and Live app plan](docs/assets/screenshots/builder-plan.png) | Review the drafted plan, assumptions, warnings, and persistent Live app plan before raw YAML. |
+| ![Drafted Blueprint and Live app plan](docs/assets/screenshots/builder-plan.png) | Review the drafted plan, controlled customization fields, assumptions, warnings, and persistent Live app plan before raw YAML. |
 | ![Generate commands in the Builder](docs/assets/screenshots/builder-commands.png) | Copy the exact local CLI commands; the CLI remains the source of truth for validation and generation. |
 
 Scoring and triage generated app:

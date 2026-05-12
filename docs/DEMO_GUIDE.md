@@ -160,7 +160,7 @@ Talking points:
 The README uses a small screenshot walkthrough stored in `docs/assets/screenshots/`:
 
 - `builder-start.png` — Builder idea entry screen;
-- `builder-plan.png` — drafted Blueprint review and Live app plan;
+- `builder-plan.png` — drafted Blueprint review, Customize app details panel, and Live app plan;
 - `builder-commands.png` — local generation commands;
 - `generated-scoring.png` — scoring/triage generated app flow;
 - `generated-agent-workspace.png` — scoring app scripted agent pinning a workspace widget;
