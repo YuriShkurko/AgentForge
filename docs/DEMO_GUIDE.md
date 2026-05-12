@@ -1,6 +1,6 @@
 # AgentForge Demo Guide
 
-The v1.0 demo should make AgentForge understandable and impressive in 5 minutes.
+The demo should make AgentForge understandable in a few minutes: local Builder, drafted App Blueprint, generated FastAPI + React app, deterministic validation, and safe existing-repo planning.
 
 ## Primary Golden Demo Path
 
@@ -128,17 +128,16 @@ Talking points:
 
 ## Demo assets
 
-Screenshots are helpful but should not block v1.0.
+The README uses a small screenshot walkthrough stored in `docs/assets/screenshots/`:
 
-If practical, capture small stable screenshots for:
+- `builder-start.png` — Builder idea entry screen;
+- `builder-plan.png` — drafted Blueprint review and Live app plan;
+- `builder-commands.png` — local generation commands;
+- `generated-scoring.png` — generated app scoring/triage flow;
+- `generated-agent-workspace.png` — scripted agent pinning a workspace widget;
+- `generated-persistence.png` — workspace state after refresh.
 
-- Builder front door;
-- generated app overview;
-- agent chat pinning a widget;
-- repo analyzer or extension planner terminal output;
-- deployment planner output.
-
-Defer large GIFs if they slow the release or are likely to rot.
+Keep screenshots focused on the stable golden path. Defer large GIFs or broad terminal-output galleries if they slow the release or are likely to rot.
 
 ## Validation before recording or presenting
 

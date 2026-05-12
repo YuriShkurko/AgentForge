@@ -1,64 +1,75 @@
 # AgentForge
 
-AgentForge turns a structured app idea into a runnable local-first FastAPI + React product demo, then helps you safely analyze existing repos for extension and deployment planning.
+AgentForge is a local-first planner and generator for agentic product demos. Start with a plain-English app idea, draft and validate an App Blueprint, then generate a runnable FastAPI + React app with deterministic tests, sample data, scoring, triage, scripted agent chat, and a persisted workspace.
 
-**v1.0 focus:** AgentForge is not adding more capability for this milestone. v1.0 makes the existing capability obvious, demoable, and trustworthy.
+AgentForge also helps with existing repositories: it can analyze a repo, plan possible extensions, prepare safe patch bundles, and produce deployment readiness guidance without mutating the target repo by default.
 
-> **Goal:** make AgentForge understandable and impressive in 5 minutes.
-
-## Safe by default
-
-AgentForge is designed to be safe to try locally:
-
-- It does **not** deploy infrastructure.
-- It does **not** spend money.
-- It does **not** modify existing repos by default.
-- It does **not** require live LLM/API access for validation.
-- Patch apply mode is explicit and limited to low-risk docs, blueprint, and checklist files.
-- The deployment planner is planning-only.
-
-## How it works
-
-```text
-App idea / existing repo
-        ↓
-Blueprint / analysis
-        ↓
-Plan / generate / extension plan
-        ↓
-Generated app or safe migration artifacts
-        ↓
-Validation / deployment plan
-```
-
-For the primary generated-app path:
-
-```text
-App Blueprint YAML + Application Template = Generated App
-```
-
-## Golden Demo Path
-
-This is the primary v1.0 demo story:
-
-1. Open the local Builder.
-2. Draft an App Blueprint from an app idea.
-3. Validate and plan the Blueprint.
-4. Generate the app.
-5. Run the generated app.
-6. Ingest and score records.
-7. Use the scripted agent chat.
-8. Pin an agent result into the workspace.
-9. Refresh and show persisted chat, widgets, and triage history.
-
-Start here:
+## Try this first
 
 ```bash
 pip install -e generator/
 agentforge serve-builder
 ```
 
-Then follow the full walkthrough in [docs/DEMO_GUIDE.md](docs/DEMO_GUIDE.md).
+Open the printed local URL, choose **Start from an app idea**, draft a plan, then use the generated CLI commands. No API keys, cloud account, live LLM, or deployment target is required for the default demo path.
+
+## Why it is safe to try
+
+AgentForge is designed for local validation before any risky action:
+
+- The Builder and scripted planner run locally.
+- Validation does **not** require live LLM/API access.
+- Existing-repo analysis and planning do **not** modify repos by default.
+- Patch apply mode is explicit and limited to low-risk docs, blueprint, and checklist files.
+- The deployment planner creates guidance only; it does **not** deploy infrastructure.
+- Optional live provider modes are separate from the default scripted/local path.
+
+## How it works
+
+```text
+New app idea
+  → draft / validate App Blueprint
+  → generate local FastAPI + React app
+  → import, score, triage records
+  → use scripted agent chat and workspace
+
+Existing repo
+  → analyze repo
+  → plan extension
+  → prepare safe patch bundle
+  → plan deployment readiness
+```
+
+For the generated-app path:
+
+```text
+App Blueprint YAML + Application Template = Generated App
+```
+
+## Screenshot walkthrough
+
+| Step | What to look for |
+| --- | --- |
+| ![Builder idea entry screen](docs/assets/screenshots/builder-start.png) | Start with one app idea in the local Builder. |
+| ![Drafted Blueprint and Live app plan](docs/assets/screenshots/builder-plan.png) | Review the drafted plan, assumptions, warnings, and persistent Live app plan before raw YAML. |
+| ![Generate commands in the Builder](docs/assets/screenshots/builder-commands.png) | Copy the exact local CLI commands; the CLI remains the source of truth for validation and generation. |
+| ![Generated app scoring and triage](docs/assets/screenshots/generated-scoring.png) | Run the generated app, ingest/import records, score them, preview notifications, and triage results. |
+| ![Agent chat pins a workspace widget](docs/assets/screenshots/generated-agent-workspace.png) | Use the scripted local agent to work with scored records and pin a workspace widget. |
+| ![Workspace widget persists after refresh](docs/assets/screenshots/generated-persistence.png) | Refresh to confirm persisted chat/workspace state and action history. |
+
+## Golden demo path
+
+1. Open the local Builder.
+2. Draft an App Blueprint from an app idea.
+3. Validate and plan the Blueprint.
+4. Generate the app.
+5. Run the generated app.
+6. Ingest or import records, score them, and triage results.
+7. Use the scripted agent chat.
+8. Pin an agent result into the workspace.
+9. Refresh and show persisted chat, widgets, and triage history.
+
+Follow the full walkthrough in [docs/DEMO_GUIDE.md](docs/DEMO_GUIDE.md).
 
 ## Secondary path: existing repos
 
@@ -153,11 +164,11 @@ make validate
 make run-e2e
 ```
 
-CI status for v1.0 readiness:
+CI status:
 
 - No `.github/workflows/` workflow is currently present in this repository.
 - A CI badge should only be added after reliable CI exists and passes.
-- A green badge is valuable for a portfolio-ready MVP, but it should not be faked.
+- A green badge is valuable for a portfolio-ready project, but it should not be faked.
 
 ## Docs
 
@@ -182,7 +193,7 @@ README is the guided landing page. Detailed docs live here:
 
 AgentForge is deliberately constrained. It does not yet provide:
 
-- live LLM provider integration;
+- live LLM/API usage as the default path;
 - broad arbitrary app generation;
 - invasive repository conversion;
 - autonomous code modification;
