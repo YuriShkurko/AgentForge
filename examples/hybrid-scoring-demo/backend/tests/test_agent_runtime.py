@@ -121,14 +121,18 @@ class FakeOpenAIClient:
 
 
 def test_agent_provider_defaults_to_scripted(monkeypatch):
-    monkeypatch.delenv("AGENT_PROVIDER", raising=False)
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "agent_provider", "scripted")
 
     assert get_agent_provider().name == "scripted"
 
 
 def test_openai_provider_requires_key(monkeypatch):
-    monkeypatch.setenv("AGENT_PROVIDER", "openai")
-    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "agent_provider", "openai")
+    monkeypatch.setattr(settings, "openai_api_key", "")
 
     with pytest.raises(AgentProviderConfigurationError):
         get_agent_provider()

@@ -1,5 +1,4 @@
 import json
-import os
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
@@ -171,14 +170,16 @@ class OpenAIResponsesClient:
 
     @classmethod
     def from_env(cls) -> "OpenAIResponsesClient":
-        api_key = os.getenv("OPENAI_API_KEY", "").strip()
+        from app.config import settings
+
+        api_key = settings.openai_api_key.strip()
         if not api_key:
             raise AgentProviderConfigurationError(
-                "AGENT_PROVIDER=openai requires OPENAI_API_KEY. Set OPENAI_API_KEY or use AGENT_PROVIDER=scripted."
+                "AGENT_PROVIDER=openai requires OPENAI_API_KEY. Set OPENAI_API_KEY in backend/.env or use AGENT_PROVIDER=scripted."
             )
         return cls(
             api_key=api_key,
-            model=os.getenv("OPENAI_MODEL", "gpt-4o-mini").strip() or "gpt-4o-mini",
+            model=settings.openai_model.strip() or "gpt-4o-mini",
         )
 
     def complete(self, message: str) -> str:
@@ -222,7 +223,9 @@ class OpenAIResponsesClient:
 
 
 def get_agent_provider() -> AgentProvider:
-    provider = os.getenv("AGENT_PROVIDER", "scripted").strip().lower()
+    from app.config import settings
+
+    provider = settings.agent_provider.strip().lower()
     if provider in {"", "scripted", "local"}:
         return ScriptedAgentProvider()
     if provider == "openai":
