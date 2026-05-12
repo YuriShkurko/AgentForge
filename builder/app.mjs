@@ -49,6 +49,11 @@ const copyBlueprintSeedButton = document.querySelector("#copy-blueprint-seed");
 const analyzerOutput = document.querySelector("#analyzer-output");
 const extensionPlanOutput = document.querySelector("#extension-plan-output");
 const generationPreview = document.querySelector("#generation-preview");
+const summaryName = document.querySelector("#summary-name");
+const summaryArchetype = document.querySelector("#summary-archetype");
+const summaryStatus = document.querySelector("#summary-status");
+const summaryCapabilityGroups = document.querySelector("#summary-capability-groups");
+const summaryCommands = document.querySelector("#summary-commands");
 
 const plannerApi = window.location.protocol.startsWith("http") ? `${window.location.origin}/api/planner` : "http://127.0.0.1:8765/api/planner";
 let plannerAvailable = false;
@@ -57,6 +62,7 @@ let plannerYaml = "";
 let plannerCommands = [];
 let activeQuestions = [];
 let parsedBlueprintSeed = "";
+let activeStep = "start";
 
 function state() {
   return {
@@ -127,27 +133,95 @@ function updatePreview() {
   statusPill.classList.toggle("warning", issues.length > 0);
   validationSummary.textContent = issues.length ? issues.join(" ") : "Blueprint source is ready for `agentforge plan`.";
   renderGenerationPreview(preview);
+  renderBuildSummary(current, preview, issues);
+}
+
+function renderBuildSummary(current, preview, issues) {
+  summaryName.textContent = current.displayName || current.name || "Untitled app";
+  summaryArchetype.textContent = plainArchetype(preview.archetype);
+  summaryStatus.textContent = issues.length ? `${issues.length} issue${issues.length === 1 ? "" : "s"} to resolve` : plannerBlueprint ? "Plan drafted — ready to review" : "Ready for an app idea";
+  summaryCapabilityGroups.innerHTML = capabilityGroups(preview)
+    .map((group) => `
+      <section>
+        <h3>${escapeHtml(group.title)}</h3>
+        <ul>${group.items.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>
+      </section>
+    `)
+    .join("");
+  summaryCommands.textContent = (plannerCommands.length ? plannerCommands : preview.commands).join("\n");
+}
+
+function plainArchetype(label) {
+  return String(label || "Local app").replace("Pipeline", "app").replace("App", "app").replaceAll("_", " ");
+}
+
+function plainCapabilityLabel(value) {
+  const labels = {
+    agent_runtime: "Agent chat",
+    provider_adapter: "Data adapter",
+    pipeline: "Data pipeline",
+    scoring_explanation: "Scoring explanations",
+    notification_action: "Notification previews",
+    triage_ui: "Triage actions",
+    workspace: "Workspace dashboard",
+    operations_ui: "Operations screen",
+    persistence: "Local persistence",
+    test: "Test harness",
+  };
+  return labels[value] || plainArchetype(value);
+}
+
+function capabilityGroups(preview) {
+  const outputs = new Set(preview.outputs || []);
+  const has = (text) => [...outputs].some((item) => item.toLowerCase().includes(text));
+  const groups = [
+    { title: "App foundation", items: ["FastAPI backend", "React frontend", "Local persistence"] },
+    { title: "AI workflow", items: [] },
+    { title: "Product surfaces", items: [] },
+    { title: "Validation", items: ["Backend tests", "Frontend build/lint"] },
+  ];
+  if (has("agent")) groups[1].items.push("Scripted agent chat", "Typed tools");
+  if (has("sample")) groups[2].items.push("Data import");
+  if (has("scoring")) groups[2].items.push("Scoring explanations");
+  if (has("notification")) groups[2].items.push("Notification previews", "Triage actions");
+  if (has("workspace")) groups[2].items.push("Workspace dashboard");
+  return groups.filter((group) => group.items.length > 0);
+}
+
+function setActiveStep(step) {
+  activeStep = step;
+  document.querySelectorAll("[data-step]").forEach((panel) => {
+    panel.classList.toggle("active", panel.dataset.step === step);
+  });
+  document.querySelectorAll("[data-step-target]").forEach((button) => {
+    button.classList.toggle("active", button.dataset.stepTarget === step);
+  });
+  const activePanel = document.querySelector(`[data-step="${step}"]`);
+  if (activePanel) activePanel.focus?.({ preventScroll: true });
 }
 
 function renderGenerationPreview(preview) {
   generationPreview.innerHTML = `
-    <div class="preview-block">
+    <div class="preview-block outcome-block">
+      <p class="eyebrow">App type</p>
       <h3>${escapeHtml(preview.archetype)}</h3>
-      <p class="helper-copy">Generated app pieces</p>
+      <p class="helper-copy">A local app demo with deterministic validation and no required external services.</p>
+    </div>
+    <div class="preview-block outcome-block wide-preview">
+      <p class="eyebrow">What you will get</p>
       <ul>${preview.outputs.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>
     </div>
-    <div class="preview-block">
-      <h3>Supported modules</h3>
+    <details class="preview-block module-details">
+      <summary>Advanced module details</summary>
+      <h3>Advanced capability/module details</h3>
       <div class="chip-row">${preview.supportedModules.map((item) => `<span class="chip">${escapeHtml(item)}</span>`).join("")}</div>
-    </div>
-    <div class="preview-block">
-      <h3>Gaps / planned</h3>
+      <h3>Planned / unsupported advanced details</h3>
       <ul>${(preview.gaps.length ? preview.gaps : ["No planned/unsupported modules selected."]).map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>
-    </div>
-    <div class="preview-block">
-      <h3>Next commands</h3>
+    </details>
+    <details class="preview-block command-preview-block">
+      <summary>Preview next commands</summary>
       <pre class="mini-pre">${escapeHtml((plannerCommands.length ? plannerCommands : preview.commands).join("\n"))}</pre>
-    </div>
+    </details>
   `;
 }
 
@@ -171,7 +245,7 @@ async function checkPlannerStatus() {
     const status = await response.json();
     plannerAvailable = status.planner_available === true;
     plannerStatus.textContent = plannerAvailable
-      ? "Scripted planner connected. Draft, clarify, refine, and validate use the local Python schema."
+      ? "Local planner connected. Draft, clarify, refine, and validate use the deterministic Python schema."
       : "Static mode. Start `agentforge serve-builder` to enable scripted drafting.";
   } catch {
     plannerAvailable = false;
@@ -184,6 +258,7 @@ async function draftBlueprint() {
   try {
     const result = await plannerRequest("draft", { idea: plannerIdea.value, prior_answers: collectAnswers() });
     handlePlannerResult(result);
+    if (result.status !== "needs_clarification") setActiveStep("review");
   } catch (error) {
     showPlannerError(error.message);
   }
@@ -207,6 +282,7 @@ async function refineBlueprint() {
       instruction: plannerRefine.value,
     });
     handlePlannerResult(result);
+    if (result.status !== "needs_clarification") setActiveStep("review");
   } catch (error) {
     showPlannerError(error.message);
   }
@@ -221,6 +297,7 @@ async function validateBlueprint() {
       path: `./domain-packs/${sanitizeName(current.name)}/domain-pack.yaml`,
     });
     handlePlannerResult(result, { preserveForm: true });
+    if (result.status !== "needs_clarification") setActiveStep("review");
   } catch (error) {
     showPlannerError(error.message);
   }
@@ -252,7 +329,7 @@ function handlePlannerResult(result, options = {}) {
   renderDraftResult(result);
   clarificationPanel.classList.add("hidden");
   draftPanel.classList.remove("hidden");
-  plannerStatus.textContent = "Planner draft ready. Review the YAML, then run the CLI commands.";
+  plannerStatus.textContent = "Planner draft ready. Review the plain-language plan, then run the CLI commands.";
   updatePreview();
 }
 
@@ -283,8 +360,11 @@ function collectAnswers() {
 function renderDraftResult(result) {
   const modules = result.suggested_modules || [];
   const archetype = result.blueprint?.app_archetype || form.archetype.value;
-  draftSummary.textContent = `${result.status}: review the recommended archetype, modules, assumptions, and Blueprint Source before running the CLI.`;
-  draftChips.innerHTML = [`Archetype: ${archetype}`, ...modules].map((item) => `<span class="chip">${escapeHtml(item)}</span>`).join("");
+  draftSummary.textContent = `${result.status}: AgentForge drafted a local app plan. Review the app type, included capabilities, assumptions, and next commands before generating.`;
+  draftChips.innerHTML = [plainArchetype(archetype), ...modules.map(plainCapabilityLabel)]
+    .slice(0, 7)
+    .map((item) => `<span class="capability-token">${escapeHtml(item)}</span>`)
+    .join("");
   renderList(plannerAssumptions, result.assumptions || []);
   renderList(plannerWarnings, result.warnings || []);
 }
@@ -426,6 +506,7 @@ renderArchetypes();
 renderEntryHelpers();
 renderModules();
 updatePreview();
+setActiveStep(activeStep);
 checkPlannerStatus();
 
 form.archetype.addEventListener("change", () => {
@@ -442,6 +523,12 @@ document.addEventListener("change", (event) => {
   if (!event.target.closest(".planner-panel")) clearPlannerDraft();
   updatePreview();
 });
+
+document.addEventListener("click", (event) => {
+  const target = event.target.closest("[data-step-target]");
+  if (!target) return;
+  setActiveStep(target.dataset.stepTarget);
+});
 copyButton.addEventListener("click", copyYaml);
 downloadButton.addEventListener("click", downloadYaml);
 draftButton.addEventListener("click", draftBlueprint);
@@ -456,5 +543,5 @@ ideaExamples.addEventListener("click", (event) => {
   const button = event.target.closest("[data-idea]");
   if (!button) return;
   plannerIdea.value = button.dataset.idea;
-  plannerIdea.focus();
+  plannerIdea.focus({ preventScroll: true });
 });

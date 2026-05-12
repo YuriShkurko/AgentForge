@@ -4,10 +4,10 @@ The Blueprint Builder is the local product front door for AgentForge. The v1.0 U
 
 The main promise is visible in the UI: **no API keys, no cloud account, and no external provider setup are required for the local demo path.**
 
-The long-term direction is an agent-chat builder. For now, the UI uses a clearer guided flow:
+The long-term direction is an agent-chat builder. For now, the UI is a compact app-like workspace with one active step visible at a time and a persistent Live app plan:
 
 ```text
-Choose path → describe app → draft/review plan → generate with CLI
+Start → describe idea → review plan → generate locally with CLI
 ```
 
 ## Modes
@@ -49,15 +49,15 @@ Then open the generated app, ingest included sample records, score them, use age
 
 ## Review and generate
 
-The Builder shows a guided review before raw YAML:
+The Builder treats generated outcomes as the main review surface before raw YAML or module details:
 
-- draft summary;
+- app type in plain language;
+- what AgentForge will generate;
 - assumptions and warnings;
-- generated app pieces;
-- supported modules and planned gaps;
+- concise safety cues;
 - next CLI commands.
 
-Blueprint details, modules, deterministic configuration, and raw YAML remain available under **Advanced Blueprint controls**.
+Module IDs, planned gaps, deterministic configuration, exact command blocks, and raw YAML remain available behind advanced disclosure. The right-side **Live app plan** stays visible on desktop and groups capabilities as app foundation, AI workflow, product surfaces, and validation so it feels like an active plan instead of metadata.
 
 The CLI remains the source of truth:
 
@@ -69,7 +69,7 @@ make validate
 
 ## Secondary path: start from an existing repo
 
-Existing-repo planning remains available, but it is intentionally secondary to the new-app flow.
+Existing-repo planning remains available, but it is intentionally secondary to the new-app flow and collapsed by default.
 
 Use the Repo Analyzer and Repo Extension Planner outside the browser, then optionally paste JSON output into the Builder:
 

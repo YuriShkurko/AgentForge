@@ -8,299 +8,248 @@
   </head>
   <body>
     <main class="shell">
-      <section class="builder">
-        <header class="topbar">
+      <section class="builder wizard-shell">
+        <header class="topbar app-header">
+          <div class="brand-mark" aria-hidden="true">AF</div>
           <div>
             <p class="eyebrow">AgentForge Builder</p>
-            <h1>Build a working local app demo.</h1>
-            <p class="lede">No API keys. No cloud account. No external provider setup. Describe an app idea and AgentForge will draft a local FastAPI + React demo with included sample data, scripted agent chat, workspace, tests, and validation.</p>
-            <div class="trust-row" aria-label="No-key demo guarantees">
-              <span>No API keys</span>
-              <span>Included sample records</span>
-              <span>Scripted local agent</span>
-              <span>Runs locally</span>
-              <span>Tests included</span>
-            </div>
+            <p class="app-header-title">Local app planning workspace</p>
           </div>
           <div class="status-pill" id="status-pill">Valid draft</div>
         </header>
 
-        <section class="panel hero-panel" aria-labelledby="start-heading">
-          <div class="section-head">
-            <h2 id="start-heading">Start here</h2>
-            <p>Start with the no-key local demo path. Existing repos are available as a secondary planning flow.</p>
-          </div>
-          <div class="path-grid">
-            <a class="path-card primary" href="#new-app-flow">
-              <span class="path-kicker">Primary</span>
-              <strong>Start from an app idea</strong>
-              <small>Start with one plain-English idea. AgentForge drafts a local demo plan and gives you exact commands to generate, run, and test it.</small>
-            </a>
-            <a class="path-card secondary" href="#existing-repo-flow">
-              <span class="path-kicker">Secondary</span>
-              <strong>Start from an existing repo</strong>
-              <small>Run safe CLI analysis and planning commands. No repo mutation, deployment, API keys, or live LLM calls.</small>
-            </a>
-          </div>
-        </section>
+        <div class="wizard-layout">
+          <div class="wizard-main">
+            <nav class="flow-rail" aria-label="Builder steps">
+              <button type="button" data-step-target="start"><span>1</span>Start</button>
+              <button type="button" data-step-target="new-app"><span>2</span>Describe</button>
+              <button type="button" data-step-target="review"><span>3</span>Review</button>
+              <button type="button" data-step-target="generate"><span>4</span>Generate</button>
+            </nav>
 
-        <section class="panel demo-card" aria-labelledby="demo-card-heading">
-          <div>
-            <p class="eyebrow">Fastest way to test it</p>
-            <h2 id="demo-card-heading">Try the built-in no-key demo</h2>
-            <p>The committed hybrid scoring demo uses included sample records and a scripted local agent. You can ingest, score, chat, pin widgets, and refresh to verify persistence without connecting any external service.</p>
-          </div>
-          <pre class="demo-commands">agentforge generate domain-packs/hybrid-scoring-demo/domain-pack.yaml --force
-make run-backend
-make run-frontend</pre>
-        </section>
-
-        <section class="panel promise-panel">
-          <div class="promise-copy">
-            <p class="eyebrow">What AgentForge creates</p>
-            <h2>What will be generated</h2>
-            <p>Generated demos include backend, frontend, included sample data, deterministic scoring, scripted agent chat, workspace widgets, and tests you can run locally.</p>
-          </div>
-          <div class="promise-grid" aria-label="Generated app pieces">
-            <span>FastAPI backend</span>
-            <span>React frontend</span>
-            <span>Agent chat</span>
-            <span>Workspace widgets</span>
-            <span>Preview notifications</span>
-            <span>Included sample data</span>
-            <span>Tests + validation</span>
-          </div>
-        </section>
-
-        <section id="new-app-flow" class="panel planner-panel step-panel">
-          <div class="step-label">Step 1</div>
-          <div class="section-head roomy">
-            <h2>Describe the app</h2>
-            <p id="planner-status">Static mode. Start `agentforge serve-builder` to enable scripted drafting.</p>
-          </div>
-          <label class="idea-label">
-            What should the app help someone do?
-            <textarea id="planner-idea">Score incoming support tickets and help an operator triage the most urgent requests.</textarea>
-          </label>
-          <div id="idea-examples" class="example-row" aria-label="Example app ideas"></div>
-          <div class="actions primary-actions">
-            <button id="draft-blueprint" type="button">Draft local demo plan</button>
-            <button id="clarify-idea" type="button">Ask clarifying questions</button>
-          </div>
-          <div id="clarification-panel" class="planner-output hidden">
-            <h3>Questions</h3>
-            <div id="clarification-questions" class="question-list"></div>
-            <div class="actions">
-              <button id="submit-answers" type="button">Submit answers</button>
-            </div>
-          </div>
-        </section>
-
-        <section class="panel review-panel step-panel">
-          <div class="step-label">Step 2</div>
-          <div class="section-head roomy">
-            <h2>Review the app plan</h2>
-            <p>Check the plain-language summary first. Advanced Blueprint details are still available below.</p>
-          </div>
-          <div id="draft-panel" class="planner-output draft-review">
-            <h3>Draft Review</h3>
-            <p id="draft-summary">Draft from an idea to see the recommended archetype, modules, assumptions, and warnings.</p>
-            <div id="draft-chips" class="chip-row"></div>
-            <div class="result-grid">
-              <div>
-                <h4>Assumptions</h4>
-                <ul id="planner-assumptions"><li>None yet.</li></ul>
+            <section class="panel wizard-step entry-step" data-step="start" aria-labelledby="start-heading">
+              <div class="entry-hero">
+                <p class="eyebrow">No-key local demo path</p>
+                <h1 id="start-heading">What do you want to build?</h1>
+                <p class="lede">Start from one app idea. AgentForge turns it into a local FastAPI + React plan with sample data, scripted agent chat, workspace, and validation commands.</p>
               </div>
-              <div>
-                <h4>Warnings</h4>
-                <ul id="planner-warnings"><li>None yet.</li></ul>
+              <div class="path-grid">
+                <button class="path-card primary" type="button" data-step-target="new-app">
+                  <span class="path-kicker">Primary</span>
+                  <strong>Start from an app idea</strong>
+                  <small>Describe what you want to build. AgentForge drafts a local demo plan and gives you exact commands to generate, run, and test it.</small>
+                </button>
+                <button class="path-card secondary" type="button" data-step-target="repo">
+                  <span class="path-kicker">Secondary</span>
+                  <strong>Understand an existing repo</strong>
+                  <small>Run safe CLI analysis and advisory planning. No repo mutation, deployment, API keys, or live LLM calls.</small>
+                </button>
               </div>
-            </div>
-          </div>
-          <div class="refine-row">
-            <label>
-              Refine the plan
-              <textarea id="planner-refine" placeholder="Add workspace widgets, add agent runtime, add notification triage"></textarea>
-            </label>
-            <div class="actions">
-              <button id="refine-blueprint" type="button">Refine plan</button>
-              <button id="validate-blueprint" type="button">Validate plan</button>
-            </div>
-          </div>
-        </section>
-
-        <section class="panel generation-panel step-panel">
-          <div class="step-label">Step 3</div>
-          <div class="section-head roomy">
-            <h2>Generate the app</h2>
-            <p>Save the plan, then run the commands. The CLI remains the source of truth for validation and generation.</p>
-          </div>
-          <div id="generation-preview" class="generation-preview"></div>
-          <div class="command-card">
-            <h3>Next commands</h3>
-            <pre id="plan-preview"></pre>
-          </div>
-          <div class="test-path">
-            <h3>How to test the generated demo</h3>
-            <ol>
-              <li>Run backend and frontend locally.</li>
-              <li>Click ingest to load included sample records.</li>
-              <li>Score the records and review explanations.</li>
-              <li>Open agent chat and ask it to work with the scored records.</li>
-              <li>Pin a result into the workspace.</li>
-              <li>Refresh and confirm chat, widgets, and triage history persist.</li>
-            </ol>
-          </div>
-        </section>
-
-        <details class="panel advanced-panel">
-          <summary>
-            <span>Advanced Blueprint controls</span>
-            <small>metadata, modules, deterministic config, raw YAML</small>
-          </summary>
-
-          <section class="advanced-section metadata-panel">
-            <div class="section-head">
-              <h2>Blueprint details</h2>
-              <p>Review product identity and target user after drafting from an idea.</p>
-            </div>
-            <div class="form-grid">
-              <label>
-                App name
-                <input id="app-name" value="starter-agent-app" autocomplete="off" />
-              </label>
-              <label>
-                Display name
-                <input id="display-name" value="Starter Agent App" autocomplete="off" />
-              </label>
-              <label class="wide">
-                Description
-                <textarea id="description">A local AgentForge app created with the Blueprint Builder.</textarea>
-              </label>
-              <label>
-                Target user/persona
-                <input id="target-user" value="developer" autocomplete="off" />
-              </label>
-              <label>
-                App archetype
-                <select id="archetype"></select>
-              </label>
-            </div>
-          </section>
-
-          <section class="advanced-section">
-            <div class="section-head">
-              <h2>Feature Modules</h2>
-              <p>Required modules follow the selected archetype. Optional modules can be added when supported.</p>
-            </div>
-            <div id="module-list" class="module-list"></div>
-          </section>
-
-          <section class="advanced-section">
-            <div class="section-head">
-              <h2>Module Configuration</h2>
-              <p>Defaults stay deterministic and local. External providers are intentionally not needed for the demo path.</p>
-            </div>
-            <div class="config-grid">
-              <label>
-                Accept action label
-                <input id="action-accept" value="accept" />
-              </label>
-              <label>
-                Skip action label
-                <input id="action-skip" value="skip" />
-              </label>
-              <label>
-                Maybe action label
-                <input id="action-maybe" value="maybe" />
-              </label>
-              <label>
-                Notification mode
-                <select id="notification-mode">
-                  <option value="preview_only">preview_only</option>
-                </select>
-              </label>
-              <label>
-                Agent mode
-                <select id="llm-mode">
-                  <option value="scripted">scripted</option>
-                </select>
-              </label>
-              <label>
-                Widget compatibility preset
-                <select id="widget-preset">
-                  <option value="generic_workspace">generic_workspace</option>
-                </select>
-              </label>
-              <label class="toggle-row">
-                <input id="workspace-enabled" type="checkbox" checked />
-                Workspace enabled
-              </label>
-              <label class="toggle-row">
-                <input id="fixture-enabled" type="checkbox" checked />
-                Use included sample data
-              </label>
-            </div>
-          </section>
-
-          <section class="advanced-section preview-panel">
-            <div class="section-head">
-              <h2>Blueprint Source <span class="subtle">Advanced</span></h2>
-              <p id="validation-summary">Ready for `agentforge plan`.</p>
-            </div>
-            <pre id="yaml-preview" tabindex="0"></pre>
-            <div class="actions">
-              <button id="copy-yaml" type="button">Copy YAML</button>
-              <button id="download-yaml" type="button">Download</button>
-            </div>
-          </section>
-        </details>
-
-        <details id="existing-repo-flow" class="panel repo-panel advanced-panel">
-          <summary>
-            <span>Existing repo planning</span>
-            <small>analyze → plan extension → prepare bundle → plan deployment</small>
-          </summary>
-          <div class="section-head">
-            <h2>Safe planning for an existing repo</h2>
-            <p>These CLI steps inspect and recommend. They do not modify the analyzed repo by default.</p>
-          </div>
-          <div class="repo-steps">
-            <div>
-              <h3>1. Analyze</h3>
-              <div class="command-grid" id="analyzer-commands"></div>
-            </div>
-            <div>
-              <h3>2. Plan extension</h3>
-              <div class="command-grid" id="extension-commands"></div>
-            </div>
-            <div>
-              <h3>3. Preview / deploy plan</h3>
-              <div class="command-grid">
-                <code>agentforge prepare-extension ../my-project --dry-run</code>
-                <code>agentforge plan-deployment ../my-project --format md</code>
+              <div class="trust-row compact-trust" aria-label="Safety defaults">
+                <span>No repo mutation by default</span>
+                <span>No deployment</span>
+                <span>No money spent</span>
+                <span>No live LLM required</span>
               </div>
+            </section>
+
+            <section id="new-app-flow" class="panel planner-panel wizard-step" data-step="new-app" aria-labelledby="describe-heading">
+              <div class="section-head roomy">
+                <p class="step-label">Step 2</p>
+                <h2 id="describe-heading">Describe the app idea</h2>
+                <p id="planner-status">Static mode. Start `agentforge serve-builder` to enable scripted drafting.</p>
+              </div>
+              <label class="idea-label">
+                What should the app help someone do?
+                <textarea id="planner-idea">Score incoming support tickets and help an operator triage the most urgent requests.</textarea>
+              </label>
+              <div id="idea-examples" class="example-row" aria-label="Example app ideas"></div>
+              <div class="actions primary-actions">
+                <button id="draft-blueprint" class="primary-button" type="button">Draft app plan</button>
+                <button id="clarify-idea" class="quiet-button" type="button">Ask clarifying questions</button>
+              </div>
+              <div id="clarification-panel" class="planner-output hidden">
+                <h3>Questions</h3>
+                <div id="clarification-questions" class="question-list"></div>
+                <div class="actions">
+                  <button id="submit-answers" type="button">Submit answers</button>
+                </div>
+              </div>
+            </section>
+
+            <section id="review-flow" class="panel review-panel wizard-step" data-step="review" aria-labelledby="review-heading">
+              <div class="section-head roomy">
+                <p class="step-label">Step 3</p>
+                <h2 id="review-heading">Review the app plan</h2>
+                <p>Start with the plain-language summary. Technical details stay available, but they are not the main experience.</p>
+              </div>
+              <div id="draft-panel" class="planner-output draft-review plan-summary-card">
+                <h3>Plan summary</h3>
+                <p id="draft-summary">Draft from an idea to see what AgentForge understood, what it will generate, and any assumptions or warnings.</p>
+                <div id="draft-chips" class="chip-row"></div>
+                <div class="result-grid">
+                  <div>
+                    <h4>Assumptions</h4>
+                    <ul id="planner-assumptions"><li>None yet.</li></ul>
+                  </div>
+                  <div>
+                    <h4>Warnings</h4>
+                    <ul id="planner-warnings"><li>None yet.</li></ul>
+                  </div>
+                </div>
+              </div>
+              <details class="inline-advanced refine-row">
+                <summary>Refine or validate this plan</summary>
+                <label>
+                  Refine instruction
+                  <textarea id="planner-refine" placeholder="Add workspace widgets, add agent runtime, add notification triage"></textarea>
+                </label>
+                <div class="actions">
+                  <button id="refine-blueprint" type="button">Refine plan</button>
+                  <button id="validate-blueprint" type="button">Validate plan</button>
+                </div>
+              </details>
+              <details class="inline-advanced">
+                <summary>Blueprint Source and module details</summary>
+                <section class="advanced-section metadata-panel">
+                  <div class="section-head">
+                    <h2>Blueprint details</h2>
+                    <p>Review product identity and target user after drafting from an idea.</p>
+                  </div>
+                  <div class="form-grid">
+                    <label>App name<input id="app-name" value="starter-agent-app" autocomplete="off" /></label>
+                    <label>Display name<input id="display-name" value="Starter Agent App" autocomplete="off" /></label>
+                    <label class="wide">Description<textarea id="description">A local AgentForge app created with the Blueprint Builder.</textarea></label>
+                    <label>Target user/persona<input id="target-user" value="developer" autocomplete="off" /></label>
+                    <label>App archetype<select id="archetype"></select></label>
+                  </div>
+                </section>
+                <section class="advanced-section">
+                  <div class="section-head">
+                    <h2>Feature Modules</h2>
+                    <p>Required modules follow the selected archetype. Optional modules can be added when supported.</p>
+                  </div>
+                  <div id="module-list" class="module-list"></div>
+                </section>
+                <section class="advanced-section">
+                  <div class="section-head">
+                    <h2>Module Configuration</h2>
+                    <p>Defaults stay deterministic and local. External providers are intentionally not needed for the demo path.</p>
+                  </div>
+                  <div class="config-grid">
+                    <label>Accept action label<input id="action-accept" value="accept" /></label>
+                    <label>Skip action label<input id="action-skip" value="skip" /></label>
+                    <label>Maybe action label<input id="action-maybe" value="maybe" /></label>
+                    <label>Notification mode<select id="notification-mode"><option value="preview_only">preview_only</option></select></label>
+                    <label>Agent mode<select id="llm-mode"><option value="scripted">scripted</option></select></label>
+                    <label>Widget compatibility preset<select id="widget-preset"><option value="generic_workspace">generic_workspace</option></select></label>
+                    <label class="toggle-row"><input id="workspace-enabled" type="checkbox" checked />Workspace enabled</label>
+                    <label class="toggle-row"><input id="fixture-enabled" type="checkbox" checked />Use included sample data</label>
+                  </div>
+                </section>
+                <section class="advanced-section preview-panel">
+                  <div class="section-head">
+                    <h2>Blueprint Source <span class="subtle">Advanced</span></h2>
+                    <p id="validation-summary">Ready for `agentforge plan`.</p>
+                  </div>
+                  <pre id="yaml-preview" tabindex="0"></pre>
+                  <div class="actions">
+                    <button id="copy-yaml" type="button">Copy YAML</button>
+                    <button id="download-yaml" type="button">Download</button>
+                  </div>
+                </section>
+              </details>
+              <div class="wizard-actions">
+                <button type="button" class="quiet-button" data-step-target="new-app">Back</button>
+                <button type="button" class="primary-button" data-step-target="generate">Continue to commands</button>
+              </div>
+            </section>
+
+            <section id="generate-flow" class="panel generation-panel wizard-step" data-step="generate" aria-labelledby="generate-heading">
+              <div class="section-head roomy">
+                <p class="step-label">Step 4</p>
+                <h2 id="generate-heading">Generate and run locally</h2>
+                <p>Save the plan, then run the CLI commands. The CLI remains the source of truth for validation and generation.</p>
+              </div>
+              <div id="generation-preview" class="generation-preview"></div>
+              <details class="inline-advanced command-card">
+                <summary>Exact CLI commands</summary>
+                <pre id="plan-preview"></pre>
+              </details>
+              <div class="test-path">
+                <h3>How to test the generated demo</h3>
+                <ol>
+                  <li>Run backend and frontend locally.</li>
+                  <li>Click ingest to load included sample records.</li>
+                  <li>Score the records and review explanations.</li>
+                  <li>Open agent chat and ask it to work with the scored records.</li>
+                  <li>Pin a result into the workspace.</li>
+                  <li>Refresh and confirm chat, widgets, and triage history persist.</li>
+                </ol>
+              </div>
+              <div class="wizard-actions">
+                <button type="button" class="quiet-button" data-step-target="review">Back to review</button>
+              </div>
+            </section>
+
+            <section id="existing-repo-flow" class="panel repo-panel wizard-step" data-step="repo" aria-labelledby="repo-heading">
+              <div class="section-head roomy">
+                <p class="step-label">Secondary flow</p>
+                <h2 id="repo-heading">Understand an existing repo</h2>
+                <p>These CLI steps inspect and recommend. They do not modify the analyzed repo by default.</p>
+              </div>
+              <div class="repo-steps">
+                <div><h3>1. Analyze</h3><div class="command-grid" id="analyzer-commands"></div></div>
+                <div><h3>2. Plan extension</h3><div class="command-grid" id="extension-commands"></div></div>
+                <div>
+                  <h3>3. Preview / deploy plan</h3>
+                  <div class="command-grid">
+                    <code>agentforge prepare-extension ../my-project --dry-run</code>
+                    <code>agentforge plan-deployment ../my-project --format md</code>
+                  </div>
+                </div>
+              </div>
+              <details class="inline-advanced">
+                <summary>Optional JSON previews</summary>
+                <p class="helper-copy">Paste JSON only when you want a browser preview. This is secondary to the main new-app flow.</p>
+                <label>Paste analyzer JSON report<textarea id="analyzer-report" placeholder="Run: agentforge analyze-repo ../my-project --json&#10;Then paste the JSON here."></textarea></label>
+                <div class="actions">
+                  <button id="parse-analyzer-report" type="button">Preview analyzer report</button>
+                  <button id="copy-blueprint-seed" type="button">Copy blueprint seed</button>
+                </div>
+                <div id="analyzer-output" class="planner-output hidden"></div>
+                <label>Paste extension planner JSON report<textarea id="extension-plan-report" placeholder="Run: agentforge plan-extension ../my-project --json&#10;Then paste the JSON here."></textarea></label>
+                <div class="actions"><button id="parse-extension-plan" type="button">Preview extension plan</button></div>
+                <div id="extension-plan-output" class="planner-output hidden"></div>
+              </details>
+              <div class="wizard-actions">
+                <button type="button" class="quiet-button" data-step-target="start">Back to start</button>
+              </div>
+            </section>
+          </div>
+
+          <aside class="build-summary live-plan" aria-labelledby="build-summary-heading">
+            <div class="live-plan-head">
+              <p class="eyebrow">Live app plan</p>
+              <h2 id="build-summary-heading">Local demo plan</h2>
+              <p id="summary-status" class="plan-status">Ready to draft</p>
             </div>
-          </div>
-          <p class="helper-copy">Paste JSON only when you want a browser preview. This is secondary to the main new-app flow.</p>
-          <label>
-            Paste analyzer JSON report
-            <textarea id="analyzer-report" placeholder="Run: agentforge analyze-repo ../my-project --json&#10;Then paste the JSON here."></textarea>
-          </label>
-          <div class="actions">
-            <button id="parse-analyzer-report" type="button">Preview analyzer report</button>
-            <button id="copy-blueprint-seed" type="button">Copy blueprint seed</button>
-          </div>
-          <div id="analyzer-output" class="planner-output hidden"></div>
-          <label>
-            Paste extension planner JSON report
-            <textarea id="extension-plan-report" placeholder="Run: agentforge plan-extension ../my-project --json&#10;Then paste the JSON here."></textarea>
-          </label>
-          <div class="actions">
-            <button id="parse-extension-plan" type="button">Preview extension plan</button>
-          </div>
-          <div id="extension-plan-output" class="planner-output hidden"></div>
-        </details>
+            <div class="plan-snapshot">
+              <span id="summary-name">Starter Agent App</span>
+              <strong id="summary-archetype">Ingestion scoring app</strong>
+            </div>
+            <div id="summary-capability-groups" class="capability-groups" aria-label="Included capabilities">
+              <section>
+                <h3>App foundation</h3>
+                <ul><li>FastAPI backend</li><li>React frontend</li><li>Local persistence</li></ul>
+              </section>
+            </div>
+            <details class="summary-advanced">
+              <summary>Run locally</summary>
+              <pre id="summary-commands" class="mini-pre"></pre>
+            </details>
+          </aside>
+        </div>
       </section>
     </main>
     <script type="module" src="./blueprint-builder.mjs"></script>

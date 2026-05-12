@@ -63,9 +63,11 @@ export const extensionCommandExamples = [
 ];
 
 export const exampleIdeas = [
-  "Score incoming support tickets and help an operator triage urgent requests.",
-  "Build a dashboard where an agent summarizes scored records and pins useful widgets.",
-  "Ingest fixture leads, normalize them, score fit, and generate preview notifications.",
+  "Job triage app for ranking opportunities and deciding what to apply to first.",
+  "Lead scoring dashboard for sales reps to review the best-fit accounts.",
+  "Customer feedback analyzer that groups urgent issues and explains priority.",
+  "Internal agent workspace that summarizes records and pins useful widgets.",
+  "Existing repo modernization plan for a FastAPI and React project.",
 ];
 
 export function getGenerationPreview(state) {

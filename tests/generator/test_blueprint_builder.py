@@ -137,11 +137,34 @@ def test_builder_html_front_door_copy_present():
     html = (ROOT / "builder" / "index.html").read_text(encoding="utf-8")
 
     assert "Start from an app idea" in html
-    assert "Start from an existing repo" in html
+    assert "Understand an existing repo" in html
     assert "Blueprint Source" in html
-    assert "What will be generated" in html
+    assert "Live app plan" in html
+    assert "No repo mutation by default" in html
+    assert "data-step-target=\"start\"" in html
+    assert "data-step=\"start\"" in html
+    assert "build-summary" in html
     assert "agentforge analyze-repo ../my-project" in html or "analyzer-commands" in html
     assert "plan-extension" in html
+
+
+def test_builder_example_ideas_are_plain_language():
+    script = """
+      import { exampleIdeas } from './builder/blueprint-builder.mjs';
+      process.stdout.write(JSON.stringify(exampleIdeas));
+    """
+    result = subprocess.run(
+        ["node", "--input-type=module", "-e", script],
+        check=True,
+        capture_output=True,
+        text=True,
+        cwd=ROOT,
+    )
+    ideas = json.loads(result.stdout)
+
+    assert len(ideas) >= 5
+    assert any("Job triage" in idea for idea in ideas)
+    assert any("Customer feedback" in idea for idea in ideas)
 
 
 def test_browser_builder_yaml_loads_with_generator_schema(tmp_path):
