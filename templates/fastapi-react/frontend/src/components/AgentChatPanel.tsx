@@ -160,21 +160,24 @@ export function AgentChatPanel({ onAgentDone }: Props) {
   }
 
   return (
-    <section
-      data-testid="agent-chat-panel"
-      style={{ border: "1px solid #ddd", borderRadius: 8, padding: "1rem" }}
-    >
-      <h2>Agent Runtime</h2>
-      <p style={{ fontSize: "0.9rem", color: "#555" }}>
-        Scripted local agent. Try: "ingest records", "score the records", "show
-        best records", or "create notification preview".
-      </p>
-      <div
-        data-testid="agent-messages"
-        style={{ display: "grid", gap: "0.5rem", marginBottom: "0.75rem" }}
-      >
+    <section data-testid="agent-chat-panel" className="panel agent-panel">
+      <div className="panel-head">
+        <div>
+          <p className="eyebrow">Scripted agent</p>
+          <h2>Agent Runtime</h2>
+          <p className="panel-kicker">
+            Try: "ingest records", "score the records", "show best records", or
+            "create notification preview".
+          </p>
+        </div>
+        <span className="status-pill">Local tools</span>
+      </div>
+      <div data-testid="agent-messages" className="messages">
         {messages.length === 0 ? (
-          <p data-testid="agent-empty">No conversation yet.</p>
+          <p data-testid="agent-empty" className="empty-card">
+            No conversation yet. Ask the agent to run or pin part of the review
+            workflow.
+          </p>
         ) : (
           messages
             .filter((message) => message.role !== "tool")
@@ -182,6 +185,7 @@ export function AgentChatPanel({ onAgentDone }: Props) {
               <div
                 key={message.id}
                 data-testid={`agent-message-${message.role}`}
+                className="message-bubble"
               >
                 <strong>{message.role}:</strong> {message.content}
               </div>
@@ -189,28 +193,12 @@ export function AgentChatPanel({ onAgentDone }: Props) {
         )}
       </div>
       {toolEvents.length > 0 && (
-        <ul
-          data-testid="agent-tool-activity"
-          style={{
-            display: "grid",
-            gap: "0.35rem",
-            fontSize: "0.85rem",
-            listStyle: "none",
-            padding: 0,
-            margin: "0 0 0.75rem",
-          }}
-        >
+        <ul data-testid="agent-tool-activity" className="tool-list">
           {toolEvents.map((event, index) => (
             <li
               key={`${event.tool_name}-${index}`}
               data-testid="agent-tool-event"
-              style={{
-                border: "1px solid #e2e8f0",
-                borderRadius: 6,
-                padding: "0.45rem 0.55rem",
-                background: event.ok === false ? "#fff7f7" : "#fbfdff",
-                color: event.ok === false ? "#991b1b" : "#334155",
-              }}
+              className={`tool-event ${event.ok === false ? "failed" : ""}`}
             >
               <strong>
                 {event.status === "running"
@@ -220,33 +208,24 @@ export function AgentChatPanel({ onAgentDone }: Props) {
                     : "failed"}{" "}
                 {event.tool_name}
               </strong>
-              <span
-                style={{
-                  display: "block",
-                  color: event.ok === false ? "#991b1b" : "#64748b",
-                  marginTop: "0.1rem",
-                }}
-              >
-                {describeToolEvent(event)}
-              </span>
+              <small>{describeToolEvent(event)}</small>
             </li>
           ))}
         </ul>
       )}
-      <form onSubmit={send} style={{ display: "flex", gap: "0.5rem" }}>
+      <form onSubmit={send} className="agent-form">
         <input
           data-testid="agent-input"
           value={input}
           onChange={(event) => setInput(event.target.value)}
           disabled={busy}
-          style={{ flex: 1 }}
         />
         <button data-testid="agent-send-btn" disabled={busy}>
           {busy ? "Sending..." : "Send"}
         </button>
       </form>
       {error && (
-        <p data-testid="agent-error" style={{ color: "#b71c1c" }}>
+        <p data-testid="agent-error" className="error-text">
           {error}
         </p>
       )}

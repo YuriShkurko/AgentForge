@@ -40,8 +40,23 @@ export default function App() {
     const open = tasks.filter((task) => task.status !== "done").length;
     const blocked = tasks.filter((task) => task.status === "blocked").length;
     const high = tasks.filter((task) => task.priority === "high").length;
-    return { open, blocked, high };
+    const done = tasks.filter((task) => task.status === "done").length;
+    return { open, blocked, high, done };
   }, [tasks]);
+
+  const visibleActivity = useMemo(() => {
+    const priority: Record<string, number> = {
+      note_added: 3,
+      task_updated: 2,
+      task_created: 1,
+      project_created: 1,
+    };
+    return [...activity].sort((a, b) => {
+      const timeDelta = new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+      if (timeDelta !== 0) return timeDelta;
+      return (priority[b.event_type] ?? 0) - (priority[a.event_type] ?? 0);
+    });
+  }, [activity]);
 
   async function seed() {
     setBusy(true);
@@ -97,79 +112,134 @@ export default function App() {
 
   return (
     <main className="app-shell">
-      <header className="hero">
+      <aside className="side-rail" aria-label="Workspace navigation">
         <div>
-          <p className="eyebrow">AgentForge generated app</p>
-          <h1>Project Workspace Demo</h1>
-          <p>A local task planning workspace with seeded projects, deterministic persistence, scripted agent tools, and pinned widgets.</p>
+          <p className="eyebrow">AgentForge</p>
+          <strong>Project Workspace</strong>
         </div>
-        <button data-testid="seed-btn" type="button" onClick={seed} disabled={busy}>Seed sample workspace</button>
-      </header>
+        <nav>
+          <span>Overview</span>
+          <span>Tasks</span>
+          <span>Agent tools</span>
+          <span>Activity</span>
+        </nav>
+        <div className="mode-card">
+          <span className="mode-dot" />
+          <div>
+            <strong>Local safe mode</strong>
+            <small>Seeded data, SQLite-ready persistence, no live LLM.</small>
+          </div>
+        </div>
+      </aside>
 
-      {error && <p className="error">{error}</p>}
+      <div className="workspace-shell">
+        <header className="hero">
+          <div>
+            <p className="eyebrow">Project command center</p>
+            <h1>Project Workspace Demo</h1>
+            <p>A local task planning workspace with seeded projects, deterministic persistence, scripted agent tools, and pinned widgets.</p>
+          </div>
+          <button data-testid="seed-btn" type="button" onClick={seed} disabled={busy}>Seed sample workspace</button>
+        </header>
 
-      <section className="stat-grid">
-        <div><span>{projects.length}</span><small>Projects</small></div>
-        <div><span>{tasks.length}</span><small>Total tasks</small></div>
-        <div><span>{stats.open}</span><small>Open tasks</small></div>
-        <div><span>{stats.blocked}</span><small>Blocked</small></div>
-      </section>
+        {error && <p className="error">{error}</p>}
 
-      <div className="main-grid">
-        <section className="panel" data-testid="project-panel">
-          <div className="panel-head"><h2>Projects</h2><span className="count-pill">{stats.high} high priority</span></div>
-          {projects.length === 0 ? <p className="empty">No projects yet. Seed the sample workspace.</p> : projects.map((project) => (
-            <article key={project.id} className="project-card" data-testid="project-card">
-              <strong>{project.name}</strong>
-              <p>{project.description}</p>
-              <small>Owner: {project.owner}</small>
-            </article>
-          ))}
+        <section className="stat-grid">
+          <div><span>{projects.length}</span><small>Projects</small></div>
+          <div><span>{tasks.length}</span><small>Total tasks</small></div>
+          <div><span>{stats.open}</span><small>Open tasks</small></div>
+          <div><span>{stats.done}</span><small>Done</small></div>
+          <div><span>{stats.blocked}</span><small>Blocked</small></div>
         </section>
 
-        <section className="panel" data-testid="task-panel">
-          <div className="panel-head"><h2>Tasks</h2><span className="count-pill">Click status to advance</span></div>
-          <div className="task-list">
-            {tasks.map((task) => (
-              <article key={task.id} className={`task-card ${task.priority}`} data-testid="task-card">
+        <div className="main-grid">
+          <section className="panel" data-testid="project-panel">
+            <div className="panel-head">
+              <div>
+                <p className="eyebrow">Overview</p>
+                <h2>Projects</h2>
+              </div>
+              <span className="count-pill">{stats.high} high priority</span>
+            </div>
+            {projects.length === 0 ? <p className="empty-card">No projects yet. Seed the sample workspace.</p> : projects.map((project) => (
+              <article key={project.id} className="project-card" data-testid="project-card">
                 <div>
-                  <strong>{task.title}</strong>
-                  <p>{task.owner} · due {task.due_date ?? "unscheduled"}</p>
+                  <strong>{project.name}</strong>
+                  <p>{project.description}</p>
                 </div>
-                <button data-testid="task-status-btn" type="button" onClick={() => cycleTask(task)}>{task.status}</button>
+                <div className="project-meta">
+                  <span className="count-pill">Owner: {project.owner}</span>
+                  <span className="status-pill">{project.status}</span>
+                </div>
               </article>
             ))}
-          </div>
-        </section>
-      </div>
+          </section>
 
-      <div className="main-grid lower">
-        <section className="panel agent-panel" data-testid="agent-panel">
-          <div className="panel-head"><h2>Scripted agent</h2><span className="count-pill">Local tools</span></div>
-          <p className="helper">Try “list tasks”, “summarize project”, or “pin task list”.</p>
-          <div className="messages" data-testid="agent-messages">
-            {messages.length === 0 ? <p className="empty">No conversation yet.</p> : messages.map((message) => <p key={message.id}><strong>{message.role}:</strong> {message.content}</p>)}
+          <section className="panel" data-testid="task-panel">
+            <div className="panel-head">
+              <div>
+                <p className="eyebrow">Task queue</p>
+                <h2>Tasks</h2>
+              </div>
+              <span className="count-pill">Click status to advance</span>
+            </div>
+            <div className="task-list">
+              {tasks.length === 0 ? <p className="empty-card">No tasks yet. Seed the sample workspace.</p> : tasks.map((task) => (
+                <article key={task.id} className={`task-card ${task.priority}`} data-testid="task-card">
+                  <div>
+                    <strong>{task.title}</strong>
+                    <p>{task.owner} · due {task.due_date ?? "unscheduled"}</p>
+                    <div className="task-meta">
+                      <span className={`priority-pill ${task.priority}`}>{task.priority}</span>
+                      <span className={`status-pill ${task.status}`}>{task.status}</span>
+                    </div>
+                  </div>
+                  <button data-testid="task-status-btn" type="button" onClick={() => cycleTask(task)}>{task.status}</button>
+                </article>
+              ))}
+            </div>
+          </section>
+        </div>
+
+        <div className="main-grid lower">
+          <section className="panel agent-panel" data-testid="agent-panel">
+            <div className="panel-head">
+              <div>
+                <p className="eyebrow">Agent tools</p>
+                <h2>Scripted agent</h2>
+              </div>
+              <span className="count-pill">Local tools</span>
+            </div>
+            <p className="helper">Try “list tasks”, “summarize project”, or “pin task list”.</p>
+            <div className="messages" data-testid="agent-messages">
+              {messages.length === 0 ? <p className="empty-card">No conversation yet.</p> : messages.map((message) => <p key={message.id} className="message-bubble"><strong>{message.role}:</strong> {message.content}</p>)}
+            </div>
+            {toolEvents.map((tool, index) => <p key={`${tool.tool_name}-${index}`} data-testid="agent-tool-event" className={`tool-event ${tool.ok === false ? "failed" : ""}`}>{tool.ok === false ? "failed" : "ran"} {tool.tool_name}</p>)}
+            <form onSubmit={sendAgent} className="agent-form">
+              <input aria-label="Agent message" data-testid="agent-input" value={agentInput} onChange={(event) => setAgentInput(event.target.value)} disabled={busy} />
+              <button data-testid="agent-send-btn" disabled={busy}>Send</button>
+            </form>
+          </section>
+
+          <WorkspacePanel widgets={widgets} onRemove={removeWidget} />
+        </div>
+
+        <section className="panel activity-panel" data-testid="activity-panel">
+          <div className="panel-head">
+            <div>
+              <p className="eyebrow">Project log</p>
+              <h2>Notes and activity</h2>
+            </div>
           </div>
-          {toolEvents.map((tool, index) => <p key={`${tool.tool_name}-${index}`} data-testid="agent-tool-event" className="tool-event">ran {tool.tool_name}</p>)}
-          <form onSubmit={sendAgent} className="agent-form">
-            <input data-testid="agent-input" value={agentInput} onChange={(event) => setAgentInput(event.target.value)} disabled={busy} />
-            <button data-testid="agent-send-btn" disabled={busy}>Send</button>
+          <form onSubmit={addNote} className="note-form">
+            <input aria-label="Project note" data-testid="note-input" value={note} onChange={(event) => setNote(event.target.value)} />
+            <button data-testid="note-btn">Add note</button>
           </form>
+          <ul>
+            {visibleActivity.length === 0 ? <li className="empty-card">No activity yet.</li> : visibleActivity.slice(0, 10).map((item) => <li key={item.id} data-testid="activity-row"><span className="status-pill">{item.event_type}</span><strong>{item.actor}</strong><span>{item.body}</span></li>)}
+          </ul>
         </section>
-
-        <WorkspacePanel widgets={widgets} onRemove={removeWidget} />
       </div>
-
-      <section className="panel activity-panel" data-testid="activity-panel">
-        <div className="panel-head"><h2>Notes and activity</h2></div>
-        <form onSubmit={addNote} className="note-form">
-          <input data-testid="note-input" value={note} onChange={(event) => setNote(event.target.value)} />
-          <button data-testid="note-btn">Add note</button>
-        </form>
-        <ul>
-          {activity.slice(0, 10).map((item) => <li key={item.id} data-testid="activity-row"><strong>{item.event_type}</strong> — {item.body}</li>)}
-        </ul>
-      </section>
     </main>
   );
 }

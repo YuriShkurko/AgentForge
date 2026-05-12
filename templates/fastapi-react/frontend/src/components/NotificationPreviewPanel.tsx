@@ -13,39 +13,48 @@ export function NotificationPreviewPanel({ previews, onActionDone }: Props) {
   }
 
   return (
-    <section data-testid="notification-preview-panel">
-      <h2>Notification Previews</h2>
+    <section data-testid="notification-preview-panel" className="panel">
+      <div className="panel-head">
+        <div>
+          <h2>Notification Previews</h2>
+          <p className="panel-kicker">Preview-only outreach drafts, with no external delivery.</p>
+        </div>
+        <span className="status-pill">{previews.length} previews</span>
+      </div>
       {previews.length === 0 ? (
-        <p data-testid="preview-empty">No notification previews. Score records, then preview notifications.</p>
+        <p data-testid="preview-empty" className="empty-card">No notification previews. Score records, then preview notifications.</p>
       ) : (
-        <div style={{ display: "grid", gap: "0.75rem" }}>
+        <div className="preview-grid">
           {previews.map((preview) => (
             <article
               key={preview.id}
               data-testid="notification-preview"
-              style={{ border: "1px solid #ddd", borderRadius: 8, padding: "0.75rem" }}
+              className="preview-card"
             >
               <strong>{preview.title}</strong>
-              <p style={{ margin: "0.35rem 0" }}>{preview.summary}</p>
-              <div style={{ fontSize: "0.85rem", color: "#555" }}>
-                Score {(preview.score * 100).toFixed(0)}% · {preview.label} · {preview.recommendation}
+              <p>{preview.summary}</p>
+              <div className="preview-meta">
+                <span className="score-pill">Score {(preview.score * 100).toFixed(0)}%</span>
+                <span className={`label-pill ${preview.label}`}>{preview.label}</span>
+                <span className="status-pill">{preview.recommendation}</span>
               </div>
               {preview.risks.length > 0 && (
-                <div style={{ fontSize: "0.85rem", marginTop: "0.35rem" }}>
+                <div className="helper">
                   Risks: {preview.risks.join(", ")}
                 </div>
               )}
-              <div style={{ display: "flex", gap: "0.4rem", marginTop: "0.5rem", alignItems: "center" }}>
+              <div className="preview-actions">
                 {preview.available_actions.map((action) => (
                   <button
                     key={action}
                     data-testid={`preview-${action}-btn`}
+                    className={action === "skip" ? "button-danger" : action === "save" ? "button-secondary" : undefined}
                     onClick={() => handleAction(preview.record_id, action)}
                   >
                     {action === "save" ? "Save" : action[0].toUpperCase() + action.slice(1)}
                   </button>
                 ))}
-                <span data-testid="preview-action-state" style={{ fontSize: "0.85rem", fontWeight: 600 }}>
+                <span data-testid="preview-action-state" className={`status-pill ${preview.action?.status ?? "pending"}`}>
                   {preview.action ? preview.action.status : "pending"}
                 </span>
               </div>

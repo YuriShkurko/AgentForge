@@ -77,9 +77,17 @@ export function OpsPanel({ onIngestDone, onScoreDone, onPreviewDone }: Props) {
   }
 
   return (
-    <section data-testid="ops-panel" style={{ marginBottom: "1.5rem" }}>
-      <h2>Operations</h2>
-      <div style={{ display: "flex", gap: "0.75rem", marginBottom: "0.75rem", flexWrap: "wrap" }}>
+    <section data-testid="ops-panel" className="panel">
+      <div className="panel-head">
+        <div>
+          <h2>Review Operations</h2>
+          <p className="panel-kicker">
+            Start with fixture data or paste your own JSON, then score and
+            generate preview-only notifications.
+          </p>
+        </div>
+      </div>
+      <div className="action-row">
         <button data-testid="ingest-btn" onClick={ingest} disabled={busy}>
           Ingest Demo Data
         </button>
@@ -93,11 +101,11 @@ export function OpsPanel({ onIngestDone, onScoreDone, onPreviewDone }: Props) {
           Preview Notifications
         </button>
       </div>
-      <div style={{ marginBottom: "0.5rem" }}>
-        <label style={{ display: "block", fontSize: "0.85rem", fontWeight: 600, marginBottom: "0.25rem" }}>
+      <div className="field-block">
+        <label>
           Your data JSON
         </label>
-        <p style={{ margin: 0, color: "#4b5563", fontSize: "0.85rem" }}>
+        <p className="helper">
           Works without API keys. Paste an array with <code>title</code>/<code>name</code>, optional <code>category</code>/<code>type</code>, and <code>value</code>/<code>priority</code>.
         </p>
       </div>
@@ -106,16 +114,15 @@ export function OpsPanel({ onIngestDone, onScoreDone, onPreviewDone }: Props) {
         value={importJson}
         onChange={(event) => setImportJson(event.target.value)}
         rows={6}
-        style={{ width: "100%", boxSizing: "border-box", fontFamily: "monospace", marginBottom: "0.5rem" }}
       />
-      <button type="button" onClick={() => setImportJson(SAMPLE_IMPORT_JSON)} disabled={busy} style={{ marginBottom: "0.75rem" }}>
+      <button type="button" className="button-secondary" onClick={() => setImportJson(SAMPLE_IMPORT_JSON)} disabled={busy}>
         Reset Sample JSON
       </button>
       {lastImport && (
-        <div data-testid="import-result" style={{ border: "1px solid #d1d5db", borderRadius: 8, padding: "0.75rem", marginBottom: "0.75rem", background: "#f9fafb" }}>
+        <div data-testid="import-result" className="result-card">
           <strong>Import result:</strong> {lastImport.accepted} accepted, {lastImport.skipped} skipped.
           {lastImport.errors.length > 0 && (
-            <ul style={{ margin: "0.5rem 0 0", paddingLeft: "1.25rem" }}>
+            <ul>
               {lastImport.errors.slice(0, 5).map((error) => (
                 <li key={`${error.index}-${error.external_id ?? "none"}`}>
                   Row {error.index + 1}{error.external_id ? ` (${error.external_id})` : ""}: {error.error}
@@ -126,7 +133,7 @@ export function OpsPanel({ onIngestDone, onScoreDone, onPreviewDone }: Props) {
         </div>
       )}
       {log.length > 0 && (
-        <ul data-testid="activity-log" style={{ fontSize: "0.85rem", listStyle: "none", padding: 0, margin: 0 }}>
+        <ul data-testid="activity-log" className="activity-log">
           {log.map((entry, i) => (
             <li key={i}>{entry}</li>
           ))}
