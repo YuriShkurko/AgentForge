@@ -6,6 +6,7 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agent.providers import AgentProviderConfigurationError
 from app.agent.runtime import list_conversation_messages, run_agent_chat, run_agent_chat_stream_events
 from app.database import get_db
 from app.schemas import AgentChatRequest, AgentChatResponse, AgentConversationOut
@@ -24,6 +25,10 @@ async def post_agent_chat(
         raise HTTPException(status_code=422, detail=str(exc))
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
+    except AgentProviderConfigurationError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+    except RuntimeError as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
 
 
 @router.post("/chat/stream")

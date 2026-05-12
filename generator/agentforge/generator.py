@@ -155,7 +155,12 @@ def _build_run_commands(pack: DomainPack) -> str:
         {frontend_lint}
 
         ## E2E (requires running app)
-        # Start backend: uvicorn app.main:app --reload
+        # Start backend with local SQLite demo DB:
+        #   DATABASE_URL=sqlite+aiosqlite:///./demo.db uvicorn app.main:app --reload
+        # Windows cmd:
+        #   set DATABASE_URL=sqlite+aiosqlite:///./demo.db && uvicorn app.main:app --reload
+        # PowerShell:
+        #   $env:DATABASE_URL="sqlite+aiosqlite:///./demo.db"; uvicorn app.main:app --reload
         # Start frontend: npm run dev
         {e2e_cmd}
 

@@ -6,20 +6,30 @@ async function post<T>(path: string, body?: unknown): Promise<T> {
     headers: body !== undefined ? { "Content-Type": "application/json" } : {},
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
-  if (!res.ok) throw new Error(`POST ${path} failed: ${res.status}`);
+  if (!res.ok) throw new Error(`POST ${path} failed: ${res.status}${await errorDetail(res)}`);
   return res.json();
 }
 
 async function get<T>(path: string): Promise<T> {
   const res = await fetch(`${BASE}${path}`);
-  if (!res.ok) throw new Error(`GET ${path} failed: ${res.status}`);
+  if (!res.ok) throw new Error(`GET ${path} failed: ${res.status}${await errorDetail(res)}`);
   return res.json();
 }
 
 async function del<T>(path: string): Promise<T> {
   const res = await fetch(`${BASE}${path}`, { method: "DELETE" });
-  if (!res.ok) throw new Error(`DELETE ${path} failed: ${res.status}`);
+  if (!res.ok) throw new Error(`DELETE ${path} failed: ${res.status}${await errorDetail(res)}`);
   return res.json();
+}
+
+async function errorDetail(res: Response): Promise<string> {
+  try {
+    const data = await res.clone().json();
+    const detail = typeof data.detail === "string" ? data.detail : JSON.stringify(data.detail ?? data);
+    return detail ? ` — ${detail}` : "";
+  } catch {
+    return "";
+  }
 }
 
 async function streamAgentChat(
@@ -32,7 +42,7 @@ async function streamAgentChat(
     headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
     body: JSON.stringify({ message, conversation_id: conversationId ?? null }),
   });
-  if (!res.ok) throw new Error(`POST /agent/chat/stream failed: ${res.status}`);
+  if (!res.ok) throw new Error(`POST /agent/chat/stream failed: ${res.status}${await errorDetail(res)}`);
   if (!res.body) throw new Error("Streaming response body is unavailable.");
 
   const reader = res.body.getReader();
@@ -70,6 +80,8 @@ function parseSseFrame(frame: string): import("./types").AgentStreamEvent | null
 
 export const api = {
   ingest: () => post<{ run_id: string; raw_records_inserted: number; normalized_inserted: number }>("/ingest"),
+  importRecords: (records: unknown[], source = "manual_import") =>
+    post<import("./types").ImportRecordsResult>("/ingest/import", { records, source }),
   score: (rescore = false) => post<{ scores_written: number; rescore: boolean }>(`/records/score?rescore=${rescore}`),
   createNotificationPreviews: () => post<{ previews_written: number }>("/notifications/previews"),
   getNotificationPreviews: () => get<{ previews: import("./types").NotificationPreview[] }>("/notifications/previews"),

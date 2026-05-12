@@ -11,6 +11,30 @@ async def test_score_after_ingest(client):
 
 
 @pytest.mark.asyncio
+async def test_import_user_records_and_score(client):
+    response = await client.post(
+        "/ingest/import",
+        json={
+            "source": "manual_import",
+            "records": [
+                {"external_id": "user-1", "name": "Urgent renewal", "type": "support", "priority": 95},
+                {"external_id": "bad-1", "category": "support", "value": 10},
+            ],
+        },
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["accepted"] == 1
+    assert data["skipped"] == 1
+    assert data["errors"][0]["error"].startswith("title is required")
+
+    score = (await client.post("/records/score")).json()
+    assert score["scores_written"] == 1
+    scored = (await client.get("/records/scored")).json()["records"]
+    assert scored[0]["record"]["external_id"] == "user-1"
+
+
+@pytest.mark.asyncio
 async def test_scored_records_appear(client):
     await client.post("/ingest")
     await client.post("/records/score")

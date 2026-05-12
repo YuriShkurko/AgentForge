@@ -9,7 +9,8 @@ The demo is intentionally deterministic. It proves the generated app structure, 
 ## What it does
 
 1. **Ingest** — pulls fixture records from a `FixtureRecordProvider`, normalises them, and stores them in the database with deduplication by `external_id`.
-2. **Score** — runs a deterministic scoring engine over all unscored records, assigning a `fit` score (0–1), a label (`high`/`medium`/`low`), and a recommendation (`accept`/`review`/`skip`).
+2. **Import** — accepts user-provided JSON records from the Operations panel or `POST /ingest/import`, with visible accepted/skipped counts and validation errors.
+3. **Score** — runs a deterministic scoring engine over all unscored records, assigning a `fit` score (0–1), a label (`high`/`medium`/`low`), and a recommendation (`accept`/`review`/`skip`).
 3. **Preview** — creates preview-only notification payloads from scored records without external delivery.
 4. **Act** — operator accepts, skips, or saves individual scored records from the table or preview panel.
 5. **Chat** — uses the Agent Runtime Module with a scripted provider, SSE events, and typed tool validation to call deterministic tools such as score or preview.
@@ -18,14 +19,15 @@ The demo is intentionally deterministic. It proves the generated app structure, 
 
 ## Agent Runtime Module
 
-The generated agent runtime is local and scripted by design. It is meant to prove the contract between chat, tools, persistence, and UI before a live provider is added.
+The generated agent runtime is local and scripted by default. It proves the contract between chat, tools, persistence, and UI without requiring a live provider. Optional OpenAI chat mode can be enabled later with user-provided credentials.
 
-- `POST /agent/chat` runs a full non-streaming scripted turn.
+- `POST /agent/chat` runs a full non-streaming scripted or configured-provider turn.
 - `POST /agent/chat/stream` streams the same kind of turn as SSE events.
 - Persisted conversations survive page reloads through `/agent/conversations/{id}`.
-- Tool calls wrap deterministic app capabilities such as ingest, score, scored-record lookup, notification preview creation, and action history.
+- In scripted mode, tool calls wrap deterministic app capabilities such as ingest, score, scored-record lookup, notification preview creation, and action history.
 - Tool arguments are validated before execution. Unknown tools and invalid arguments return structured tool errors instead of crashing the request.
 - The frontend shows running/succeeded/failed tool activity and streams assistant text progressively when SSE is available.
+- OpenAI mode is chat-only in this first pass; scoring remains deterministic/local and tests do not make live OpenAI calls.
 
 SSE events emitted by `/agent/chat/stream`:
 
@@ -35,6 +37,24 @@ SSE events emitted by `/agent/chat/stream`:
 - `text_delta`
 - `error`
 - `done`
+
+### Optional OpenAI chat mode
+
+Default local mode needs no API keys:
+
+```env
+AGENT_PROVIDER=scripted
+```
+
+To enable optional live chat responses:
+
+```env
+AGENT_PROVIDER=openai
+OPENAI_API_KEY=sk-...
+OPENAI_MODEL=gpt-4o-mini
+```
+
+If `AGENT_PROVIDER=openai` is set without `OPENAI_API_KEY`, the API returns a clear configuration error and the scripted default remains available by switching back to `AGENT_PROVIDER=scripted`.
 
 ## Dashboard/Workspace Module
 
@@ -88,7 +108,8 @@ Useful demo captures:
 
 | Method | Path | Description |
 |---|---|---|
-| `POST` | `/ingest` | Run ingestion — fetches records from provider |
+| `POST` | `/ingest` | Run fixture demo ingestion — fetches records from provider |
+| `POST` | `/ingest/import` | Import user-provided JSON records with per-row validation |
 | `GET` | `/runs` | List provider run history |
 | `GET` | `/records` | List normalised records |
 | `POST` | `/records/score` | Score all unscored records |
@@ -150,14 +171,29 @@ docker compose up --build
 
 Backend on `:8000`, frontend on `:5173`.
 
+## User data import
+
+Paste a JSON array in the Operations panel or send it to `POST /ingest/import`:
+
+```json
+{
+  "source": "manual_import",
+  "records": [
+    { "external_id": "user-1", "title": "Urgent customer request", "category": "support", "value": 92 }
+  ]
+}
+```
+
+Required field: `title` (aliases: `name`, `subject`). Optional fields: `external_id`/`id`, `category`/`type`/`status`, `value`/`amount`/`score`/`priority`, and `raw_payload`. Numeric values are clamped to 0–100. Duplicate `external_id` values are skipped with validation errors shown in the UI/API response.
+
 ## Known limitations
 
-- `FixtureRecordProvider` emits 10 static records — replace with a real provider for production use.
+- `FixtureRecordProvider` emits 10 static records; use JSON import for user-provided local data.
 - Scoring is deterministic (`fit = value / 100`) — replace `backend/app/adapters/scoring.py` with real logic.
 - No authentication or multi-user support.
 - No migration tooling (Alembic) — schema is created on startup via `Base.metadata.create_all`.
 - Notification delivery is preview-only; no Telegram/email/Slack adapter is wired.
-- Agent Runtime uses a scripted provider; no live LLM/API provider is configured.
+- Agent Runtime uses a scripted provider by default; optional OpenAI mode is chat-only and requires a user-supplied `OPENAI_API_KEY`.
 - Agent Runtime tools validate typed arguments before execution and return structured tool errors instead of crashing the chat turn.
 - Agent streaming is SSE-based and deterministic; the non-streaming `/agent/chat` route remains available as fallback.
 - Dashboard/Workspace widgets are generic only; domain-specific Business Insight widgets are not generated here.

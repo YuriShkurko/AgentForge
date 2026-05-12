@@ -1,22 +1,27 @@
 # AgentForge Blueprint Builder
 
-The Blueprint Builder is the local product front door for AgentForge. It helps you start from either:
+The Blueprint Builder is the local product front door for AgentForge. The v1.0 UX is intentionally no-key and demo-first: describe what you want to build, review a plain-language plan, then copy/save the App Blueprint and run the CLI.
 
-1. a new app idea, or
-2. an existing repository that you analyze with `agentforge analyze-repo` and plan with `agentforge plan-extension`.
+The main promise is visible in the UI: **no API keys, no cloud account, and no external provider setup are required for the local demo path.**
 
-It remains local-first and CLI-first. The builder helps draft and review an App Blueprint, but `agentforge plan` and `agentforge generate` remain the source of truth for validation and generation.
+The long-term direction is an agent-chat builder. For now, the UI uses a clearer guided flow:
+
+```text
+Choose path → describe app → draft/review plan → generate with CLI
+```
 
 ## Modes
 
-- Static/manual mode: open `index.html` directly, edit fields, review the generation preview, and copy or download the Blueprint Source YAML.
+- Static/manual mode: open `index.html` directly, edit the advanced fields if needed, review the generation preview, and copy or download the Blueprint Source YAML.
 - Scripted planner mode: run `agentforge serve-builder`, open the printed URL, then draft/refine/validate through the local Python planner.
 
-## Start from an app idea
+## Primary path: start from an app idea
 
-Use the idea panel to describe the product you want to build. The local scripted planner can:
+Use **Start from an app idea** for the main flow. The generated demo can be tested with included sample records and a scripted local agent.
 
-- draft from a short app idea;
+The Builder asks for one plain-English idea, then the local scripted planner can:
+
+- draft an App Blueprint;
 - ask clarifying questions for vague ideas;
 - refine a draft with bounded instructions;
 - show assumptions, warnings, recommended modules, YAML, and CLI commands;
@@ -28,56 +33,68 @@ Example:
 agentforge serve-builder
 ```
 
-Then open the local URL and use **Start from an app idea**.
+Then open the local URL and describe the app you want to build.
 
-## Start from an existing repo
+## Fastest test path
 
-Use the Repo Analyzer and Repo Extension Planner outside the browser, then paste JSON output into the builder:
+Use the committed demo when you want to prove the app works without external services:
 
 ```bash
-agentforge analyze-repo ../my-project
-agentforge analyze-repo ../my-project --format md
-agentforge analyze-repo ../my-project --json --output report.json
-agentforge plan-extension ../my-project
-agentforge plan-extension report.json --from-report
-agentforge plan-extension ../my-project --modules agent_runtime,dashboard_workspace --format md --output extension-plan.md
-agentforge prepare-extension ../my-project --output agentforge-output/my-project-extension
-agentforge prepare-extension ../my-project --modules agent_runtime --dry-run
-# Explicit low-risk docs/blueprint/checklist apply only:
-agentforge prepare-extension ../my-project --modules agent_runtime --apply
-agentforge prepare-extension ../my-project --modules agent_runtime --apply --yes
-agentforge plan-deployment ../my-project --format md
-agentforge plan-deployment report.json --from-report --format json
+agentforge generate domain-packs/hybrid-scoring-demo/domain-pack.yaml --force
+make run-backend
+make run-frontend
 ```
 
-The analyzer, extension planner, and deployment planner are planning-only. `prepare-extension` bundle mode is a safe preview, and `--dry-run` reports planned writes, apply-eligible files, dirty repo state, overwrite conflicts, safety checks, and next steps without writing files. Apply mode requires `--apply` plus interactive `yes` or `--yes`, refuses dirty repos/overwrites by default, and only writes low-risk docs/blueprint/checklist files. `plan-deployment` reports readiness and platform recommendations only; it does not deploy, provision resources, run cloud CLIs, store secrets, or run target scripts. None of these commands call live LLMs, call external APIs, or require internet access.
+Then open the generated app, ingest included sample records, score them, use agent chat, pin a workspace widget, and refresh to confirm persistence.
 
-When pasted into the builder, analyzer JSON can show:
+## Review and generate
 
-- detected stack;
-- likely archetype;
-- compatible/partial/missing AgentForge modules;
-- advisory migration phases;
-- draft Blueprint seed, if present.
+The Builder shows a guided review before raw YAML:
 
-The seed still needs review before it becomes a real `domain-pack.yaml`. Extension planner JSON can also show selected modules, migration phases, file impact, risks, and the explicit no-files-modified statement. Deployment planner JSON can show readiness summary, platform recommendations, env/Docker/CI checklists, risk notes, and the explicit no-deployment-performed warning.
+- draft summary;
+- assumptions and warnings;
+- generated app pieces;
+- supported modules and planned gaps;
+- next CLI commands.
 
-## What will be generated
+Blueprint details, modules, deterministic configuration, and raw YAML remain available under **Advanced Blueprint controls**.
 
-The builder includes a generation preview for the current Blueprint state. It summarizes generated pieces such as FastAPI backend, React frontend, provider/adapters, deterministic scoring, notification/triage, agent runtime, dashboard/workspace, tests, Docker/CI/local validation, supported modules, planned gaps, and next commands.
-
-## Blueprint Source
-
-YAML remains available as **Blueprint Source (Advanced)** with copy/download support. This is still the file format consumed by the CLI:
+The CLI remains the source of truth:
 
 ```bash
 agentforge plan path/to/domain-pack.yaml
 agentforge generate path/to/domain-pack.yaml
+make validate
 ```
+
+## Secondary path: start from an existing repo
+
+Existing-repo planning remains available, but it is intentionally secondary to the new-app flow.
+
+Use the Repo Analyzer and Repo Extension Planner outside the browser, then optionally paste JSON output into the Builder:
+
+```bash
+agentforge analyze-repo ../my-project --format md
+agentforge analyze-repo ../my-project --json --output report.json
+agentforge plan-extension ../my-project --format md --output extension-plan.md
+agentforge plan-extension report.json --from-report
+agentforge prepare-extension ../my-project --dry-run
+agentforge plan-deployment ../my-project --format md
+```
+
+The analyzer, extension planner, and deployment planner are planning-only. `prepare-extension` bundle mode is a safe preview, and `--dry-run` reports planned writes, apply-eligible files, dirty repo state, overwrite conflicts, safety checks, and next steps without writing files. Apply mode requires `--apply` plus interactive `yes` or `--yes`, refuses dirty repos/overwrites by default, and only writes low-risk docs/blueprint/checklist files. `plan-deployment` reports readiness and platform recommendations only; it does not deploy, provision resources, run cloud CLIs, store secrets, or run target scripts. None of these commands call live LLMs, call external APIs, or require internet access.
+
+## What will be generated
+
+The generation preview summarizes tangible app pieces such as FastAPI backend, React frontend, included sample records, deterministic scoring, notification/triage, scripted local agent chat, dashboard/workspace, tests, Docker/CI/local validation, supported modules, planned gaps, and next commands. No external provider setup is needed for the demo path.
+
+## Blueprint Source
+
+YAML remains available as **Blueprint Source (Advanced)** with copy/download support. This is still the file format consumed by the CLI.
 
 ## Boundaries
 
-The builder does not call a live LLM, inspect local repositories from the browser, run extension/deployment planning in the browser, convert existing apps, deploy infrastructure, apply patches from the browser, modify files automatically, or replace CLI validation. Patch bundle/apply and deployment planning remain CLI-only and explicit.
+The Builder does not call a live LLM, inspect local repositories from the browser, run extension/deployment planning in the browser, convert existing apps, deploy infrastructure, apply patches from the browser, modify files automatically, or replace CLI validation. Patch bundle/apply and deployment planning remain CLI-only and explicit.
 
 For a CLI-only starter file:
 

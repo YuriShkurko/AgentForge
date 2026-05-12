@@ -6,7 +6,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.agent.providers import AgentPlan, ScriptedAgentProvider
+from app.agent.providers import AgentPlan, AgentProviderConfigurationError, get_agent_provider
 from app.agent.tools import ToolExecutionError, execute_tool
 from app.models import Conversation, ConversationMessage
 
@@ -92,7 +92,7 @@ async def run_agent_chat_stream_events(
             },
         }
 
-        provider = ScriptedAgentProvider()
+        provider = get_agent_provider()
         plan: AgentPlan = provider.plan(cleaned)
         tool_events = []
         tool_results_by_name: dict[str, dict[str, Any]] = {}
@@ -153,7 +153,7 @@ async def run_agent_chat_stream_events(
             conversation_id=conversation.id,
             role="assistant",
             content=assistant_text,
-            message_metadata={"provider": "scripted", "tool_events": tool_events},
+            message_metadata={"provider": provider.name, "tool_events": tool_events},
             created_at=datetime.now(UTC),
         )
         db.add(assistant_message)
@@ -168,6 +168,10 @@ async def run_agent_chat_stream_events(
         return
     except LookupError as exc:
         yield {"event": "error", "data": {"error": str(exc), "error_code": "not_found"}}
+        yield {"event": "done", "data": {"ok": False}}
+        return
+    except AgentProviderConfigurationError as exc:
+        yield {"event": "error", "data": {"error": str(exc), "error_code": "agent_provider_config"}}
         yield {"event": "done", "data": {"ok": False}}
         return
 
@@ -215,7 +219,7 @@ async def _run_agent_chat(
             }
         )
 
-    provider = ScriptedAgentProvider()
+    provider = get_agent_provider()
     plan: AgentPlan = provider.plan(cleaned)
 
     tool_events = []
@@ -284,7 +288,7 @@ async def _run_agent_chat(
         conversation_id=conversation.id,
         role="assistant",
         content=assistant_text,
-        message_metadata={"provider": "scripted", "tool_events": tool_events},
+        message_metadata={"provider": provider.name, "tool_events": tool_events},
         created_at=datetime.now(UTC),
     )
     db.add(assistant_message)

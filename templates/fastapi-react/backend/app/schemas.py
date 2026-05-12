@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Any
 
 
@@ -29,6 +29,24 @@ class IngestOut(BaseModel):
     run_id: uuid.UUID
     raw_records_inserted: int
     normalized_inserted: int
+
+
+class ImportRecordsRequest(BaseModel):
+    records: list[Any] = Field(default_factory=list)
+    source: str = "manual_import"
+
+
+class ImportRecordError(BaseModel):
+    index: int
+    external_id: str | None = None
+    error: str
+
+
+class ImportRecordsOut(BaseModel):
+    run_id: uuid.UUID | None
+    accepted: int
+    skipped: int
+    errors: list[ImportRecordError]
 
 
 # --- Score ---

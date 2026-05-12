@@ -80,11 +80,11 @@ export function getGenerationPreview(state) {
     "SQLite-local/PostgreSQL-ready persistence",
     "Generator, backend, frontend, and CI-ready validation commands",
   ];
-  if (supportedModules.includes("provider_adapter")) outputs.push("Provider/adapter layer");
+  if (supportedModules.includes("provider_adapter")) outputs.push("Included sample records + adapter (no external provider setup)");
   if (supportedModules.includes("pipeline")) outputs.push("Ingestion pipeline and run history");
   if (supportedModules.includes("scoring_explanation")) outputs.push("Deterministic scoring and explanations");
   if (supportedModules.includes("notification_action") || supportedModules.includes("triage_ui")) outputs.push("Preview notification and triage surfaces");
-  if (supportedModules.includes("agent_runtime") || supportedModules.includes("agent")) outputs.push("Scripted Agent Runtime with typed tools");
+  if (supportedModules.includes("agent_runtime") || supportedModules.includes("agent")) outputs.push("Scripted local agent chat with typed tools");
   if (supportedModules.includes("workspace")) outputs.push("Dashboard/workspace widgets");
   if (supportedModules.includes("test")) outputs.push("Deterministic test harness");
   const name = sanitizeName(state.name);

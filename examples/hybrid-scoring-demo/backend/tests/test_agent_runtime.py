@@ -1,5 +1,6 @@
 import pytest
 
+from app.agent.providers import AgentProviderConfigurationError, OpenAICompatibleProvider, get_agent_provider
 from app.agent.runtime import list_conversation_messages, run_agent_chat, run_agent_chat_stream_events
 
 
@@ -112,3 +113,32 @@ async def test_agent_conversation_can_continue(db):
 async def test_agent_rejects_empty_message(db):
     with pytest.raises(ValueError):
         await run_agent_chat("   ", db)
+
+
+class FakeOpenAIClient:
+    def complete(self, message: str) -> str:
+        return f"live response for: {message}"
+
+
+def test_agent_provider_defaults_to_scripted(monkeypatch):
+    monkeypatch.delenv("AGENT_PROVIDER", raising=False)
+
+    assert get_agent_provider().name == "scripted"
+
+
+def test_openai_provider_requires_key(monkeypatch):
+    monkeypatch.setenv("AGENT_PROVIDER", "openai")
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+
+    with pytest.raises(AgentProviderConfigurationError):
+        get_agent_provider()
+
+
+def test_openai_compatible_provider_uses_injected_client_without_live_call():
+    provider = OpenAICompatibleProvider(client=FakeOpenAIClient())
+
+    plan = provider.plan("summarize my records")
+
+    assert provider.name == "openai"
+    assert plan.tool_calls == []
+    assert plan.final_text == "live response for: summarize my records"

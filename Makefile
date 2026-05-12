@@ -37,7 +37,7 @@ test-backend:
 
 run-backend:
 	cd $(BACKEND_DIR) && pip install -r requirements-dev.txt -q && \
-	    uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+	    python -c "import os, subprocess, sys; os.environ.setdefault('DATABASE_URL', 'sqlite+aiosqlite:///./demo.db'); raise SystemExit(subprocess.call([sys.executable, '-m', 'uvicorn', 'app.main:app', '--reload', '--host', '0.0.0.0', '--port', '8000']))"
 
 # ── Generated app — frontend ──────────────────────────────────────────────────
 

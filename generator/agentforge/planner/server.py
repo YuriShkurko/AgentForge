@@ -32,6 +32,7 @@ class PlannerRequestHandler(SimpleHTTPRequestHandler):
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Headers", "Content-Type")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Cache-Control", "no-store, max-age=0")
         super().end_headers()
 
     def do_OPTIONS(self) -> None:  # noqa: N802
@@ -110,6 +111,7 @@ def serve_builder(host: str = "127.0.0.1", port: int = 8765, builder_dir: Path |
     resolved_builder_dir = builder_dir or root / "builder"
     server = PlannerServer((host, port), resolved_builder_dir)
     print(f"Serving AgentForge builder at http://{host}:{port}/")
+    print(f"Builder assets: {resolved_builder_dir}")
     print("Planner mode: scripted")
     server.serve_forever()
 

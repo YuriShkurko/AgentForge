@@ -18,6 +18,19 @@ export interface RecordItem {
   ingested_at: string;
 }
 
+export interface ImportRecordError {
+  index: number;
+  external_id: string | null;
+  error: string;
+}
+
+export interface ImportRecordsResult {
+  run_id: string | null;
+  accepted: number;
+  skipped: number;
+  errors: ImportRecordError[];
+}
+
 export interface Explanation {
   fit_score: number;
   summary: string;
