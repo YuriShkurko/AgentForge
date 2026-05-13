@@ -1,4 +1,5 @@
 import { api } from "../api";
+import { customization } from "../customization";
 import type { WorkspaceWidget } from "../types";
 import { WidgetRenderer } from "./WidgetRenderer";
 
@@ -25,59 +26,23 @@ export function WorkspacePanel({ widgets, loading, error, onChanged }: Props) {
   }
 
   return (
-    <section
-      data-testid="workspace-panel"
-      style={{
-        border: "1px solid #d7dee8",
-        borderRadius: 8,
-        padding: "1rem",
-        background: "#fbfcfe",
-        marginTop: "1rem",
-      }}
-    >
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          gap: "1rem",
-          alignItems: "flex-start",
-          flexWrap: "wrap",
-        }}
-      >
-        <div style={{ maxWidth: 620 }}>
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "0.6rem",
-              flexWrap: "wrap",
-            }}
-          >
-            <h2 style={{ margin: 0 }}>Workspace</h2>
+    <section data-testid="workspace-panel" className="panel workspace-panel">
+      <div className="workspace-top">
+        <div>
+          <div>
+          <p className="eyebrow">Persisted workspace</p>
+            <h2>
+              Workspace
             <span
               data-testid="workspace-count"
-              style={{
-                border: "1px solid #cbd5e1",
-                borderRadius: 999,
-                padding: "0.15rem 0.5rem",
-                fontSize: "0.78rem",
-                fontWeight: 700,
-                color: "#334155",
-                background: "#fff",
-              }}
+              className="status-pill workspace-count"
             >
-              {widgets.length} {widgets.length === 1 ? "widget" : "widgets"}
+              {widgets.length} {widgets.length === 1 ? "widget" : customization.workspace.widgetLabel}
             </span>
+            </h2>
           </div>
-          <p
-            style={{
-              margin: "0.35rem 0 0",
-              color: "#475569",
-              fontSize: "0.92rem",
-              lineHeight: 1.45,
-            }}
-          >
-            Persisted dashboard cards pinned by the scripted agent. Refreshing
+          <p className="panel-kicker">
+            {customization.workspace.pinnedLabel} pinned by the scripted agent. Refreshing
             the page keeps saved widgets.
           </p>
         </div>
@@ -85,7 +50,7 @@ export function WorkspacePanel({ widgets, loading, error, onChanged }: Props) {
           data-testid="workspace-refresh-btn"
           onClick={onChanged}
           disabled={loading}
-          style={quietButtonStyle}
+          className="workspace-refresh"
         >
           {loading ? "Refreshing" : "Refresh"}
         </button>
@@ -94,7 +59,7 @@ export function WorkspacePanel({ widgets, loading, error, onChanged }: Props) {
         <StatusMessage
           testId="workspace-loading"
           tone="muted"
-          text="Loading persisted workspace widgets..."
+          text={`Loading persisted workspace ${customization.workspace.widgetLabel}...`}
         />
       )}
       {error && (
@@ -103,81 +68,38 @@ export function WorkspacePanel({ widgets, loading, error, onChanged }: Props) {
       {!loading && widgets.length === 0 ? (
         <div
           data-testid="workspace-empty"
-          style={{
-            border: "1px dashed #b8c4d4",
-            borderRadius: 8,
-            padding: "0.9rem",
-            marginTop: "0.85rem",
-            background: "#fff",
-            color: "#475569",
-            lineHeight: 1.45,
-          }}
+          className="empty-card"
         >
-          <strong
-            style={{
-              display: "block",
-              color: "#1f2937",
-              marginBottom: "0.25rem",
-            }}
-          >
-            No widgets pinned yet.
+          <strong>
+            No {customization.workspace.widgetLabel} pinned yet.
           </strong>
-          Ask the agent to pin scored records, notification previews, or action
-          history.
+          {customization.workspace.emptyState}
         </div>
       ) : (
-        <div style={{ display: "grid", gap: "0.85rem", marginTop: "0.9rem" }}>
+        <div className="widget-list">
           {widgets.map((widget, index) => (
             <article
               key={widget.id}
               data-testid="workspace-widget"
-              style={{
-                border: "1px solid #dbe3ee",
-                borderRadius: 8,
-                padding: "0.85rem",
-                background: "#fff",
-              }}
+              className="widget-card"
             >
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  gap: "0.75rem",
-                  alignItems: "flex-start",
-                  flexWrap: "wrap",
-                }}
-              >
-                <div style={{ minWidth: 0 }}>
-                  <strong
-                    style={{
-                      display: "block",
-                      color: "#111827",
-                      lineHeight: 1.3,
-                    }}
-                  >
+              <div className="widget-head">
+                <div>
+                  <strong>
                     {widget.title}
                   </strong>
-                  <div
-                    style={{
-                      display: "flex",
-                      gap: "0.35rem",
-                      flexWrap: "wrap",
-                      marginTop: "0.35rem",
-                    }}
-                  >
+                  <div className="widget-labels">
                     <Label>{labelize(widget.widget_type)}</Label>
                     <Label>{labelize(widget.source_tool)}</Label>
                   </div>
                 </div>
-                <div
-                  style={{ display: "flex", gap: "0.35rem", flexWrap: "wrap" }}
-                >
+                <div className="widget-actions">
                   <button
                     data-testid="workspace-move-up-btn"
                     onClick={() => moveWidget(index, -1)}
                     disabled={index === 0}
                     aria-label={`Move ${widget.title} up`}
-                    style={quietButtonStyle}
+                    className="widget-action"
                   >
                     Up
                   </button>
@@ -186,7 +108,7 @@ export function WorkspacePanel({ widgets, loading, error, onChanged }: Props) {
                     onClick={() => moveWidget(index, 1)}
                     disabled={index === widgets.length - 1}
                     aria-label={`Move ${widget.title} down`}
-                    style={quietButtonStyle}
+                    className="widget-action"
                   >
                     Down
                   </button>
@@ -194,13 +116,13 @@ export function WorkspacePanel({ widgets, loading, error, onChanged }: Props) {
                     data-testid="workspace-remove-btn"
                     onClick={() => removeWidget(widget.id)}
                     aria-label={`Remove ${widget.title}`}
-                    style={dangerButtonStyle}
+                    className="widget-action button-danger"
                   >
                     Remove
                   </button>
                 </div>
               </div>
-              <div style={{ marginTop: "0.75rem" }}>
+              <div className="widget-body">
                 <WidgetRenderer widget={widget} />
               </div>
             </article>
@@ -213,16 +135,7 @@ export function WorkspacePanel({ widgets, loading, error, onChanged }: Props) {
 
 function Label({ children }: { children: string }) {
   return (
-    <span
-      style={{
-        border: "1px solid #e2e8f0",
-        borderRadius: 999,
-        padding: "0.12rem 0.45rem",
-        fontSize: "0.76rem",
-        color: "#475569",
-        background: "#f8fafc",
-      }}
-    >
+    <span className="label-pill">
       {children}
     </span>
   );
@@ -240,15 +153,7 @@ function StatusMessage({
   return (
     <p
       data-testid={testId}
-      style={{
-        border: `1px solid ${tone === "error" ? "#fecaca" : "#dbe3ee"}`,
-        borderRadius: 8,
-        padding: "0.65rem 0.75rem",
-        margin: "0.85rem 0 0",
-        color: tone === "error" ? "#991b1b" : "#475569",
-        background: tone === "error" ? "#fff7f7" : "#fff",
-        fontSize: "0.9rem",
-      }}
+      className={tone === "error" ? "result-card error-text" : "result-card"}
     >
       {text}
     </p>
@@ -261,16 +166,3 @@ function labelize(value: string): string {
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
-const quietButtonStyle = {
-  border: "1px solid #cbd5e1",
-  borderRadius: 6,
-  background: "#fff",
-  color: "#334155",
-  padding: "0.35rem 0.55rem",
-};
-
-const dangerButtonStyle = {
-  ...quietButtonStyle,
-  color: "#9f1239",
-  borderColor: "#fecdd3",
-};

@@ -1,12 +1,5 @@
 import type { ActionStatus, TriageAction } from "../types";
 
-const COLORS: Record<string, string> = {
-  accepted: "#2e7d32",
-  skipped:  "#b71c1c",
-  saved:    "#1565c0",
-  pending:  "#795548",
-};
-
 interface Props {
   action: ActionStatus | null;
   recordId: string;
@@ -18,7 +11,7 @@ export function ActionStatusBadge({ action, recordId, onAction }: Props) {
     return (
       <span
         data-testid="action-badge"
-        style={{ color: COLORS[action.status] ?? "#333", fontWeight: 600 }}
+        className={`status-pill ${action.status}`}
       >
         {action.status}
       </span>
@@ -26,10 +19,10 @@ export function ActionStatusBadge({ action, recordId, onAction }: Props) {
   }
 
   return (
-    <span style={{ display: "flex", gap: "0.4rem" }}>
+    <span className="action-buttons">
       <button data-testid="accept-btn" onClick={() => onAction(recordId, "accept")}>Accept</button>
-      <button data-testid="skip-btn"   onClick={() => onAction(recordId, "skip")}>Skip</button>
-      <button data-testid="save-btn"   onClick={() => onAction(recordId, "save")}>Save</button>
+      <button data-testid="skip-btn" className="button-danger" onClick={() => onAction(recordId, "skip")}>Skip</button>
+      <button data-testid="save-btn" className="button-secondary" onClick={() => onAction(recordId, "save")}>Save</button>
     </span>
   );
 }

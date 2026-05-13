@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { api } from "../api";
+import { customization } from "../customization";
 import type { ImportRecordsResult } from "../types";
 
 const SAMPLE_IMPORT_JSON = `[
@@ -36,7 +37,7 @@ export function OpsPanel({ onIngestDone, onScoreDone, onPreviewDone }: Props) {
     setBusy(true);
     try {
       const parsed = JSON.parse(importJson);
-      if (!Array.isArray(parsed)) throw new Error("Paste a JSON array of records.");
+      if (!Array.isArray(parsed)) throw new Error(`Paste a JSON array of ${customization.scoring.recordLabel.plural}.`);
       const r = await api.importRecords(parsed);
       setLastImport(r);
       const errorSummary = r.errors.length ? ` (${r.errors.length} validation issue${r.errors.length === 1 ? "" : "s"})` : "";
@@ -54,7 +55,7 @@ export function OpsPanel({ onIngestDone, onScoreDone, onPreviewDone }: Props) {
     setBusy(true);
     try {
       const r = await api.score();
-      setLog((l) => [`Scored: ${r.scores_written} records`, ...l]);
+      setLog((l) => [`Scored: ${r.scores_written} ${customization.scoring.recordLabel.plural}`, ...l]);
       onScoreDone();
     } catch (e) {
       setLog((l) => [`Score error: ${e}`, ...l]);
@@ -77,28 +78,36 @@ export function OpsPanel({ onIngestDone, onScoreDone, onPreviewDone }: Props) {
   }
 
   return (
-    <section data-testid="ops-panel" style={{ marginBottom: "1.5rem" }}>
-      <h2>Operations</h2>
-      <div style={{ display: "flex", gap: "0.75rem", marginBottom: "0.75rem", flexWrap: "wrap" }}>
+    <section data-testid="ops-panel" className="panel">
+      <div className="panel-head">
+        <div>
+          <h2>{customization.app.workflowLabel}</h2>
+          <p className="panel-kicker">
+            Start with {customization.scoring.sampleDataLabel} or paste your own JSON, then score and
+            generate preview-only notifications.
+          </p>
+        </div>
+      </div>
+      <div className="action-row">
         <button data-testid="ingest-btn" onClick={ingest} disabled={busy}>
-          Ingest Demo Data
+          Ingest {titleCase(customization.scoring.sampleDataLabel)}
         </button>
         <button data-testid="import-btn" onClick={importRecords} disabled={busy}>
-          Import JSON Records
+          Import JSON {titleCase(customization.scoring.recordLabel.plural)}
         </button>
         <button data-testid="score-btn" onClick={score} disabled={busy}>
-          Score
+          Score {titleCase(customization.scoring.recordLabel.plural)}
         </button>
         <button data-testid="preview-btn" onClick={previewNotifications} disabled={busy}>
           Preview Notifications
         </button>
       </div>
-      <div style={{ marginBottom: "0.5rem" }}>
-        <label style={{ display: "block", fontSize: "0.85rem", fontWeight: 600, marginBottom: "0.25rem" }}>
-          Your data JSON
+      <div className="field-block">
+        <label>
+          Your {customization.scoring.recordLabel.plural} JSON
         </label>
-        <p style={{ margin: 0, color: "#4b5563", fontSize: "0.85rem" }}>
-          Works without API keys. Paste an array with <code>title</code>/<code>name</code>, optional <code>category</code>/<code>type</code>, and <code>value</code>/<code>priority</code>.
+        <p className="helper">
+          Works without API keys. Paste an array of {customization.scoring.recordLabel.plural} with <code>title</code>/<code>name</code>, optional <code>category</code>/<code>type</code>, and <code>value</code>/<code>priority</code>.
         </p>
       </div>
       <textarea
@@ -106,16 +115,15 @@ export function OpsPanel({ onIngestDone, onScoreDone, onPreviewDone }: Props) {
         value={importJson}
         onChange={(event) => setImportJson(event.target.value)}
         rows={6}
-        style={{ width: "100%", boxSizing: "border-box", fontFamily: "monospace", marginBottom: "0.5rem" }}
       />
-      <button type="button" onClick={() => setImportJson(SAMPLE_IMPORT_JSON)} disabled={busy} style={{ marginBottom: "0.75rem" }}>
+      <button type="button" className="button-secondary" onClick={() => setImportJson(SAMPLE_IMPORT_JSON)} disabled={busy}>
         Reset Sample JSON
       </button>
       {lastImport && (
-        <div data-testid="import-result" style={{ border: "1px solid #d1d5db", borderRadius: 8, padding: "0.75rem", marginBottom: "0.75rem", background: "#f9fafb" }}>
+        <div data-testid="import-result" className="result-card">
           <strong>Import result:</strong> {lastImport.accepted} accepted, {lastImport.skipped} skipped.
           {lastImport.errors.length > 0 && (
-            <ul style={{ margin: "0.5rem 0 0", paddingLeft: "1.25rem" }}>
+            <ul>
               {lastImport.errors.slice(0, 5).map((error) => (
                 <li key={`${error.index}-${error.external_id ?? "none"}`}>
                   Row {error.index + 1}{error.external_id ? ` (${error.external_id})` : ""}: {error.error}
@@ -126,7 +134,7 @@ export function OpsPanel({ onIngestDone, onScoreDone, onPreviewDone }: Props) {
         </div>
       )}
       {log.length > 0 && (
-        <ul data-testid="activity-log" style={{ fontSize: "0.85rem", listStyle: "none", padding: 0, margin: 0 }}>
+        <ul data-testid="activity-log" className="activity-log">
           {log.map((entry, i) => (
             <li key={i}>{entry}</li>
           ))}
@@ -134,4 +142,8 @@ export function OpsPanel({ onIngestDone, onScoreDone, onPreviewDone }: Props) {
       )}
     </section>
   );
+}
+
+function titleCase(value: string): string {
+  return value.replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
