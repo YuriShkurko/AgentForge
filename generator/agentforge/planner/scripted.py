@@ -21,10 +21,10 @@ CANONICAL_IDEAS: dict[str, str] = {
 _ARCHETYPE_KEYWORDS: list[tuple[str, tuple[str, ...]]] = [
     ("notification_triage_app", ("triage", "notification", "notify", "decision", "approve", "reject")),
     ("project_workspace_app", ("project workspace", "task planner", "task tracker", "project management", "projects", "due date", "owners")),
-    ("agent_dashboard_app", ("agent dashboard", "dashboard", "workspace", "pin", "widget")),
     ("hybrid_agent_pipeline", ("hybrid", "agent pipeline", "agent explain", "explain pipeline", "with an agent")),
+    ("ingestion_scoring_pipeline", ("lead scoring", "account scoring", "best-fit", "best fit", "score", "scoring", "rank", "ingest", "pipeline", "records")),
+    ("agent_dashboard_app", ("agent dashboard", "dashboard", "workspace", "pin", "widget")),
     ("deploy_planner_app", ("deploy", "deployment", "release", "infra")),
-    ("ingestion_scoring_pipeline", ("score", "scoring", "rank", "ingest", "pipeline", "records")),
 ]
 
 _DEFAULT_OPTIONAL_MODULES: dict[str, list[str]] = {

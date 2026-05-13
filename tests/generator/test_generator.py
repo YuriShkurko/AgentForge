@@ -79,6 +79,7 @@ EXPECTED_PROJECT_WORKSPACE_FILES = [
     "backend/app/routers/workspace.py",
     "backend/app/agent/runtime.py",
     "backend/app/agent/tools.py",
+    "backend/tests/__init__.py",
     "backend/tests/integration/test_project_flow.py",
     "backend/tests/integration/test_agent_workspace_flow.py",
     "frontend/src/App.tsx",

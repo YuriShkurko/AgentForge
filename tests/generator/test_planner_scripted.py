@@ -31,8 +31,8 @@ def test_scripted_planner_draft_for_each_supported_archetype_passes_load_pack(tm
     pack = assert_loads_with_generator_schema(tmp_path, result)
     assert pack.app_archetype == archetype
     assert result.commands == [
-        f"agentforge plan ./domain-packs/{pack.name}/domain-pack.yaml",
-        f"agentforge generate ./domain-packs/{pack.name}/domain-pack.yaml --force",
+        f"agentforge plan domain-packs/{pack.name}/domain-pack.yaml",
+        f"agentforge generate domain-packs/{pack.name}/domain-pack.yaml",
     ]
     assert result.suggested_modules
 
@@ -66,10 +66,19 @@ def test_scripted_planner_project_workspace_language(tmp_path):
     assert pack.customization.project_workspace.task_label.plural == "tasks"
 
 
+def test_scripted_planner_lead_scoring_dashboard_maps_to_scoring_family(tmp_path):
+    result = ScriptedPlanner().draft("Lead scoring dashboard for sales reps to review the best-fit accounts.")
+
+    pack = assert_loads_with_generator_schema(tmp_path, result)
+    assert pack.app_archetype == "ingestion_scoring_pipeline"
+    assert pack.customization.scoring.record_label.plural in {"accounts", "leads"}
+
+
 def test_scripted_planner_support_ticket_customization(tmp_path):
     result = ScriptedPlanner().draft("support ticket triage dashboard for urgent issues")
 
     pack = assert_loads_with_generator_schema(tmp_path, result)
+    assert pack.app_archetype == "notification_triage_app"
     assert pack.customization.scoring.record_label.singular == "ticket"
     assert pack.customization.scoring.record_label.plural == "tickets"
     assert "ticket" in pack.customization.app.workflow_label.lower()

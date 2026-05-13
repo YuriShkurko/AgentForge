@@ -22,7 +22,18 @@ Open `http://localhost:5173`.
 
 ## Validation
 
+From the generated app root, run backend and frontend validation separately:
+
 ```bash
-cd backend && pytest
-cd frontend && npm run build && npm run lint
+cd backend
+pytest
 ```
+
+```bash
+cd frontend
+npm install
+npm run build
+npm run lint
+```
+
+If you run both blocks in the same shell, return to the generated app root before starting the frontend block.

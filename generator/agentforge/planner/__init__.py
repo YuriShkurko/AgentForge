@@ -68,7 +68,7 @@ def validate_blueprint_result(
         return PlannerResult(status="error", errors=[f"invalid App Blueprint: {exc}"])
 
     yaml_text = blueprint_to_yaml(blueprint)
-    output_path = path or f"./domain-packs/{pack.name}/domain-pack.yaml"
+    output_path = path or f"domain-packs/{pack.name}/domain-pack.yaml"
     return PlannerResult(
         status="draft",
         blueprint=blueprint,
@@ -78,7 +78,7 @@ def validate_blueprint_result(
         suggested_modules=suggested_modules or [],
         commands=[
             f"agentforge plan {output_path}",
-            f"agentforge generate {output_path} --force",
+            f"agentforge generate {output_path}",
         ],
     )
 
