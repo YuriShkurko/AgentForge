@@ -1347,8 +1347,8 @@ def _readme(pack: DomainPack) -> str:
                 if name not in seen:
                     seen.add(name)
                     env_lines.append(f"{name}={'owner/repo' if name.endswith('REPO') else ''}")
-        provider_doc = """
-        ## Providers panel
+        env_block = "\n".join(f"        {line}" for line in env_lines)
+        provider_doc = f"""## Providers panel
 
         This generated app includes Provider Runtime v0. Providers are optional, read-only input adapters that fetch external records and feed the same generic importer pipeline used by CSV/JSON imports. Provider sync uses the target import config for mapping, validation, upsert/idempotency, and import-run history.
 
@@ -1357,11 +1357,10 @@ def _readme(pack: DomainPack) -> str:
         To use the Providers panel with a real GitHub repo, copy `.env.example` values into your shell environment before starting the backend:
 
         ```bash
-        """ + "\n".join(env_lines) + """
+{env_block}
         ```
 
-        `GITHUB_REPO` must use `owner/repo` format. Secret values are never shown in the UI. Default generated backend tests use mocked provider responses and do not require a live GitHub token or network access.
-        """
+        `GITHUB_REPO` must use `owner/repo` format. Secret values are never shown in the UI. Default generated backend tests use mocked provider responses and do not require a live GitHub token or network access."""
     relation_examples = _relation_import_examples(pack)
     return textwrap.dedent(f'''
         # {pack.display_name}
