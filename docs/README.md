@@ -7,6 +7,7 @@ This docs index keeps the root README concise. Start with the guided path, then 
 - [Getting Started](GETTING_STARTED.md) — install, generate, validate, and run the demo.
 - [Demo Guide](DEMO_GUIDE.md) — primary Golden Demo Path and secondary existing-repo path.
 - [GitHub Issues Real-Data Demo](GITHUB_ISSUES_PROVIDER_DEMO.md) — optional real-data variant using Provider Runtime v0 against a public repo.
+- [HTTP JSON Provider Demo](HTTP_JSON_PROVIDER_DEMO.md) — local mock-feed demo for the bounded read-only generic HTTP JSON provider.
 - [Command Reference](COMMAND_REFERENCE.md) — command map, write behavior, and examples.
 - [Safety Model](SAFETY_MODEL.md) — what AgentForge will and will not do by default.
 

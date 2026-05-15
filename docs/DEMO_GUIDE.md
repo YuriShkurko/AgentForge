@@ -147,7 +147,9 @@ cd .tmp/client-onboarding-workspace
 make validate
 ```
 
-Provider Runtime v0 can be shown with the GitHub Issues Workspace example:
+Provider Runtime v0 can be shown with either the GitHub Issues Workspace example or the local HTTP JSON Vendor Feed example.
+
+GitHub Issues Workspace:
 
 ```bash
 agentforge plan domain-packs/github-issues-workspace/domain-pack.yaml
@@ -156,9 +158,19 @@ cd .tmp/github-issues-workspace
 make validate
 ```
 
-The Providers panel is read-only and reuses the generated import pipeline. Without environment variables it should show missing `GITHUB_TOKEN`/`GITHUB_REPO` status and still pass default validation because tests mock GitHub responses. With real env vars, `GITHUB_REPO` must be `owner/repo`. v0 has no OAuth, no write-back, no repo mutation, no provider marketplace, no arbitrary connector DSL, and no live network requirement for default validation.
+HTTP JSON Vendor Feed, using a local mock JSON endpoint instead of a real external API:
 
-For the optional real-data variant — generating the app, configuring `GITHUB_TOKEN`/`GITHUB_REPO`, running preview/sync against a public repo, and verifying upsert behavior on a second sync — see [GITHUB_ISSUES_PROVIDER_DEMO.md](GITHUB_ISSUES_PROVIDER_DEMO.md).
+```bash
+agentforge generate domain-packs/http-json-vendor-feed/domain-pack.yaml --output .tmp/http-json-vendor-feed --force
+cd .tmp/http-json-vendor-feed
+make validate
+```
+
+The Providers panel is read-only and reuses the generated import pipeline. Without environment variables it shows missing env var names and still passes default validation because generated tests mock provider responses. For GitHub, `GITHUB_REPO` must be `owner/repo`. For the HTTP JSON Vendor Feed pack, set `EXTERNAL_VENDOR_FEED_URL` plus `EXTERNAL_VENDOR_FEED_TOKEN`; the token can be a fake local value because the pack configures `auth: bearer` and the mock server does not validate it. v0 has no OAuth, no write-back, no repo mutation, no provider marketplace, no arbitrary connector DSL, no scheduled sync, and no live network requirement for default validation.
+
+For the optional real-data GitHub variant — generating the app, configuring `GITHUB_TOKEN`/`GITHUB_REPO`, running preview/sync against a public repo, and verifying upsert behavior on a second sync — see [GITHUB_ISSUES_PROVIDER_DEMO.md](GITHUB_ISSUES_PROVIDER_DEMO.md).
+
+For the local generic HTTP JSON provider demo — generating HTTP JSON Vendor Feed, serving `.tmp/mock-feed/vendors.json`, setting `EXTERNAL_VENDOR_FEED_URL`/`EXTERNAL_VENDOR_FEED_TOKEN`, previewing, syncing, syncing again, and checking run history — see [HTTP_JSON_PROVIDER_DEMO.md](HTTP_JSON_PROVIDER_DEMO.md).
 
 Suggested screenshot flow:
 

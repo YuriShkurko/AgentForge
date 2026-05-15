@@ -135,7 +135,7 @@ Both fixed app families are local-first FastAPI + React apps with backend tests 
 
 Both generated app families support a small controlled customization layer for app copy, entity labels, workflow wording, agent starter prompts, workspace labels, and sample-data wording. This makes generated apps feel user-shaped within the supported archetypes without claiming arbitrary app generation.
 
-AgentForge also includes an experimental model-driven generation path. Instead of selecting a fixed app family, a domain pack can define bounded entities, fields, pages, actions, and seed data. The same generic generator can produce different FastAPI + React apps, such as a Client Onboarding Workspace or Vendor Risk Tracker. Generated model-driven apps include SQLite persistence, entity CRUD routes, basic workflow/action endpoints, seed data, generated tests, and a root Makefile with `make validate`. This is intentionally limited to simple CRUD/workflow apps for now; providers, visual model editing, richer relations, and production hardening are future work.
+AgentForge also includes an experimental model-driven generation path. Instead of selecting a fixed app family, a domain pack can define bounded entities, fields, pages, actions, and seed data. The same generic generator can produce different FastAPI + React apps, such as a Client Onboarding Workspace or Vendor Risk Tracker. Generated model-driven apps include SQLite persistence, entity CRUD routes, basic workflow/action endpoints, seed data, generated tests, and a root Makefile with `make validate`. Provider Runtime v0 is available for bounded read-only `github_issues` and `http_json` sync demos that feed the shared importer pipeline. This path remains intentionally limited; visual model editing, richer relations, write-back integrations, scheduling, and production hardening are future work.
 
 Try the model-driven examples:
 
@@ -211,6 +211,7 @@ README is the guided landing page. Detailed docs live here:
 - [Getting Started](docs/GETTING_STARTED.md)
 - [Demo Guide](docs/DEMO_GUIDE.md)
 - [GitHub Issues Real-Data Demo](docs/GITHUB_ISSUES_PROVIDER_DEMO.md)
+- [HTTP JSON Provider Demo](docs/HTTP_JSON_PROVIDER_DEMO.md)
 - [Command Reference](docs/COMMAND_REFERENCE.md)
 - [Safety Model](docs/SAFETY_MODEL.md)
 - [App Blueprint Specification](docs/DOMAIN_PACK_SPEC.md)
