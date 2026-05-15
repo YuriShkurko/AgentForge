@@ -158,6 +158,8 @@ make validate
 
 The Providers panel is read-only and reuses the generated import pipeline. Without environment variables it should show missing `GITHUB_TOKEN`/`GITHUB_REPO` status and still pass default validation because tests mock GitHub responses. With real env vars, `GITHUB_REPO` must be `owner/repo`. v0 has no OAuth, no write-back, no repo mutation, no provider marketplace, no arbitrary connector DSL, and no live network requirement for default validation.
 
+For the optional real-data variant — generating the app, configuring `GITHUB_TOKEN`/`GITHUB_REPO`, running preview/sync against a public repo, and verifying upsert behavior on a second sync — see [GITHUB_ISSUES_PROVIDER_DEMO.md](GITHUB_ISSUES_PROVIDER_DEMO.md).
+
 Suggested screenshot flow:
 
 1. Load seed data.

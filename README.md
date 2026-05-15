@@ -210,6 +210,7 @@ README is the guided landing page. Detailed docs live here:
 - [Docs Index](docs/README.md)
 - [Getting Started](docs/GETTING_STARTED.md)
 - [Demo Guide](docs/DEMO_GUIDE.md)
+- [GitHub Issues Real-Data Demo](docs/GITHUB_ISSUES_PROVIDER_DEMO.md)
 - [Command Reference](docs/COMMAND_REFERENCE.md)
 - [Safety Model](docs/SAFETY_MODEL.md)
 - [App Blueprint Specification](docs/DOMAIN_PACK_SPEC.md)
