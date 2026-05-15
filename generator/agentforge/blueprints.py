@@ -67,6 +67,15 @@ def create_starter_blueprint(
         required_modules.append("agent")
 
     actions = action_labels or DEFAULT_ACTION_LABELS
+    if archetype == "model_driven_app":
+        return _create_model_driven_blueprint(
+            clean_name,
+            display_name=display_name,
+            description=description,
+            target_user=target_user,
+            optional_modules=optional,
+        )
+
     if archetype == "project_workspace_app":
         return _create_project_workspace_blueprint(
             clean_name,
@@ -264,6 +273,61 @@ def create_starter_blueprint(
         })
 
     return pack
+
+
+def _create_model_driven_blueprint(
+    clean_name: str,
+    *,
+    display_name: str | None,
+    description: str,
+    target_user: str,
+    optional_modules: list[str],
+) -> dict[str, Any]:
+    display = _display_name(clean_name, display_name)
+    return {
+        "name": clean_name,
+        "display_name": display,
+        "version": "0.1.0",
+        "domain": {
+            "domain_name": display,
+            "app_type": "model_driven_app",
+            "target_users": [target_user.strip() or "operator"],
+            "product_purpose": description.strip() or "A bounded model-driven CRUD/workflow app.",
+            "main_user_goals": ["load_seed_data", "manage_records", "run_simple_workflow_actions"],
+        },
+        "app_archetype": "model_driven_app",
+        "required_shell_modules": sorted(ARCHETYPE_REQUIRED_MODULES["model_driven_app"]),
+        "optional_shell_modules": optional_modules,
+        "model": {
+            "entities": [
+                {
+                    "name": "item",
+                    "label_singular": "Item",
+                    "label_plural": "Items",
+                    "fields": [
+                        {"name": "title", "label": "Title", "type": "string", "required": True},
+                        {"name": "status", "label": "Status", "type": "enum", "required": True, "enum_values": ["open", "in_progress", "done"]},
+                        {"name": "notes", "label": "Notes", "type": "text"},
+                    ],
+                }
+            ],
+            "pages": [
+                {"name": "dashboard", "type": "dashboard", "title": "Dashboard"},
+                {"name": "items", "type": "entity_list", "entity": "item", "title": "Items"},
+            ],
+            "actions": [
+                {"name": "mark_done", "label": "Mark done", "type": "update_status", "entity": "item", "field": "status", "value": "done"}
+            ],
+            "seed_data": {"item": [{"title": "Example item", "status": "open", "notes": "Edit the model block for your domain."}]},
+        },
+        "tests": {
+            "expectations": {"no_live_provider_in_tests": True, "deterministic_fixture_data": True},
+            "commands": {"backend": "pytest", "frontend_build": "npm run build", "frontend_lint": "npm run lint"},
+        },
+        "future_extensions": {"features": ["builder_model_editor", "provider_imports"]},
+        "compatibility_gaps": ["Starter model is intentionally generic; edit the model block for custom entities."],
+    }
+
 
 
 def _create_project_workspace_blueprint(

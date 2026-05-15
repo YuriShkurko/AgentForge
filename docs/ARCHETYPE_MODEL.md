@@ -2,7 +2,7 @@
 
 AgentForge selects an app archetype before selecting feature modules. The archetype tells the generator which application template modules are required and which App Blueprint (`domain-pack.yaml`) fields must be present. The v0.7 Repo Analyzer can guess likely archetypes from an existing repository, but those guesses are advisory and must be reviewed before creating or changing an App Blueprint.
 
-Within supported archetypes, App Blueprints can customize a bounded set of visible labels, app copy, agent starter prompts, workspace empty states, and sample-data wording. This layer is intentionally controlled: it shapes the two current generated app families without adding arbitrary routes, code, components, integrations, or new archetypes.
+Within supported fixed-template archetypes, App Blueprints can customize a bounded set of visible labels, app copy, agent starter prompts, workspace empty states, and sample-data wording. This layer is intentionally controlled: it shapes the fixed generated app families without adding arbitrary routes, code, components, integrations, or new archetypes. The experimental `model_driven_app` path is separate: it uses a validated `model` block for bounded CRUD/workflow generation.
 
 > **Terms:** "shell module" = feature module (pipeline, scoring, agent runtime, etc.); "Product Shell" = Application Template; "Domain Pack" = App Blueprint. See [README terminology table](../README.md#terminology).
 
@@ -16,6 +16,7 @@ Within supported archetypes, App Blueprints can customize a bounded set of visib
 | `deploy_planner_app` | Future | Plan, validate, and stage deployment work | Pipeline Shell, Policy/Approval Shell, Audit Shell | Future |
 | `hybrid_agent_pipeline` | Future | Chat or command UX over deterministic pipeline | Pipeline Shell plus optional Agent Shell | Future |
 | `project_workspace_app` | Project Workspace Demo | Projects, tasks, notes/activity, agent tools, and workspace widgets | Operations UI, Persistence, Agent Runtime, Workspace, Test | Current generated template |
+| `model_driven_app` | Model-driven generator | Bounded custom entities, fields, CRUD pages, seed data, and simple workflow actions | Model Driven, Operations UI, Persistence, Test | Experimental generated path |
 
 ## `agent_dashboard_app`
 
@@ -189,6 +190,26 @@ Example generated app: an ingestion/scoring pipeline with a command panel or cha
 
 ## Module Selection Rule
 
+### `model_driven_app`
+
+The model-driven archetype is a bounded v0 path for simple CRUD/workflow apps. Instead of copying a domain-specific app such as scoring records or project tasks, the generator reads a `model` block with entities, safe field types, pages, workflow actions, and seed data, then emits a FastAPI/SQLite backend and React/Vite UI from that model.
+
+Expected Domain Pack fields:
+
+- `app_archetype: model_driven_app`
+- `required_shell_modules`: `model_driven`, `operations_ui`, `persistence`, `test`
+- `model.entities` with `name`, singular/plural labels, and fields
+- `model.pages` limited to `dashboard`, `entity_list`, and `entity_detail`
+- `model.actions` limited to safe patterns such as `update_status`, `mark_complete`, and `add_note`
+- `model.seed_data` keyed by entity name
+- deterministic `tests.commands`
+
+Supported v0 field types are `string`, `text`, `integer`, `boolean`, `date`, `enum`, and simple reference-style `relation`. This is not arbitrary app generation, a visual builder, provider integration, auth, or a DSL compiler.
+
+Example generated apps: Client Onboarding Workspace and Vendor Risk Tracker. They share the same model-driven generator path but produce different entities, routes, labels, enum values, pages, workflow actions, and seed data.
+
+## Generator Selection
+
 The generator starts from `app_archetype`, loads required feature modules, then wires optional feature modules only when the App Blueprint declares them. This prevents pipeline apps from being forced into chat/workspace behavior.
 
 As of v0.4, `workspace` is supported as a generic Dashboard/Workspace Module. It covers persisted generic widgets, backend compatibility validation, and simple remove/reorder behavior; it does not imply support for every domain-specific Business Insight widget renderer.
@@ -198,3 +219,5 @@ As of v0.4, `workspace` is supported as a generic Dashboard/Workspace Module. It
 The v0.7.1 Blueprint Builder is the local product front door for this same archetype model. It presents public labels such as Application Template, Feature Modules, Integration Adapters, and Test Harness, then emits the existing internal config fields such as `app_archetype`, `required_shell_modules`, `optional_shell_modules`, `agent_runtime`, `workspace`, and `tool_widget_compatibility`.
 
 The builder can display pasted Repo Analyzer JSON and Repo Extension Planner JSON, including advisory archetype guesses and module plans, but it does not define a separate archetype schema. Its generated YAML must still load through `agentforge.pack.load_pack`, and `agentforge plan` remains the authoritative module support/gap check. Builder and scripted planner drafts may include the controlled `customization` block where an idea clearly implies labels such as tickets, candidates, projects, or tasks.
+
+For `model_driven_app`, Builder support is intentionally limited to a starter model preview. Full visual model editing is deferred; custom model-driven apps should edit the Blueprint source directly in v0.

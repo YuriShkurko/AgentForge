@@ -13,6 +13,7 @@ import shutil
 import textwrap
 from pathlib import Path
 
+from agentforge.model_driven import generate_model_driven_app
 from agentforge.modules import select_modules
 from agentforge.pack import DomainPack
 
@@ -58,13 +59,25 @@ def generate(pack: DomainPack, output_dir: Path, *, dry_run: bool = False) -> di
     Raises if output_dir already exists (use --force to overwrite).
     """
     selection = select_modules(pack)
+    if not dry_run:
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+    if pack.app_archetype == "model_driven_app":
+        files_written = generate_model_driven_app(pack, output_dir, dry_run=dry_run)
+        return {
+            "output_dir": str(output_dir),
+            "template": selection.template,
+            "archetype": selection.archetype,
+            "modules": sorted(selection.active),
+            "gaps": selection.gaps,
+            "files_written": len(files_written),
+            "dry_run": dry_run,
+        }
+
     template_root = _template_root(selection.template)
 
     if not template_root.exists():
         raise FileNotFoundError(f"template not found: {template_root}")
-
-    if not dry_run:
-        output_dir.mkdir(parents=True, exist_ok=True)
 
     files_written: list[str] = []
     substitutions = _build_substitutions(pack)

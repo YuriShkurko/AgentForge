@@ -113,8 +113,8 @@ agentforge generate domain-packs/project-workspace-demo/domain-pack.yaml --outpu
 Then validate the generated app:
 
 ```bash
-cd .tmp/project-workspace-demo/backend && pytest
-cd ../frontend && npm install && npm run build && npm run lint
+cd .tmp/project-workspace-demo
+make validate
 ```
 
 The generated Project Workspace app demonstrates seeded projects/tasks, task status and priority updates, notes/activity, scripted agent chat over project tools, and pinned workspace widgets. It does not use scoring, triage, notification previews, live LLMs, or external APIs.
@@ -126,6 +126,34 @@ Suggested screenshot flow:
 3. Add an operator note and show notes/activity.
 4. Ask the scripted agent to `pin task list` and show the agent/workspace area.
 5. Refresh and show the pinned widget still present.
+
+## Experimental model-driven app demo
+
+Use this to show the bounded model-driven path beyond fixed app templates:
+
+```bash
+agentforge plan domain-packs/client-onboarding-workspace/domain-pack.yaml
+agentforge generate domain-packs/client-onboarding-workspace/domain-pack.yaml --output .tmp/client-onboarding-workspace --force
+agentforge plan domain-packs/vendor-risk-tracker/domain-pack.yaml
+agentforge generate domain-packs/vendor-risk-tracker/domain-pack.yaml --output .tmp/vendor-risk-tracker --force
+```
+
+Both examples use `app_archetype: model_driven_app` and the same generator path. They produce different FastAPI routes, SQLAlchemy/Pydantic models, React labels/pages/forms, enum values, workflow actions, and seed records from their `model` blocks. This is bounded CRUD/workflow generation, not arbitrary app generation, provider integration, or visual builder support.
+
+Suggested validation:
+
+```bash
+cd .tmp/client-onboarding-workspace
+make validate
+```
+
+Suggested screenshot flow:
+
+1. Load seed data.
+2. Switch between generated entity pages.
+3. Create a record with enum/select fields.
+4. Run the generated workflow action.
+5. Compare with Vendor Risk Tracker to show different entities/routes from the same path.
 
 ## Secondary Demo Path: existing repo planning
 

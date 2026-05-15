@@ -6,34 +6,27 @@ This app is deterministic and local-first. It demonstrates project/task persiste
 
 ## Local run
 
-```bash
-cd backend
-pip install -r requirements-dev.txt
-DATABASE_URL=sqlite+aiosqlite:///./demo.db uvicorn app.main:app --reload
-```
+From the generated app root, install dependencies once:
 
 ```bash
-cd frontend
-npm install
-npm run dev
+make install
+```
+
+Then run the backend and frontend in separate terminals:
+
+```bash
+make run-backend
+make run-frontend
 ```
 
 Open `http://localhost:5173`.
 
 ## Validation
 
-From the generated app root, run backend and frontend validation separately:
+From the generated app root:
 
 ```bash
-cd backend
-pytest
+make validate
 ```
 
-```bash
-cd frontend
-npm install
-npm run build
-npm run lint
-```
-
-If you run both blocks in the same shell, return to the generated app root before starting the frontend block.
+`make validate` runs backend tests plus frontend build/lint. `make test` currently runs backend tests only because this generated app has no frontend unit test target.

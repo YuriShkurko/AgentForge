@@ -12,12 +12,13 @@ VALID_ARCHETYPES = {
     "hybrid_agent_pipeline",
     "deploy_planner_app",
     "project_workspace_app",
+    "model_driven_app",
 }
 
 VALID_MODULES = {
     "agent", "workspace", "pipeline", "provider_adapter", "scoring_explanation",
     "operations_ui", "persistence", "test", "notification_action", "triage_ui",
-    "observability_debug", "agent_runtime", "deploy_planner",
+    "observability_debug", "agent_runtime", "deploy_planner", "model_driven",
 }
 
 _DANGEROUS_TEXT_CHARS = set("<>{}`$")
@@ -162,6 +163,161 @@ class BlueprintCustomization(BaseModel):
         return _clean_custom_list(value, field_name="agent_starters", max_items=4)
 
 
+_IDENTIFIER_RE = r"^[a-z][a-z0-9_]*$"
+_VALID_MODEL_FIELD_TYPES = {"string", "text", "integer", "boolean", "date", "enum", "relation"}
+_VALID_MODEL_PAGE_TYPES = {"dashboard", "entity_list", "entity_detail"}
+_VALID_MODEL_ACTION_TYPES = {"update_status", "add_note", "mark_complete"}
+
+
+class ModelField(BaseModel):
+    name: str = Field(pattern=_IDENTIFIER_RE)
+    label: str = ""
+    type: str
+    required: bool = False
+    enum_values: list[str] = Field(default_factory=list)
+    target_entity: str = ""
+    relation_kind: str = "many_to_one"
+
+    @field_validator("type")
+    @classmethod
+    def type_must_be_supported(cls, value: str) -> str:
+        if value not in _VALID_MODEL_FIELD_TYPES:
+            raise ValueError(f"unsupported model field type '{value}'; valid: {sorted(_VALID_MODEL_FIELD_TYPES)}")
+        return value
+
+    @field_validator("label")
+    @classmethod
+    def label_is_safe(cls, value: str) -> str:
+        return _clean_custom_text(value, field_name="model field label", max_length=80)
+
+    @field_validator("enum_values")
+    @classmethod
+    def enum_values_are_safe(cls, value: list[str]) -> list[str]:
+        return _clean_custom_list(value, field_name="enum_values", max_items=12, max_length=40)
+
+    @model_validator(mode="after")
+    def validate_type_specific_fields(self) -> "ModelField":
+        if self.type == "enum" and not self.enum_values:
+            raise ValueError(f"enum field '{self.name}' must define enum_values")
+        if self.type != "enum" and self.enum_values:
+            raise ValueError(f"non-enum field '{self.name}' must not define enum_values")
+        if self.type == "relation":
+            if not self.target_entity:
+                raise ValueError(f"relation field '{self.name}' must define target_entity")
+            if self.relation_kind not in {"many_to_one", "reference"}:
+                raise ValueError(f"relation field '{self.name}' supports only many_to_one/reference")
+        return self
+
+
+class ModelEntity(BaseModel):
+    name: str = Field(pattern=_IDENTIFIER_RE)
+    label_singular: str
+    label_plural: str
+    fields: list[ModelField]
+
+    @field_validator("label_singular", "label_plural")
+    @classmethod
+    def labels_are_safe(cls, value: str) -> str:
+        text = _clean_custom_text(value, field_name="model entity label", max_length=80)
+        if not text:
+            raise ValueError("model entity labels are required")
+        return text
+
+    @model_validator(mode="after")
+    def fields_are_valid(self) -> "ModelEntity":
+        if not self.fields:
+            raise ValueError(f"model entity '{self.name}' must define at least one field")
+        names = [field.name for field in self.fields]
+        if len(names) != len(set(names)):
+            raise ValueError(f"model entity '{self.name}' has duplicate field names")
+        return self
+
+
+class ModelPage(BaseModel):
+    name: str = Field(pattern=_IDENTIFIER_RE)
+    type: str
+    entity: str | None = None
+    title: str = ""
+
+    @field_validator("type")
+    @classmethod
+    def type_must_be_supported(cls, value: str) -> str:
+        if value not in _VALID_MODEL_PAGE_TYPES:
+            raise ValueError(f"unsupported model page type '{value}'; valid: {sorted(_VALID_MODEL_PAGE_TYPES)}")
+        return value
+
+
+class ModelAction(BaseModel):
+    name: str = Field(pattern=_IDENTIFIER_RE)
+    label: str = ""
+    type: str
+    entity: str
+    field: str | None = None
+    value: Any | None = None
+
+    @field_validator("type")
+    @classmethod
+    def type_must_be_supported(cls, value: str) -> str:
+        if value not in _VALID_MODEL_ACTION_TYPES:
+            raise ValueError(f"unsupported model action type '{value}'; valid: {sorted(_VALID_MODEL_ACTION_TYPES)}")
+        return value
+
+
+class ModelDrivenApp(BaseModel):
+    entities: list[ModelEntity]
+    pages: list[ModelPage] = Field(default_factory=list)
+    actions: list[ModelAction] = Field(default_factory=list)
+    seed_data: dict[str, list[dict[str, Any]]] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def validate_references(self) -> "ModelDrivenApp":
+        if not self.entities:
+            raise ValueError("model_driven_app requires at least one entity")
+        entity_names = [entity.name for entity in self.entities]
+        if len(entity_names) != len(set(entity_names)):
+            raise ValueError("model_driven_app entity names must be unique")
+        entity_map = {entity.name: entity for entity in self.entities}
+        for entity in self.entities:
+            for field in entity.fields:
+                if field.type == "relation" and field.target_entity not in entity_map:
+                    raise ValueError(f"relation field '{entity.name}.{field.name}' targets unknown entity '{field.target_entity}'")
+        for page in self.pages:
+            if page.type != "dashboard" and not page.entity:
+                raise ValueError(f"page '{page.name}' must define entity")
+            if page.entity and page.entity not in entity_map:
+                raise ValueError(f"page '{page.name}' references unknown entity '{page.entity}'")
+        for action in self.actions:
+            entity = entity_map.get(action.entity)
+            if not entity:
+                raise ValueError(f"action '{action.name}' references unknown entity '{action.entity}'")
+            fields = {field.name: field for field in entity.fields}
+            if action.type == "update_status":
+                if not action.field or action.field not in fields:
+                    raise ValueError(f"update_status action '{action.name}' must reference a field on '{action.entity}'")
+                field = fields[action.field]
+                if field.type != "enum":
+                    raise ValueError(f"update_status action '{action.name}' field must be enum")
+                if action.value not in field.enum_values:
+                    raise ValueError(f"update_status action '{action.name}' value must be one of {field.enum_values}")
+            if action.type == "mark_complete":
+                field_name = action.field or "complete"
+                field = fields.get(field_name)
+                if not field or field.type != "boolean":
+                    raise ValueError(f"mark_complete action '{action.name}' field must be a boolean field")
+        for entity_name, rows in self.seed_data.items():
+            if entity_name not in entity_map:
+                raise ValueError(f"seed_data references unknown entity '{entity_name}'")
+            fields = {field.name: field for field in entity_map[entity_name].fields}
+            for row in rows:
+                for key, value in row.items():
+                    if key not in fields:
+                        raise ValueError(f"seed_data for '{entity_name}' includes unknown field '{key}'")
+                    field = fields[key]
+                    if field.type == "enum" and value not in field.enum_values:
+                        raise ValueError(f"seed_data for '{entity_name}.{key}' must be one of {field.enum_values}")
+        return self
+
+
 class DomainPack(BaseModel):
     name: str
     display_name: str
@@ -183,6 +339,7 @@ class DomainPack(BaseModel):
     tool_widget_compatibility: dict[str, list[str]] = {}
     notification_actions: list[dict[str, Any]] = []
     workflows: list[dict[str, Any]] = []
+    model: ModelDrivenApp | None = None
     seed_data: dict[str, Any] = {}
     tests: TestConfig | dict[str, Any] = {}
     future_extensions: dict[str, Any] = {}
@@ -209,6 +366,8 @@ class DomainPack(BaseModel):
             all_modules = set(self.required_shell_modules) | set(self.optional_shell_modules)
             if "agent" not in all_modules:
                 raise ValueError("agent_dashboard_app must include 'agent' in required_shell_modules")
+        if self.app_archetype == "model_driven_app" and self.model is None:
+            raise ValueError("model_driven_app must include a model block")
         return self
 
 

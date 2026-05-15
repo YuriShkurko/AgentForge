@@ -130,19 +130,37 @@ Interactive docs at `http://localhost:8000/docs`.
 
 ## Local development
 
-### Backend
+From the generated app root, install dependencies once:
+
+```bash
+make install
+```
+
+Run validation without live services:
+
+```bash
+make validate
+```
+
+`make validate` runs backend tests plus frontend build/lint. `make test` currently runs backend tests only because this generated app has no frontend unit test target.
+
+Start the app in two terminals:
+
+```bash
+make run-backend
+make run-frontend
+```
+
+The backend runs with a local SQLite demo database. The frontend dev server runs on `http://localhost:5173`.
+
+### Manual backend/frontend commands
 
 ```bash
 cd backend
 pip install -r requirements-dev.txt
-# Run tests (SQLite in-memory — no Postgres needed)
 pytest -v
-# Start dev server with SQLite for local demo usage
-set DATABASE_URL=sqlite+aiosqlite:///./demo.db
-uvicorn app.main:app --reload
+DATABASE_URL=sqlite+aiosqlite:///./demo.db uvicorn app.main:app --reload
 ```
-
-### Frontend
 
 ```bash
 cd frontend

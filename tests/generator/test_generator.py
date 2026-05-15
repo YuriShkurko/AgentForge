@@ -64,6 +64,7 @@ EXPECTED_FRONTEND_FILES = [
 
 EXPECTED_ROOT_FILES = [
     "docker-compose.yml",
+    "Makefile",
     "run_commands.txt",
     ".github/workflows/ci.yml",
 ]
@@ -89,6 +90,7 @@ EXPECTED_PROJECT_WORKSPACE_FILES = [
     "frontend/src/components/WorkspacePanel.tsx",
     "frontend/src/styles.css",
     "frontend/package.json",
+    "Makefile",
     "run_commands.txt",
 ]
 
@@ -171,6 +173,21 @@ def test_run_commands_mentions_pack(tmp_path):
     assert pack.display_name in commands
     assert "pytest" in commands
     assert "npm run build" in commands
+
+
+def test_generated_template_makefile_contract(tmp_path):
+    pack = load_pack(PACKS_DIR / "project-workspace-demo" / "domain-pack.yaml")
+    output = tmp_path / pack.name
+    generate(pack, output)
+
+    makefile = (output / "Makefile").read_text()
+    assert "validate:" in makefile
+    assert "cd backend && python -m pytest" in makefile
+    assert "cd frontend && npm run build" in makefile
+    assert "cd frontend && npm run lint" in makefile
+    assert "run-backend:" in makefile
+    assert "run-frontend:" in makefile
+    assert "make validate" in (output / "README.md").read_text()
 
 
 def test_generate_reports_gaps(tmp_path):

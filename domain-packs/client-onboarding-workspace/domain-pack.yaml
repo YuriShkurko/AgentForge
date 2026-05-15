@@ -1,0 +1,61 @@
+name: client-onboarding-workspace
+display_name: Client Onboarding Workspace
+version: 0.1.0
+
+domain:
+  domain_name: Client Onboarding Workspace
+  app_type: model_driven_app
+  target_users: [implementation manager]
+  product_purpose: Track client launches, onboarding tasks, owners, due dates, and readiness status in a generated CRUD/workflow app.
+  main_user_goals: [review_clients, update_task_status, load_seed_data]
+
+app_archetype: model_driven_app
+required_shell_modules: [model_driven, operations_ui, persistence, test]
+optional_shell_modules: []
+
+model:
+  entities:
+    - name: client
+      label_singular: Client
+      label_plural: Clients
+      fields:
+        - {name: name, label: Client name, type: string, required: true}
+        - {name: tier, label: Tier, type: enum, required: true, enum_values: [standard, premium, enterprise]}
+        - {name: launch_date, label: Launch date, type: date}
+        - {name: kickoff_complete, label: Kickoff complete, type: boolean}
+    - name: onboarding_task
+      label_singular: Onboarding Task
+      label_plural: Onboarding Tasks
+      fields:
+        - {name: client_id, label: Client, type: relation, target_entity: client, relation_kind: many_to_one, required: true}
+        - {name: title, label: Task title, type: string, required: true}
+        - {name: status, label: Status, type: enum, required: true, enum_values: [todo, in_progress, blocked, done]}
+        - {name: owner, label: Owner, type: string}
+        - {name: due_date, label: Due date, type: date}
+        - {name: notes, label: Notes, type: text}
+  pages:
+    - {name: dashboard, type: dashboard, title: Onboarding dashboard}
+    - {name: clients, type: entity_list, entity: client, title: Clients}
+    - {name: onboarding_tasks, type: entity_detail, entity: onboarding_task, title: Task details}
+  actions:
+    - {name: mark_task_done, label: Mark done, type: update_status, entity: onboarding_task, field: status, value: done}
+  seed_data:
+    client:
+      - {name: Acme Health, tier: enterprise, launch_date: '2026-06-01', kickoff_complete: true}
+      - {name: Bright Path Logistics, tier: premium, launch_date: '2026-06-15', kickoff_complete: false}
+    onboarding_task:
+      - {client_id: 1, title: Configure SSO, status: in_progress, owner: Maya, due_date: '2026-05-28', notes: Waiting on identity metadata.}
+      - {client_id: 2, title: Import starter data, status: todo, owner: Theo, due_date: '2026-06-04', notes: Use CSV export from legacy system.}
+
+tests:
+  expectations:
+    no_live_provider_in_tests: true
+    deterministic_fixture_data: true
+  commands:
+    backend: pytest
+    frontend_build: npm run build
+    frontend_lint: npm run lint
+
+future_extensions:
+  features: [builder_model_editor, auth, provider_imports]
+compatibility_gaps: []

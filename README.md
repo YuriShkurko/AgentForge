@@ -131,9 +131,23 @@ AgentForge currently includes multiple deterministic generated app examples:
 - `hybrid-scoring-demo` — fixture ingestion, deterministic scoring, notification preview, triage actions, scripted agent chat, and workspace widgets.
 - `project-workspace-demo` — seeded projects/tasks, status and priority updates, notes/activity, scripted agent tools, and workspace widgets.
 
-Both examples are local-first FastAPI + React apps with backend tests and frontend build/lint validation. Neither requires live LLM/API access for the default path.
+Both fixed app families are local-first FastAPI + React apps with backend tests and frontend build/lint validation. Neither requires live LLM/API access for the default path.
 
-Both generated app families now support a small controlled customization layer for app copy, entity labels, workflow wording, agent starter prompts, workspace labels, and sample-data wording. This makes generated apps feel user-shaped within the supported archetypes without claiming arbitrary app generation.
+Both generated app families support a small controlled customization layer for app copy, entity labels, workflow wording, agent starter prompts, workspace labels, and sample-data wording. This makes generated apps feel user-shaped within the supported archetypes without claiming arbitrary app generation.
+
+AgentForge also includes an experimental model-driven generation path. Instead of selecting a fixed app family, a domain pack can define bounded entities, fields, pages, actions, and seed data. The same generic generator can produce different FastAPI + React apps, such as a Client Onboarding Workspace or Vendor Risk Tracker. Generated model-driven apps include SQLite persistence, entity CRUD routes, basic workflow/action endpoints, seed data, generated tests, and a root Makefile with `make validate`. This is intentionally limited to simple CRUD/workflow apps for now; providers, visual model editing, richer relations, and production hardening are future work.
+
+Try the model-driven examples:
+
+```bash
+agentforge generate domain-packs/client-onboarding-workspace/domain-pack.yaml --output .tmp/client-onboarding --force
+cd .tmp/client-onboarding
+make validate
+cd -
+agentforge generate domain-packs/vendor-risk-tracker/domain-pack.yaml --output .tmp/vendor-risk --force
+cd .tmp/vendor-risk
+make validate
+```
 
 Generated scoring snapshot:
 

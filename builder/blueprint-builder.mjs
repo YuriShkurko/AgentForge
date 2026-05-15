@@ -35,6 +35,12 @@ export const archetypes = [
     required: ["operations_ui", "persistence", "agent_runtime", "workspace", "test"],
     status: "supported",
   },
+  {
+    id: "model_driven_app",
+    label: "Model-Driven CRUD/Workflow App",
+    required: ["model_driven", "operations_ui", "persistence", "test"],
+    status: "experimental",
+  },
 ];
 
 export const modules = [
@@ -48,6 +54,7 @@ export const modules = [
   { id: "test", label: "Deterministic Test Harness", supported: true, generates: "Offline fixture tests with no live LLM/API dependency" },
   { id: "operations_ui", label: "Operations UI", supported: true, generates: "React operations panels for runs and results" },
   { id: "persistence", label: "Persistence", supported: true, generates: "SQLite-local/PostgreSQL-ready persistence models" },
+  { id: "model_driven", label: "Model-Driven App Model", supported: true, generates: "Bounded entities, fields, pages, seed data, CRUD routes, and simple workflow actions" },
   { id: "observability_debug", label: "Local Validation / Debug", supported: false, generates: "Future richer observability/debug tooling" },
   { id: "repo_analyzer", label: "Repo Analyzer", supported: false, generates: "Analysis-only CLI report; not generated into apps" },
   { id: "deploy_planner", label: "Deploy Planner", supported: false, generates: "Future dry-run deployment planning" },
@@ -78,7 +85,9 @@ export const exampleIdeas = [
 ];
 
 export function getArchetypeFamilyLabel(archetypeId) {
-  return archetypeId === "project_workspace_app" ? "Project / task workspace" : "Scoring / triage workflow";
+  if (archetypeId === "project_workspace_app") return "Project / task workspace";
+  if (archetypeId === "model_driven_app") return "Model-driven CRUD/workflow app";
+  return "Scoring / triage workflow";
 }
 
 export function getGenerationPreview(state) {
@@ -102,6 +111,9 @@ export function getGenerationPreview(state) {
   if (supportedModules.includes("test")) outputs.push("Deterministic test harness");
   if (archetype.id === "project_workspace_app") {
     outputs.splice(4, 0, "Project/task workspace with notes and activity", "Seeded local projects and task status updates");
+  }
+  if (archetype.id === "model_driven_app") {
+    outputs.splice(4, 0, "Generated CRUD routes from a bounded app model", "Generated entity list/detail form UI and simple workflow actions");
   }
   const name = sanitizeName(state.name);
   const blueprintPath = `domain-packs/${name}/domain-pack.yaml`;
@@ -211,6 +223,7 @@ export function createBlueprint(state) {
   const name = sanitizeName(state.name);
   const optional = unique(state.selectedModules || []).filter((module) => !archetype.required.includes(module));
   if (archetype.id === "project_workspace_app") return createProjectWorkspaceBlueprint(state, archetype, name, optional);
+  if (archetype.id === "model_driven_app") return createModelDrivenBlueprint(state, archetype, name, optional);
   const actionLabels = unique([state.actionAccept, state.actionSkip, state.actionMaybe].map((item) => sanitizeName(item)));
   const hasAgentRuntime = optional.includes("agent_runtime") || archetype.required.includes("agent");
   const hasWorkspace = state.workspaceEnabled || optional.includes("workspace") || archetype.required.includes("workspace");
@@ -390,6 +403,45 @@ export function createBlueprint(state) {
   }
 
   return pack;
+}
+
+function createModelDrivenBlueprint(state, archetype, name, optional) {
+  const displayName = state.displayName?.trim() || name.replace(/-/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
+  return {
+    name,
+    display_name: displayName,
+    version: "0.1.0",
+    domain: {
+      domain_name: displayName,
+      app_type: archetype.id,
+      target_users: [state.targetUser?.trim() || "operator"],
+      product_purpose: state.description?.trim() || "A bounded model-driven CRUD/workflow app.",
+      main_user_goals: ["load_seed_data", "manage_records", "run_simple_workflow_actions"],
+    },
+    app_archetype: archetype.id,
+    required_shell_modules: archetype.required,
+    optional_shell_modules: optional,
+    model: {
+      entities: [
+        {
+          name: "item",
+          label_singular: "Item",
+          label_plural: "Items",
+          fields: [
+            { name: "title", label: "Title", type: "string", required: true },
+            { name: "status", label: "Status", type: "enum", required: true, enum_values: ["open", "in_progress", "done"] },
+            { name: "notes", label: "Notes", type: "text" },
+          ],
+        },
+      ],
+      pages: [{ name: "dashboard", type: "dashboard", title: "Dashboard" }, { name: "items", type: "entity_list", entity: "item", title: "Items" }],
+      actions: [{ name: "mark_done", label: "Mark done", type: "update_status", entity: "item", field: "status", value: "done" }],
+      seed_data: { item: [{ title: "Example item", status: "open", notes: "Replace this model in Blueprint source." }] },
+    },
+    tests: { expectations: { no_live_provider_in_tests: true, deterministic_fixture_data: true }, commands: { backend: "pytest", frontend_build: "npm run build", frontend_lint: "npm run lint" } },
+    future_extensions: { features: ["builder_model_editor", "provider_imports"] },
+    compatibility_gaps: ["Builder offers only a starter model; edit Blueprint source for custom entities in v0."],
+  };
 }
 
 function createProjectWorkspaceBlueprint(state, archetype, name, optional) {

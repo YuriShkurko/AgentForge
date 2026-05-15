@@ -1,0 +1,61 @@
+name: vendor-risk-tracker
+display_name: Vendor Risk Tracker
+version: 0.1.0
+
+domain:
+  domain_name: Vendor Risk Tracker
+  app_type: model_driven_app
+  target_users: [risk analyst]
+  product_purpose: Review vendors, track risk findings, and close remediation work in a generated CRUD/workflow app.
+  main_user_goals: [review_vendors, triage_findings, close_findings]
+
+app_archetype: model_driven_app
+required_shell_modules: [model_driven, operations_ui, persistence, test]
+optional_shell_modules: []
+
+model:
+  entities:
+    - name: vendor
+      label_singular: Vendor
+      label_plural: Vendors
+      fields:
+        - {name: name, label: Vendor name, type: string, required: true}
+        - {name: service_area, label: Service area, type: string, required: true}
+        - {name: inherent_risk, label: Inherent risk, type: enum, required: true, enum_values: [low, medium, high, critical]}
+        - {name: next_review_date, label: Next review date, type: date}
+    - name: risk_finding
+      label_singular: Risk Finding
+      label_plural: Risk Findings
+      fields:
+        - {name: vendor_id, label: Vendor, type: relation, target_entity: vendor, relation_kind: many_to_one, required: true}
+        - {name: summary, label: Finding summary, type: string, required: true}
+        - {name: severity, label: Severity, type: enum, required: true, enum_values: [info, low, medium, high]}
+        - {name: state, label: State, type: enum, required: true, enum_values: [open, investigating, mitigated, accepted]}
+        - {name: evidence_note, label: Evidence note, type: text}
+        - {name: remediation_complete, label: Remediation complete, type: boolean}
+  pages:
+    - {name: dashboard, type: dashboard, title: Vendor risk dashboard}
+    - {name: vendors, type: entity_list, entity: vendor, title: Vendors}
+    - {name: risk_findings, type: entity_detail, entity: risk_finding, title: Finding details}
+  actions:
+    - {name: accept_finding, label: Accept risk, type: update_status, entity: risk_finding, field: state, value: accepted}
+  seed_data:
+    vendor:
+      - {name: Northstar Payroll, service_area: Payroll, inherent_risk: high, next_review_date: '2026-07-10'}
+      - {name: Atlas Email Gateway, service_area: Messaging, inherent_risk: medium, next_review_date: '2026-08-20'}
+    risk_finding:
+      - {vendor_id: 1, summary: SOC 2 bridge letter missing, severity: medium, state: open, evidence_note: Requested from account team., remediation_complete: false}
+      - {vendor_id: 2, summary: SPF alignment exception, severity: low, state: investigating, evidence_note: Compensating controls documented., remediation_complete: false}
+
+tests:
+  expectations:
+    no_live_provider_in_tests: true
+    deterministic_fixture_data: true
+  commands:
+    backend: pytest
+    frontend_build: npm run build
+    frontend_lint: npm run lint
+
+future_extensions:
+  features: [builder_model_editor, evidence_uploads, provider_imports]
+compatibility_gaps: []

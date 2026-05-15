@@ -29,6 +29,7 @@ App Blueprints may also include a small `customization` block for supported app 
 - `hybrid_agent_pipeline` — chat or command UX over a deterministic pipeline
 - `deploy_planner_app` — plan, validate, and stage deployment work *(future)*
 - `project_workspace_app` — local project/task workspace with notes, activity, scripted agent tools, and persisted widgets
+- `model_driven_app` — bounded model-driven CRUD/workflow app generated from explicit entities, fields, pages, actions, and seed data
 
 `required_shell_modules`: List of feature modules the generator must wire. Example: `[pipeline, provider_adapter, scoring_explanation, operations_ui, persistence, test]`.
 
@@ -37,6 +38,17 @@ App Blueprints may also include a small `customization` block for supported app 
 `agent_runtime` *(optional when `agent_runtime` is declared as a feature module)*: Configuration for the Agent Runtime Module. Fields include `enabled`, `provider_mode` (`scripted`, `mock`, or `openai_compatible_placeholder`), `scripted_fixture_path` or inline `scripted_turns`, `tools` exposed to the agent, `conversation_persistence`, `streaming`, and `guardrails`. When `streaming.enabled` is true, generated apps expose `/agent/chat/stream` as `text/event-stream` with structured `message_start`, `text_delta`, `tool_call`, `tool_result`, `error`, and `done` events.
 
 `workspace` *(optional when `workspace` is declared as a feature module)*: Configuration for the Dashboard/Workspace Module. Fields include `enabled`, `persistence` (table/field expectations), `default_layout`, `remove_enabled`, `reorder_enabled`, `empty_state`, and `frontend_surface`. v0.4 stores direct widget JSON payloads, validates compatibility on the backend, and supports list/create/remove/reorder operations.
+
+`model` *(required for `model_driven_app`)*: Bounded app model used to generate simple CRUD/workflow apps. Fields:
+- `entities`: each entity has `name`, `label_singular`, `label_plural`, and `fields`.
+- Entity `fields`: each field has `name`, optional `label`, `type`, optional `required`; supported types are `string`, `text`, `integer`, `boolean`, `date`, `enum`, and `relation`.
+- `enum` fields must declare `enum_values`.
+- `relation` fields must declare `target_entity`; v0 treats relations as reference IDs and supports only simple `many_to_one`/`reference` style relations.
+- `pages`: limited to `dashboard`, `entity_list`, and `entity_detail`.
+- `actions`: limited to safe workflow patterns: `update_status`, `mark_complete`, and `add_note` acknowledgement.
+- `seed_data`: deterministic records keyed by entity name.
+
+The model-driven path deliberately does not generate arbitrary code, providers, integrations, auth, billing, deployment, or visual-builder behavior.
 
 `customization` *(optional)*: Controlled visible-label configuration. Missing fields use deterministic defaults. Supported nested fields:
 - `app.subtitle`, `app.target_user_label`, `app.workflow_label`
@@ -141,7 +153,7 @@ For agent_dashboard_app additionally:
 
 ## Generator/Scaffolder Contract
 
-The generator reads `app_archetype` and `required_shell_modules` to select templates, then uses `capabilities`/`tools`, `providers`, `adapters`, `ui_surfaces`/`widgets`, `run_history`, `agent_runtime`, `notification_actions`, and `seed_data` to wire domain-specific behavior into the shell.
+The generator reads `app_archetype` and `required_shell_modules` to select generation behavior. Fixed archetypes select existing app templates. `model_driven_app` uses the `model` block to emit readable FastAPI/SQLite and React/Vite files for custom entities, fields, routes, pages, seed data, and simple workflow actions. Other archetypes use `capabilities`/`tools`, `providers`, `adapters`, `ui_surfaces`/`widgets`, `run_history`, `agent_runtime`, `notification_actions`, and `seed_data` to wire domain-specific behavior into the shell.
 
 Rules:
 - Generator must not invent current capabilities from `future_extensions`.
