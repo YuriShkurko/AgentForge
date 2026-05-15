@@ -138,7 +138,7 @@ agentforge plan domain-packs/vendor-risk-tracker/domain-pack.yaml
 agentforge generate domain-packs/vendor-risk-tracker/domain-pack.yaml --output .tmp/vendor-risk-tracker --force
 ```
 
-Both examples use `app_archetype: model_driven_app` and the same generator path. They produce different FastAPI routes, SQLAlchemy/Pydantic models, React labels/pages/forms, enum values, workflow actions, and seed records from their `model` blocks. This is bounded CRUD/workflow generation, not arbitrary app generation, provider integration, or visual builder support.
+Both examples use `app_archetype: model_driven_app` and the same generator path. They produce different FastAPI routes, SQLAlchemy/Pydantic models, React labels/pages/forms, enum values, workflow actions, seed records, dashboard cards, accent colors, entity layouts, bounded page compositions, and visual recipes from their `model` blocks. Client Onboarding uses a board/workspace composition with a workspace-board recipe; Vendor Risk uses a register/table composition with an executive-register recipe. This is bounded CRUD/workflow generation with controlled presentation hints, not arbitrary app generation, per-prompt UI design, provider integration, or visual builder support.
 
 Suggested validation:
 
@@ -153,7 +153,7 @@ Suggested screenshot flow:
 2. Switch between generated entity pages.
 3. Create a record with enum/select fields.
 4. Run the generated workflow action.
-5. Compare with Vendor Risk Tracker to show different entities/routes from the same path.
+5. Compare with Vendor Risk Tracker to show different entities/routes, dashboard cards, accent colors, page compositions, empty states, badge treatments, and visual recipes from the same path: Client Onboarding is board/workspace-like, while Vendor Risk is compact register/table-like.
 
 ## Secondary Demo Path: existing repo planning
 

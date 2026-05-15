@@ -192,7 +192,7 @@ Example generated app: an ingestion/scoring pipeline with a command panel or cha
 
 ### `model_driven_app`
 
-The model-driven archetype is a bounded v0 path for simple CRUD/workflow apps. Instead of copying a domain-specific app such as scoring records or project tasks, the generator reads a `model` block with entities, safe field types, pages, workflow actions, and seed data, then emits a FastAPI/SQLite backend and React/Vite UI from that model.
+The model-driven archetype is a bounded v0 path for simple CRUD/workflow apps. Instead of copying a domain-specific app such as scoring records or project tasks, the generator reads a `model` block with entities, safe field types, pages, workflow actions, seed data, and optional bounded `ui` presentation hints, then emits a FastAPI/SQLite backend and React/Vite UI from that model.
 
 Expected Domain Pack fields:
 
@@ -202,11 +202,12 @@ Expected Domain Pack fields:
 - `model.pages` limited to `dashboard`, `entity_list`, and `entity_detail`
 - `model.actions` limited to safe patterns such as `update_status`, `mark_complete`, and `add_note`
 - `model.seed_data` keyed by entity name
+- optional `model.ui` hints for safe accent/density/layout values, dashboard cards, entity display modes (`table`, `cards`, `board_by_status`), bounded page compositions (`standard`, `board_workspace`, `register_table`), and bounded visual recipes (`standard`, `workspace_board`, `executive_register`, `ops_console`)
 - deterministic `tests.commands`
 
-Supported v0 field types are `string`, `text`, `integer`, `boolean`, `date`, `enum`, and simple reference-style `relation`. This is not arbitrary app generation, a visual builder, provider integration, auth, or a DSL compiler.
+Supported v0 field types are `string`, `text`, `integer`, `boolean`, `date`, `enum`, and simple reference-style `relation`. The presentation layer is bounded model-driven presentation, including controlled composition variants, visual recipes, generic enum-label humanization, and generic empty states; it is not arbitrary UI generation, visual model editing, per-prompt freeform UI design, a visual builder, provider integration, auth, or a DSL compiler.
 
-Example generated apps: Client Onboarding Workspace and Vendor Risk Tracker. They share the same model-driven generator path but produce different entities, routes, labels, enum values, pages, workflow actions, and seed data.
+Example generated apps: Client Onboarding Workspace and Vendor Risk Tracker. They share the same model-driven generator path but produce different entities, routes, labels, enum values, pages, workflow actions, seed data, dashboard cards, accent colors, entity layouts, page compositions, and visual recipes. Client Onboarding uses a board workspace composition with the `workspace_board` recipe; Vendor Risk uses a register table composition with the `executive_register` recipe.
 
 ## Generator Selection
 

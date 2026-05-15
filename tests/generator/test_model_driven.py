@@ -44,6 +44,105 @@ def test_valid_model_driven_domain_pack_loads():
     assert pack.app_archetype == "model_driven_app"
     assert pack.model is not None
     assert [entity.name for entity in pack.model.entities] == ["client", "onboarding_task"]
+    assert pack.model.ui.composition == "board_workspace"
+    assert pack.model.ui.recipe == "workspace_board"
+    assert pack.model.ui.focus.primary_entity == "onboarding_task"
+    assert pack.model.ui.style.accent == "emerald"
+    assert pack.model.ui.entities["onboarding_task"].display.layout == "board_by_status"
+
+
+def test_missing_ui_config_uses_defaults():
+    pack = DomainPack.model_validate(_base_pack())
+    assert pack.model is not None
+    assert pack.model.ui.composition == "standard"
+    assert pack.model.ui.recipe == "standard"
+    assert pack.model.ui.style.accent == "blue"
+    assert pack.model.ui.style.density == "comfortable"
+    assert pack.model.ui.entities == {}
+
+
+def test_invalid_ui_values_fail_clearly():
+    data = _base_pack()
+    data["model"]["ui"] = {"style": {"accent": "neon"}}
+    with pytest.raises(Exception, match="unknown ui accent"):
+        DomainPack.model_validate(data)
+    data = _base_pack()
+    data["model"]["ui"] = {"style": {"density": "tiny"}}
+    with pytest.raises(Exception, match="unknown ui density"):
+        DomainPack.model_validate(data)
+    data = _base_pack()
+    data["model"]["ui"] = {"entities": {"ticket": {"display": {"layout": "masonry"}}}}
+    with pytest.raises(Exception, match="unknown entity display layout"):
+        DomainPack.model_validate(data)
+    data = _base_pack()
+    data["model"]["ui"] = {"composition": "split_screen"}
+    with pytest.raises(Exception, match="unknown ui composition"):
+        DomainPack.model_validate(data)
+    data = _base_pack()
+    data["model"]["ui"] = {"recipe": "client_special"}
+    with pytest.raises(Exception, match="unknown ui recipe"):
+        DomainPack.model_validate(data)
+
+
+def test_valid_recipe_config_loads():
+    data = _base_pack()
+    data["model"]["ui"] = {"recipe": "workspace_board"}
+    pack = DomainPack.model_validate(data)
+    assert pack.model is not None
+    assert pack.model.ui.recipe == "workspace_board"
+
+
+def test_valid_composition_config_loads():
+    data = _base_pack()
+    data["model"]["ui"] = {"composition": "board_workspace", "focus": {"primary_entity": "ticket", "group_by": "status", "title_field": "title", "badge_field": "status"}}
+    pack = DomainPack.model_validate(data)
+    assert pack.model is not None
+    assert pack.model.ui.composition == "board_workspace"
+    assert pack.model.ui.focus.group_by == "status"
+
+
+def test_invalid_focus_entity_and_field_fail():
+    data = _base_pack()
+    data["model"]["ui"] = {"composition": "register_table", "focus": {"primary_entity": "missing"}}
+    with pytest.raises(Exception, match="focus primary_entity references unknown entity"):
+        DomainPack.model_validate(data)
+    data = _base_pack()
+    data["model"]["ui"] = {"composition": "register_table", "focus": {"primary_entity": "ticket", "secondary_entity": "missing"}}
+    with pytest.raises(Exception, match="focus secondary_entity references unknown entity"):
+        DomainPack.model_validate(data)
+    data = _base_pack()
+    data["model"]["ui"] = {"composition": "register_table", "focus": {"primary_entity": "ticket", "group_by": "missing"}}
+    with pytest.raises(Exception, match="focus group_by references unknown field"):
+        DomainPack.model_validate(data)
+    data = _base_pack()
+    data["model"]["ui"] = {"composition": "board_workspace", "focus": {"primary_entity": "ticket", "group_by": "title"}}
+    with pytest.raises(Exception, match="group_by must be an enum field"):
+        DomainPack.model_validate(data)
+
+
+def test_invalid_entity_display_field_fails():
+    data = _base_pack()
+    data["model"]["ui"] = {"entities": {"ticket": {"display": {"layout": "cards", "title_field": "missing"}}}}
+    with pytest.raises(Exception, match="references unknown field 'missing'"):
+        DomainPack.model_validate(data)
+
+
+def test_invalid_dashboard_entity_and_field_fail():
+    data = _base_pack()
+    data["model"]["ui"] = {"dashboard": {"cards": [{"type": "count", "entity": "missing"}]}}
+    with pytest.raises(Exception, match="references unknown entity 'missing'"):
+        DomainPack.model_validate(data)
+    data = _base_pack()
+    data["model"]["ui"] = {"dashboard": {"cards": [{"type": "attention_list", "entity": "ticket", "field": "missing", "value": "open"}]}}
+    with pytest.raises(Exception, match="references unknown field 'missing'"):
+        DomainPack.model_validate(data)
+
+
+def test_enum_breakdown_on_non_enum_field_fails():
+    data = _base_pack()
+    data["model"]["ui"] = {"dashboard": {"cards": [{"type": "enum_breakdown", "entity": "ticket", "field": "title"}]}}
+    with pytest.raises(Exception, match="field must be enum"):
+        DomainPack.model_validate(data)
 
 
 def test_existing_domain_packs_still_load():
@@ -151,6 +250,14 @@ def test_model_driven_generation_writes_entity_specific_files(tmp_path):
     assert "Client Onboarding Workspace" in app
     assert "Onboarding Tasks" in app
     assert "mark_task_done" in main
+    assert "accent-" in app
+    assert '"recipe": "workspace_board"' in app
+    assert "data-recipe" in app
+    assert "data-ui-layout=\"composition-board-workspace\"" in app
+    assert "data-ui-layout=\"board_by_status\"" in app
+    assert "data-ui-state=\"empty\"" in app
+    assert "No items yet." in app
+    assert "humanize" in app and "replace(/_/g, ' ')" in app
     makefile = (output / "Makefile").read_text()
     assert "validate:" in makefile
     assert "cd backend && python -m pytest" in makefile
@@ -172,7 +279,202 @@ def test_two_model_driven_packs_share_path_but_generate_different_outputs(tmp_pa
     assert "Vendors" in vendor_app and "Risk Findings" in vendor_app
     assert "enterprise" in client_app
     assert "critical" in vendor_app
+    assert "Client Onboarding Command Center" in client_app
+    assert "Vendor Risk Register" in vendor_app
+    assert "composition-board-workspace" in client_app
+    assert "workspace-main" in client_app
+    assert '"recipe": "workspace_board"' in client_app
+    assert "composition-register-table" in vendor_app
+    assert "register-main" in vendor_app
+    assert "register-card" in vendor_app
+    assert '"recipe": "executive_register"' in vendor_app
+    assert "No records yet" in vendor_app
+    assert "emerald" in client_app and "amber" in vendor_app
     assert client_app != vendor_app
+
+
+def test_relation_helpers_present_in_generated_frontend(tmp_path):
+    vendor = load_pack(PACKS_DIR / "vendor-risk-tracker" / "domain-pack.yaml")
+    out = tmp_path / vendor.name
+    generate(vendor, out)
+    app = (out / "frontend/src/App.tsx").read_text()
+    assert "relationLabel" in app
+    assert "inferTitleField" in app
+    assert "cellValue" in app
+
+
+def test_relation_fields_render_select_in_create_form(tmp_path):
+    vendor = load_pack(PACKS_DIR / "vendor-risk-tracker" / "domain-pack.yaml")
+    out = tmp_path / vendor.name
+    generate(vendor, out)
+    app = (out / "frontend/src/App.tsx").read_text()
+    assert 'data-ui-control="relation-select"' in app
+    assert "Load seed data or create a ${targetLabel} first" in app
+
+
+def test_table_cells_route_through_cell_value_for_relations(tmp_path):
+    vendor = load_pack(PACKS_DIR / "vendor-risk-tracker" / "domain-pack.yaml")
+    out = tmp_path / vendor.name
+    generate(vendor, out)
+    app = (out / "frontend/src/App.tsx").read_text()
+    assert "cellValue(field, row[field.name], rowsByEntity)" in app
+    assert "displayValue(" not in app
+
+
+def test_relation_label_falls_back_to_entity_id_pattern(tmp_path):
+    vendor = load_pack(PACKS_DIR / "vendor-risk-tracker" / "domain-pack.yaml")
+    out = tmp_path / vendor.name
+    generate(vendor, out)
+    app = (out / "frontend/src/App.tsx").read_text()
+    assert "target?.labelSingular || 'Entity'" in app
+    assert "${singular} #${id}" in app
+
+
+def test_title_humanizer_applied_to_composition_headers(tmp_path):
+    client = load_pack(PACKS_DIR / "client-onboarding-workspace" / "domain-pack.yaml")
+    vendor = load_pack(PACKS_DIR / "vendor-risk-tracker" / "domain-pack.yaml")
+    client_out = tmp_path / client.name
+    vendor_out = tmp_path / vendor.name
+    generate(client, client_out)
+    generate(vendor, vendor_out)
+    client_app = (client_out / "frontend/src/App.tsx").read_text()
+    vendor_app = (vendor_out / "frontend/src/App.tsx").read_text()
+    assert "const titleize" in client_app
+    assert "titleize(`${ctx.primary.labelPlural} Board`)" in client_app
+    assert "titleize(`${ctx.primary.labelPlural} Register`)" in vendor_app
+    assert "labelPlural} board" not in client_app
+    assert "labelPlural} register" not in vendor_app
+
+
+def test_table_and_board_have_overflow_wrappers(tmp_path):
+    vendor = load_pack(PACKS_DIR / "vendor-risk-tracker" / "domain-pack.yaml")
+    client = load_pack(PACKS_DIR / "client-onboarding-workspace" / "domain-pack.yaml")
+    for pack in (vendor, client):
+        out = tmp_path / pack.name
+        generate(pack, out)
+        app = (out / "frontend/src/App.tsx").read_text()
+        assert 'className="table-scroll"' in app
+        assert 'className="board-scroll"' in app
+
+
+def test_responsive_breakpoints_in_styles(tmp_path):
+    vendor = load_pack(PACKS_DIR / "vendor-risk-tracker" / "domain-pack.yaml")
+    out = tmp_path / vendor.name
+    generate(vendor, out)
+    styles = (out / "frontend/src/styles.css").read_text()
+    assert "max-width:1440px" in styles
+    assert "margin:0 auto" in styles
+    assert "@media(max-width:1280px)" in styles
+    assert "@media(max-width:980px)" in styles
+    assert "clamp(" in styles
+    assert "min-width:0" in styles
+    assert ".table-scroll{" in styles or ".register-card .table-scroll" in styles
+    assert ".board-scroll{" in styles
+    assert "table-layout:auto" in styles
+
+
+def test_board_workspace_places_create_form_under_board(tmp_path):
+    client = load_pack(PACKS_DIR / "client-onboarding-workspace" / "domain-pack.yaml")
+    out = tmp_path / client.name
+    generate(client, out)
+    app = (out / "frontend/src/App.tsx").read_text()
+    board_idx = app.find("function BoardWorkspace")
+    next_fn = app.find("function RegisterTable", board_idx)
+    board_body = app[board_idx:next_fn]
+    workspace_board_idx = board_body.find('className="workspace-board"')
+    secondary_idx = board_body.find('className="secondary-panel"')
+    compact_create_idx = board_body.find('className="compact-create"')
+    assert workspace_board_idx != -1
+    assert compact_create_idx != -1
+    assert secondary_idx == -1 or compact_create_idx < secondary_idx, "create form should sit inside the board column, not after the secondary aside"
+
+
+def test_generated_backend_test_covers_seed_idempotency(tmp_path):
+    vendor = load_pack(PACKS_DIR / "vendor-risk-tracker" / "domain-pack.yaml")
+    out = tmp_path / vendor.name
+    generate(vendor, out)
+    backend_test = (out / "backend/tests/test_model_driven_app.py").read_text()
+    assert "def test_seed_is_idempotent():" in backend_test
+    assert backend_test.count("client.post('/seed')") >= 3
+    assert "first == second" in backend_test
+
+
+def test_app_exposes_active_entity_state(tmp_path):
+    client = load_pack(PACKS_DIR / "client-onboarding-workspace" / "domain-pack.yaml")
+    out = tmp_path / client.name
+    generate(client, out)
+    app = (out / "frontend/src/App.tsx").read_text()
+    assert "useState(primary.name)" in app
+    assert "data-active-entity={active}" in app
+    assert "data-primary-active={isPrimaryActive" in app
+    assert "const isPrimaryActive = entity.name === primary.name" in app
+
+
+def test_dispatch_renders_focused_surface_when_not_primary(tmp_path):
+    vendor = load_pack(PACKS_DIR / "vendor-risk-tracker" / "domain-pack.yaml")
+    out = tmp_path / vendor.name
+    generate(vendor, out)
+    app = (out / "frontend/src/App.tsx").read_text()
+    assert "function FocusedSurface(" in app
+    assert "isPrimaryActive && model.ui.composition === 'board_workspace'" in app
+    assert "isPrimaryActive && model.ui.composition === 'register_table'" in app
+    assert "<FocusedSurface" in app
+    assert 'data-ui-layout="composition-focused"' in app
+
+
+def test_side_panel_dedupes_secondary_rows(tmp_path):
+    vendor = load_pack(PACKS_DIR / "vendor-risk-tracker" / "domain-pack.yaml")
+    out = tmp_path / vendor.name
+    generate(vendor, out)
+    app = (out / "frontend/src/App.tsx").read_text()
+    assert "const uniqueById =" in app
+    assert "uniqueById(ctx.rowsByEntity[ctx.secondary.name]" in app
+    assert 'data-ui-surface="secondary-related"' in app
+
+
+def test_register_table_places_create_form_under_register(tmp_path):
+    vendor = load_pack(PACKS_DIR / "vendor-risk-tracker" / "domain-pack.yaml")
+    out = tmp_path / vendor.name
+    generate(vendor, out)
+    app = (out / "frontend/src/App.tsx").read_text()
+    register_idx = app.find("function RegisterTable")
+    next_fn = app.find("function FocusedSurface", register_idx)
+    body = app[register_idx:next_fn]
+    register_focus_idx = body.find('className="register-focus"')
+    compact_create_idx = body.find('className="compact-create"')
+    side_idx = body.find('className="register-side"')
+    assert register_focus_idx != -1 and compact_create_idx != -1
+    assert register_focus_idx < compact_create_idx < side_idx, "compact-create must sit under register-focus, not in side rail"
+
+
+def test_focused_surface_css_has_responsive_breakpoint(tmp_path):
+    vendor = load_pack(PACKS_DIR / "vendor-risk-tracker" / "domain-pack.yaml")
+    out = tmp_path / vendor.name
+    generate(vendor, out)
+    styles = (out / "frontend/src/styles.css").read_text()
+    assert ".focused-surface" in styles
+    assert ".focused-main" in styles
+    assert "@media(max-width:1180px)" in styles
+    assert ".secondary-panel,.register-side{max-height:" in styles
+
+
+def test_seed_endpoint_uses_existing_count_guard(tmp_path):
+    vendor = load_pack(PACKS_DIR / "vendor-risk-tracker" / "domain-pack.yaml")
+    out = tmp_path / vendor.name
+    generate(vendor, out)
+    main = (out / "backend/app/main.py").read_text()
+    assert ".count() == 0:" in main
+
+
+def test_executive_register_side_card_contrast_css(tmp_path):
+    vendor = load_pack(PACKS_DIR / "vendor-risk-tracker" / "domain-pack.yaml")
+    out = tmp_path / vendor.name
+    generate(vendor, out)
+    styles = (out / "frontend/src/styles.css").read_text()
+    assert ".recipe-executive_register .register-side .record-card" in styles
+    assert ".recipe-executive_register .register-side .record-card h3" in styles
+    assert ".recipe-executive_register .register-side .record-card small" in styles
+    assert ".recipe-executive_register .register-side .empty-state" in styles
 
 
 def test_model_driven_generation_is_deterministic(tmp_path):

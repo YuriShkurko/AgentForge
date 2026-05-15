@@ -39,6 +39,23 @@ model:
     - {name: onboarding_tasks, type: entity_detail, entity: onboarding_task, title: Task details}
   actions:
     - {name: mark_task_done, label: Mark done, type: update_status, entity: onboarding_task, field: status, value: done}
+  ui:
+    composition: board_workspace
+    recipe: workspace_board
+    style: {accent: emerald, density: comfortable, layout: workspace}
+    focus: {primary_entity: onboarding_task, secondary_entity: client, group_by: status, title_field: title, badge_field: status, secondary_field: due_date}
+    dashboard:
+      title: Client Onboarding Command Center
+      primary_entity: onboarding_task
+      cards:
+        - {type: count, entity: client, label: Active clients}
+        - {type: enum_breakdown, entity: onboarding_task, field: status, label: Task status}
+        - {type: attention_list, entity: onboarding_task, field: status, value: blocked, label: Blocked tasks}
+    entities:
+      client:
+        display: {layout: cards, title_field: name, subtitle_field: tier, badge_field: kickoff_complete, secondary_field: launch_date}
+      onboarding_task:
+        display: {layout: board_by_status, title_field: title, subtitle_field: owner, badge_field: status, secondary_field: due_date}
   seed_data:
     client:
       - {name: Acme Health, tier: enterprise, launch_date: '2026-06-01', kickoff_complete: true}
@@ -46,6 +63,7 @@ model:
     onboarding_task:
       - {client_id: 1, title: Configure SSO, status: in_progress, owner: Maya, due_date: '2026-05-28', notes: Waiting on identity metadata.}
       - {client_id: 2, title: Import starter data, status: todo, owner: Theo, due_date: '2026-06-04', notes: Use CSV export from legacy system.}
+      - {client_id: 1, title: Finalize launch checklist, status: blocked, owner: Priya, due_date: '2026-05-30', notes: Needs executive sponsor approval.}
 
 tests:
   expectations:

@@ -47,8 +47,18 @@ App Blueprints may also include a small `customization` block for supported app 
 - `pages`: limited to `dashboard`, `entity_list`, and `entity_detail`.
 - `actions`: limited to safe workflow patterns: `update_status`, `mark_complete`, and `add_note` acknowledgement.
 - `seed_data`: deterministic records keyed by entity name.
+- `ui` *(optional)*: bounded model-driven presentation hints. Missing `ui` uses deterministic defaults. Supported fields are:
+  - `composition`: one of `standard`, `board_workspace`, or `register_table`. `board_workspace` prioritizes a grouped board and secondary record panel. `register_table` prioritizes a compact table/register and side summary panel.
+  - `recipe`: one of `standard`, `workspace_board`, `executive_register`, or `ops_console`. Recipes are bounded visual treatments for density, shell styling, empty states, badges, and component emphasis.
+  - `style.accent`: one of `blue`, `emerald`, `amber`, `red`, `slate`, or `violet`.
+  - `style.density`: one of `compact`, `comfortable`, or `spacious`.
+  - `style.layout`: one of `workspace`, `register`, or `operations`.
+  - `focus.primary_entity`, optional `focus.secondary_entity`, optional `focus.group_by`, and optional `focus.title_field`/`badge_field`/`secondary_field`; references must point to existing entities/fields, and `board_workspace.group_by` must be an enum field when provided.
+  - `dashboard.title`, optional `dashboard.primary_entity`, and `dashboard.cards` with `count`, `enum_breakdown`, or `attention_list` card types.
+  - `entities.<entity>.display.layout`: `table`, `cards`, or `board_by_status`, plus optional `title_field`, `subtitle_field`, `badge_field`, and `secondary_field` references.
+  - optional field `semantic` hints from `status`, `priority`, `severity`, `owner`, `due_date`, `title`, and `description`.
 
-The model-driven path deliberately does not generate arbitrary code, providers, integrations, auth, billing, deployment, or visual-builder behavior.
+The model-driven presentation layer is controlled configuration, not arbitrary UI generation. It can select from supported compositions, presentation recipes, layouts, dashboard cards, safe accent/density values, and existing model fields. It also humanizes enum-like display values and emits generic empty states. It does not generate arbitrary code, providers, integrations, auth, billing, deployment, visual model editing, per-prompt freeform UI design, or visual-builder behavior.
 
 `customization` *(optional)*: Controlled visible-label configuration. Missing fields use deterministic defaults. Supported nested fields:
 - `app.subtitle`, `app.target_user_label`, `app.workflow_label`
@@ -153,7 +163,7 @@ For agent_dashboard_app additionally:
 
 ## Generator/Scaffolder Contract
 
-The generator reads `app_archetype` and `required_shell_modules` to select generation behavior. Fixed archetypes select existing app templates. `model_driven_app` uses the `model` block to emit readable FastAPI/SQLite and React/Vite files for custom entities, fields, routes, pages, seed data, and simple workflow actions. Other archetypes use `capabilities`/`tools`, `providers`, `adapters`, `ui_surfaces`/`widgets`, `run_history`, `agent_runtime`, `notification_actions`, and `seed_data` to wire domain-specific behavior into the shell.
+The generator reads `app_archetype` and `required_shell_modules` to select generation behavior. Fixed archetypes select existing app templates. `model_driven_app` uses the `model` block to emit readable FastAPI/SQLite and React/Vite files for custom entities, fields, routes, pages, seed data, simple workflow actions, and bounded presentation hints. Other archetypes use `capabilities`/`tools`, `providers`, `adapters`, `ui_surfaces`/`widgets`, `run_history`, `agent_runtime`, `notification_actions`, and `seed_data` to wire domain-specific behavior into the shell.
 
 Rules:
 - Generator must not invent current capabilities from `future_extensions`.

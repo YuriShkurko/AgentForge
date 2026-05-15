@@ -167,6 +167,14 @@ _IDENTIFIER_RE = r"^[a-z][a-z0-9_]*$"
 _VALID_MODEL_FIELD_TYPES = {"string", "text", "integer", "boolean", "date", "enum", "relation"}
 _VALID_MODEL_PAGE_TYPES = {"dashboard", "entity_list", "entity_detail"}
 _VALID_MODEL_ACTION_TYPES = {"update_status", "add_note", "mark_complete"}
+_VALID_UI_ACCENTS = {"blue", "emerald", "amber", "red", "slate", "violet"}
+_VALID_UI_DENSITIES = {"compact", "comfortable", "spacious"}
+_VALID_UI_LAYOUTS = {"workspace", "register", "operations"}
+_VALID_ENTITY_DISPLAY_LAYOUTS = {"table", "cards", "board_by_status"}
+_VALID_DASHBOARD_CARD_TYPES = {"count", "enum_breakdown", "attention_list"}
+_VALID_FIELD_SEMANTICS = {"status", "priority", "severity", "owner", "due_date", "title", "description"}
+_VALID_UI_COMPOSITIONS = {"standard", "board_workspace", "register_table"}
+_VALID_UI_RECIPES = {"standard", "workspace_board", "executive_register", "ops_console"}
 
 
 class ModelField(BaseModel):
@@ -177,6 +185,7 @@ class ModelField(BaseModel):
     enum_values: list[str] = Field(default_factory=list)
     target_entity: str = ""
     relation_kind: str = "many_to_one"
+    semantic: str = ""
 
     @field_validator("type")
     @classmethod
@@ -189,6 +198,13 @@ class ModelField(BaseModel):
     @classmethod
     def label_is_safe(cls, value: str) -> str:
         return _clean_custom_text(value, field_name="model field label", max_length=80)
+
+    @field_validator("semantic")
+    @classmethod
+    def semantic_must_be_supported(cls, value: str) -> str:
+        if value and value not in _VALID_FIELD_SEMANTICS:
+            raise ValueError(f"unsupported field semantic '{value}'; valid: {sorted(_VALID_FIELD_SEMANTICS)}")
+        return value
 
     @field_validator("enum_values")
     @classmethod
@@ -263,11 +279,121 @@ class ModelAction(BaseModel):
         return value
 
 
+class ModelUIStyle(BaseModel):
+    accent: str = "blue"
+    density: str = "comfortable"
+    layout: str = "workspace"
+
+    @field_validator("accent")
+    @classmethod
+    def accent_must_be_supported(cls, value: str) -> str:
+        if value not in _VALID_UI_ACCENTS:
+            raise ValueError(f"unknown ui accent '{value}'; valid: {sorted(_VALID_UI_ACCENTS)}")
+        return value
+
+    @field_validator("density")
+    @classmethod
+    def density_must_be_supported(cls, value: str) -> str:
+        if value not in _VALID_UI_DENSITIES:
+            raise ValueError(f"unknown ui density '{value}'; valid: {sorted(_VALID_UI_DENSITIES)}")
+        return value
+
+    @field_validator("layout")
+    @classmethod
+    def layout_must_be_supported(cls, value: str) -> str:
+        if value not in _VALID_UI_LAYOUTS:
+            raise ValueError(f"unknown ui layout '{value}'; valid: {sorted(_VALID_UI_LAYOUTS)}")
+        return value
+
+
+class ModelEntityDisplay(BaseModel):
+    layout: str = "table"
+    title_field: str = ""
+    subtitle_field: str = ""
+    badge_field: str = ""
+    secondary_field: str = ""
+
+    @field_validator("layout")
+    @classmethod
+    def layout_must_be_supported(cls, value: str) -> str:
+        if value not in _VALID_ENTITY_DISPLAY_LAYOUTS:
+            raise ValueError(f"unknown entity display layout '{value}'; valid: {sorted(_VALID_ENTITY_DISPLAY_LAYOUTS)}")
+        return value
+
+
+class ModelEntityUI(BaseModel):
+    display: ModelEntityDisplay = Field(default_factory=ModelEntityDisplay)
+
+
+class ModelDashboardCard(BaseModel):
+    type: str
+    entity: str
+    label: str = ""
+    field: str = ""
+    value: Any | None = None
+
+    @field_validator("type")
+    @classmethod
+    def type_must_be_supported(cls, value: str) -> str:
+        if value not in _VALID_DASHBOARD_CARD_TYPES:
+            raise ValueError(f"unknown dashboard card type '{value}'; valid: {sorted(_VALID_DASHBOARD_CARD_TYPES)}")
+        return value
+
+    @field_validator("label")
+    @classmethod
+    def label_is_safe(cls, value: str) -> str:
+        return _clean_custom_text(value, field_name="dashboard card label", max_length=80)
+
+
+class ModelDashboardUI(BaseModel):
+    title: str = "Dashboard"
+    primary_entity: str = ""
+    cards: list[ModelDashboardCard] = Field(default_factory=list)
+
+    @field_validator("title")
+    @classmethod
+    def title_is_safe(cls, value: str) -> str:
+        return _clean_custom_text(value, field_name="dashboard title", max_length=120) or "Dashboard"
+
+
+class ModelUIFocus(BaseModel):
+    primary_entity: str = ""
+    secondary_entity: str = ""
+    group_by: str = ""
+    title_field: str = ""
+    badge_field: str = ""
+    secondary_field: str = ""
+
+
+class ModelUI(BaseModel):
+    composition: str = "standard"
+    recipe: str = "standard"
+    style: ModelUIStyle = Field(default_factory=ModelUIStyle)
+    focus: ModelUIFocus = Field(default_factory=ModelUIFocus)
+    dashboard: ModelDashboardUI = Field(default_factory=ModelDashboardUI)
+    entities: dict[str, ModelEntityUI] = Field(default_factory=dict)
+
+    @field_validator("composition")
+    @classmethod
+    def composition_must_be_supported(cls, value: str) -> str:
+        if value not in _VALID_UI_COMPOSITIONS:
+            raise ValueError(f"unknown ui composition '{value}'; valid: {sorted(_VALID_UI_COMPOSITIONS)}")
+        return value
+
+    @field_validator("recipe")
+    @classmethod
+    def recipe_must_be_supported(cls, value: str) -> str:
+        if value not in _VALID_UI_RECIPES:
+            raise ValueError(f"unknown ui recipe '{value}'; valid: {sorted(_VALID_UI_RECIPES)}")
+        return value
+
+
 class ModelDrivenApp(BaseModel):
     entities: list[ModelEntity]
     pages: list[ModelPage] = Field(default_factory=list)
     actions: list[ModelAction] = Field(default_factory=list)
     seed_data: dict[str, list[dict[str, Any]]] = Field(default_factory=dict)
+    ui: ModelUI = Field(default_factory=ModelUI)
 
     @model_validator(mode="after")
     def validate_references(self) -> "ModelDrivenApp":
@@ -304,6 +430,51 @@ class ModelDrivenApp(BaseModel):
                 field = fields.get(field_name)
                 if not field or field.type != "boolean":
                     raise ValueError(f"mark_complete action '{action.name}' field must be a boolean field")
+        ui = self.ui
+        if ui.dashboard.primary_entity and ui.dashboard.primary_entity not in entity_map:
+            raise ValueError(f"dashboard primary_entity references unknown entity '{ui.dashboard.primary_entity}'")
+        focus = ui.focus
+        if ui.composition != "standard" and not focus.primary_entity:
+            raise ValueError(f"ui composition '{ui.composition}' requires focus.primary_entity")
+        if focus.primary_entity and focus.primary_entity not in entity_map:
+            raise ValueError(f"ui focus primary_entity references unknown entity '{focus.primary_entity}'")
+        if focus.secondary_entity and focus.secondary_entity not in entity_map:
+            raise ValueError(f"ui focus secondary_entity references unknown entity '{focus.secondary_entity}'")
+        primary = entity_map.get(focus.primary_entity) if focus.primary_entity else None
+        if primary:
+            primary_fields = {field.name: field for field in primary.fields}
+            for attr in ["group_by", "title_field", "badge_field", "secondary_field"]:
+                field_name = getattr(focus, attr)
+                if field_name and field_name not in primary_fields:
+                    raise ValueError(f"ui focus {attr} references unknown field '{field_name}' on '{focus.primary_entity}'")
+            if ui.composition == "board_workspace" and focus.group_by and primary_fields[focus.group_by].type != "enum":
+                raise ValueError("ui focus group_by must be an enum field for board_workspace composition")
+        for entity_name, entity_ui in ui.entities.items():
+            entity = entity_map.get(entity_name)
+            if not entity:
+                raise ValueError(f"ui entity display references unknown entity '{entity_name}'")
+            fields = {field.name for field in entity.fields}
+            display = entity_ui.display
+            for attr in ["title_field", "subtitle_field", "badge_field", "secondary_field"]:
+                field_name = getattr(display, attr)
+                if field_name and field_name not in fields:
+                    raise ValueError(f"ui entity '{entity_name}' {attr} references unknown field '{field_name}'")
+        for card in ui.dashboard.cards:
+            entity = entity_map.get(card.entity)
+            if not entity:
+                raise ValueError(f"dashboard card '{card.label or card.type}' references unknown entity '{card.entity}'")
+            fields = {field.name: field for field in entity.fields}
+            if card.type in {"enum_breakdown", "attention_list"}:
+                if not card.field or card.field not in fields:
+                    raise ValueError(f"dashboard card '{card.label or card.type}' references unknown field '{card.field}' on '{card.entity}'")
+                if card.type == "enum_breakdown" and fields[card.field].type != "enum":
+                    raise ValueError(f"dashboard enum_breakdown card '{card.label or card.type}' field must be enum")
+            if card.type == "attention_list":
+                if card.value is None:
+                    raise ValueError(f"dashboard attention_list card '{card.label or card.type}' requires value")
+                field = fields[card.field]
+                if field.type == "enum" and card.value not in field.enum_values:
+                    raise ValueError(f"dashboard attention_list card '{card.label or card.type}' value must be one of {field.enum_values}")
         for entity_name, rows in self.seed_data.items():
             if entity_name not in entity_map:
                 raise ValueError(f"seed_data references unknown entity '{entity_name}'")

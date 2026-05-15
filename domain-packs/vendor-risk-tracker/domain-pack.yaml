@@ -39,6 +39,23 @@ model:
     - {name: risk_findings, type: entity_detail, entity: risk_finding, title: Finding details}
   actions:
     - {name: accept_finding, label: Accept risk, type: update_status, entity: risk_finding, field: state, value: accepted}
+  ui:
+    composition: register_table
+    recipe: executive_register
+    style: {accent: amber, density: compact, layout: register}
+    focus: {primary_entity: risk_finding, secondary_entity: vendor, group_by: severity, title_field: summary, badge_field: severity, secondary_field: state}
+    dashboard:
+      title: Vendor Risk Register
+      primary_entity: risk_finding
+      cards:
+        - {type: count, entity: vendor, label: Vendors under review}
+        - {type: attention_list, entity: risk_finding, field: severity, value: high, label: High severity findings}
+        - {type: enum_breakdown, entity: risk_finding, field: state, label: Finding state}
+    entities:
+      vendor:
+        display: {layout: table, title_field: name, subtitle_field: service_area, badge_field: inherent_risk, secondary_field: next_review_date}
+      risk_finding:
+        display: {layout: cards, title_field: summary, subtitle_field: state, badge_field: severity, secondary_field: evidence_note}
   seed_data:
     vendor:
       - {name: Northstar Payroll, service_area: Payroll, inherent_risk: high, next_review_date: '2026-07-10'}
@@ -46,6 +63,7 @@ model:
     risk_finding:
       - {vendor_id: 1, summary: SOC 2 bridge letter missing, severity: medium, state: open, evidence_note: Requested from account team., remediation_complete: false}
       - {vendor_id: 2, summary: SPF alignment exception, severity: low, state: investigating, evidence_note: Compensating controls documented., remediation_complete: false}
+      - {vendor_id: 1, summary: Privileged access review overdue, severity: high, state: open, evidence_note: Quarterly access certification not returned., remediation_complete: false}
 
 tests:
   expectations:
