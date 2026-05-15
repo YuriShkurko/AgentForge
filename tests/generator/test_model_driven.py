@@ -662,6 +662,17 @@ def test_generated_frontend_renders_import_panel(tmp_path):
     assert 'data-ui-surface="import-runs"' in app
 
 
+def test_generated_frontend_import_panel_includes_relation_helper_text(tmp_path):
+    vendor = load_pack(PACKS_DIR / "vendor-risk-tracker" / "domain-pack.yaml")
+    out = tmp_path / vendor.name
+    generate(vendor, out)
+    app = (out / "frontend/src/App.tsx").read_text()
+    assert 'data-ui-surface="import-relation-help"' in app
+    assert "Relation columns can use either IDs or related record names" in app
+    assert "relationFieldsForImport" in app
+    assert "relationImportAliases" in app
+
+
 def test_generated_backend_tests_cover_import_flow(tmp_path):
     vendor = load_pack(PACKS_DIR / "vendor-risk-tracker" / "domain-pack.yaml")
     out = tmp_path / vendor.name
@@ -671,6 +682,18 @@ def test_generated_backend_tests_cover_import_flow(tmp_path):
     assert "test_import_preview_csv" in backend_test
     assert "test_import_preview_json" in backend_test
     assert "test_import_commit_creates_records" in backend_test
+
+
+def test_generated_readme_documents_relation_by_label_imports(tmp_path):
+    client = load_pack(PACKS_DIR / "client-onboarding-workspace" / "domain-pack.yaml")
+    vendor = load_pack(PACKS_DIR / "vendor-risk-tracker" / "domain-pack.yaml")
+    for pack, alias in [(client, "client"), (vendor, "vendor")]:
+        out = tmp_path / pack.name
+        generate(pack, out)
+        readme = (out / "README.md").read_text()
+        assert "Relation import examples" in readme
+        assert f"`{alias}` containing" in readme
+        assert "Related records must already exist" in readme
 
 
 def test_pack_without_imports_still_generates(tmp_path):
@@ -846,6 +869,72 @@ def test_client_onboarding_import_creates_clients(generated_client_client):
     assert body["created_count"] == 1
     listing = generated_client_client.get("/client").json()
     assert any(row["name"] == "Northstar" and row["tier"] == "enterprise" for row in listing)
+
+
+def test_relation_import_by_integer_id_still_works(generated_client_client):
+    generated_client_client.post("/seed")
+    csv_data = "client_id,Task title,Status\n1,Prepare kickoff,todo\n"
+    response = generated_client_client.post("/imports/onboarding_tasks_import/commit", json={"format": "csv", "data": csv_data})
+    body = response.json()
+    assert body["status"] == "ok"
+    rows = generated_client_client.get("/onboarding-task").json()
+    assert any(row["title"] == "Prepare kickoff" and row["client_id"] == 1 for row in rows)
+
+
+def test_relation_import_by_label_csv_and_alias_mapping(generated_client_client):
+    generated_client_client.post("/seed")
+    csv_data = "client,Task title,Status\nAcme Health,Prepare kickoff,todo\n"
+    response = generated_client_client.post("/imports/onboarding_tasks_import/preview", json={"format": "csv", "data": csv_data})
+    body = response.json()
+    assert body["valid_rows"] == 1
+    assert "client_id" in body["mapped_fields"]
+    assert body["relation_resolutions"][0]["matched_id"] == 1
+    assert body["relation_resolutions"][0]["matched_by"] == "label"
+    commit = generated_client_client.post("/imports/onboarding_tasks_import/commit", json={"format": "csv", "data": csv_data}).json()
+    assert commit["status"] == "ok"
+    rows = generated_client_client.get("/onboarding-task").json()
+    assert any(row["title"] == "Prepare kickoff" and row["client_id"] == 1 for row in rows)
+
+
+def test_relation_import_by_label_json_and_vendor_alias(generated_vendor_client):
+    generated_vendor_client.post("/seed")
+    payload = json.dumps([{"vendor": "Northstar Payroll", "Summary": "Review SOC report", "Severity": "medium", "State": "open"}])
+    response = generated_vendor_client.post("/imports/risk_findings_import/commit", json={"format": "json", "data": payload})
+    body = response.json()
+    assert body["status"] == "ok"
+    rows = generated_vendor_client.get("/risk-finding").json()
+    assert any(row["summary"] == "Review SOC report" and row["vendor_id"] == 1 for row in rows)
+
+
+def test_relation_import_missing_label_reports_clear_error(generated_client_client):
+    generated_client_client.post("/seed")
+    csv_data = "client,Task title,Status\nUnknown Client,Prepare kickoff,todo\n"
+    response = generated_client_client.post("/imports/onboarding_tasks_import/preview", json={"format": "csv", "data": csv_data})
+    body = response.json()
+    assert body["invalid_rows"] == 1
+    assert "client 'Unknown Client' did not match any Client record" in body["errors"][0]["errors"]
+
+
+def test_relation_import_ambiguous_label_reports_clear_error(generated_client_client):
+    generated_client_client.post("/imports/clients_import/commit", json={"format": "csv", "data": "Client name,Tier\nDuplicate,standard\n"})
+    generated_client_client.post("/client", json={"name": "Duplicate", "tier": "premium"})
+    csv_data = "client,Task title,Status\nDuplicate,Prepare kickoff,todo\n"
+    response = generated_client_client.post("/imports/onboarding_tasks_import/preview", json={"format": "csv", "data": csv_data})
+    body = response.json()
+    assert body["invalid_rows"] == 1
+    assert "client 'Duplicate' matched multiple Client records" in body["errors"][0]["errors"]
+
+
+def test_reject_on_invalid_still_rejects_whole_relation_import(generated_client_client):
+    generated_client_client.post("/seed")
+    csv_data = "client,Task title,Status\nAcme Health,Good task,todo\nUnknown Client,Bad task,todo\n"
+    response = generated_client_client.post("/imports/onboarding_tasks_import/commit", json={"format": "csv", "data": csv_data})
+    body = response.json()
+    assert body["status"] == "rejected"
+    assert body["created_count"] == 0
+    assert body["skipped_count"] == 2
+    rows = generated_client_client.get("/onboarding-task").json()
+    assert all(row["title"] != "Good task" for row in rows)
 
 
 # --------------------------------------------------------------------------- #

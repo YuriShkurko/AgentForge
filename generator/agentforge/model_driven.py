@@ -224,6 +224,14 @@ def _field_descriptor(field: ModelField) -> dict[str, Any]:
 def _backend_imports_module(model: ModelDrivenApp) -> str:
     entity_fields = {entity.name: [_field_descriptor(f) for f in entity.fields] for entity in model.entities}
     entity_classes = {entity.name: _class_name(entity.name) for entity in model.entities}
+    entity_meta = {
+        entity.name: {
+            "label_singular": entity.label_singular,
+            "label_plural": entity.label_plural,
+            "display_title_field": (model.ui.entities.get(entity.name).display.title_field if entity.name in model.ui.entities else ""),
+        }
+        for entity in model.entities
+    }
     imports_payload = [
         {
             "id": spec.id,
@@ -257,6 +265,7 @@ def _backend_imports_module(model: ModelDrivenApp) -> str:
 
     imports_literal = f"IMPORTS: list[dict[str, Any]] = {pprint.pformat(imports_payload, indent=4, width=100, sort_dicts=False)}"
     fields_literal = f"ENTITY_FIELDS: dict[str, list[dict[str, Any]]] = {pprint.pformat(entity_fields, indent=4, width=100, sort_dicts=False)}"
+    meta_literal = f"ENTITY_META: dict[str, dict[str, Any]] = {pprint.pformat(entity_meta, indent=4, width=100, sort_dicts=False)}"
     classes_lines = ["ENTITY_MODELS = {"]
     for name, cls in entity_classes.items():
         classes_lines.append(f"    {name!r}: models.{cls},")
@@ -317,61 +326,123 @@ def _backend_imports_module(model: ModelDrivenApp) -> str:
             return out
 
 
+        def _relation_aliases(field: dict) -> set[str]:
+            aliases = {field["name"], field.get("label") or ""}
+            if field["name"].endswith("_id"):
+                aliases.add(field["name"][:-3])
+            target = ENTITY_META.get(field.get("target_entity") or "", {})
+            aliases.add(target.get("label_singular") or "")
+            aliases.add(target.get("label_plural") or "")
+            return {_normalize_key(alias) for alias in aliases if str(alias).strip()}
+
+
         def _build_mapping(spec: dict, source_keys: Iterable[str]) -> dict[str, str]:
             fields = ENTITY_FIELDS[spec["entity"]]
             field_names = {field["name"] for field in fields}
+            relation_aliases = {
+                alias: field["name"]
+                for field in fields
+                if field["type"] == "relation"
+                for alias in _relation_aliases(field)
+            }
             mapping: dict[str, str] = {}
             for key in source_keys:
                 normalized = _normalize_key(key)
                 if normalized in field_names:
                     mapping[key] = normalized
+                elif normalized in relation_aliases:
+                    mapping[key] = relation_aliases[normalized]
             for source, target in (spec.get("field_map") or {}).items():
                 if target in field_names:
                     mapping[source] = target
             return mapping
 
 
-        def _coerce(field: dict, raw: Any) -> tuple[Any, str | None]:
+        def _relation_display_field(entity_name: str) -> str:
+            meta = ENTITY_META.get(entity_name, {})
+            explicit = meta.get("display_title_field") or ""
+            fields = ENTITY_FIELDS.get(entity_name, [])
+            names = {field["name"] for field in fields}
+            if explicit and explicit in names:
+                return explicit
+            for preferred in ("name", "title", "label", "summary"):
+                if preferred in names:
+                    return preferred
+            for field in fields:
+                if field["type"] in ("string", "text"):
+                    return field["name"]
+            return "id"
+
+
+        def _relation_source_name(field: dict) -> str:
+            if field["name"].endswith("_id"):
+                return field["name"][:-3]
+            return _normalize_key(field.get("label") or field["name"]) or field["name"]
+
+
+        def _resolve_relation(field: dict, raw: Any, db: Session) -> tuple[int | None, str | None, dict[str, Any] | None]:
+            text = str(raw).strip()
+            source_name = _relation_source_name(field)
+            target_entity = field.get("target_entity") or ""
+            target_label = ENTITY_META.get(target_entity, {}).get("label_singular") or target_entity.replace("_", " " ).title()
+            Model = ENTITY_MODELS.get(target_entity)
+            if Model is None:
+                return None, f"{source_name} targets unknown entity {target_entity}", None
+            try:
+                matched_id = int(text)
+                return matched_id, None, {"field": field["name"], "source_field": source_name, "target_entity": target_entity, "matched_id": matched_id, "matched_by": "id"}
+            except (ValueError, TypeError):
+                pass
+            display_field = _relation_display_field(target_entity)
+            if display_field == "id":
+                return None, f"{source_name} '{text}' must be an existing {target_label} id", None
+            matches = db.query(Model).filter(getattr(Model, display_field) == text).limit(2).all()
+            if not matches:
+                return None, f"{source_name} '{text}' did not match any {target_label} record", None
+            if len(matches) > 1:
+                return None, f"{source_name} '{text}' matched multiple {target_label} records", None
+            matched_id = matches[0].id
+            return matched_id, None, {"field": field["name"], "source_field": source_name, "target_entity": target_entity, "target_label": target_label, "display_field": display_field, "source_value": text, "matched_id": matched_id, "matched_by": "label"}
+
+
+        def _coerce(field: dict, raw: Any, db: Session) -> tuple[Any, str | None, dict[str, Any] | None]:
             if raw is None or (isinstance(raw, str) and raw.strip() == ""):
                 if field.get("required"):
-                    return None, f"{field['name']} is required"
-                return None, None
+                    return None, f"{field['name']} is required", None
+                return None, None, None
             kind = field["type"]
             if kind in ("string", "text"):
-                return str(raw), None
+                return str(raw), None, None
             if kind == "integer":
                 try:
-                    return int(str(raw).strip()), None
+                    return int(str(raw).strip()), None, None
                 except (ValueError, TypeError):
-                    return None, f"{field['name']} must be an integer"
+                    return None, f"{field['name']} must be an integer", None
             if kind == "boolean":
                 if isinstance(raw, bool):
-                    return raw, None
+                    return raw, None, None
                 text = str(raw).strip().lower()
                 if text in ("true", "1", "yes", "y"):
-                    return True, None
+                    return True, None, None
                 if text in ("false", "0", "no", "n"):
-                    return False, None
-                return None, f"{field['name']} must be a boolean (true/false)"
+                    return False, None, None
+                return None, f"{field['name']} must be a boolean (true/false)", None
             if kind == "date":
                 try:
-                    return date.fromisoformat(str(raw).strip()), None
+                    return date.fromisoformat(str(raw).strip()), None, None
                 except (ValueError, TypeError):
-                    return None, f"{field['name']} must be an ISO date (YYYY-MM-DD)"
+                    return None, f"{field['name']} must be an ISO date (YYYY-MM-DD)", None
             if kind == "enum":
                 text = str(raw).strip()
                 if text not in field["enum_values"]:
-                    return None, f"{field['name']} must be one of {field['enum_values']}"
-                return text, None
+                    return None, f"{field['name']} must be one of {', '.join(field['enum_values'])}", None
+                return text, None, None
             if kind == "relation":
-                try:
-                    return int(str(raw).strip()), None
-                except (ValueError, TypeError):
-                    return None, f"{field['name']} must be a relation id (integer)"
-            return raw, None
+                return _resolve_relation(field, raw, db)
+            return raw, None, None
 
 
-        def _map_and_validate(spec: dict, raw_rows: list[dict[str, Any]]) -> tuple[list[dict[str, Any] | None], list[dict[str, Any]], dict[str, str]]:
+        def _map_and_validate(spec: dict, raw_rows: list[dict[str, Any]], db: Session) -> tuple[list[dict[str, Any] | None], list[dict[str, Any]], dict[str, str], list[dict[str, Any]]]:
             fields = ENTITY_FIELDS[spec["entity"]]
             fields_by_name = {field["name"]: field for field in fields}
             source_keys: list[str] = []
@@ -384,16 +455,19 @@ def _backend_imports_module(model: ModelDrivenApp) -> str:
             mapping = _build_mapping(spec, source_keys)
             cleaned: list[dict[str, Any] | None] = []
             errors: list[dict[str, Any]] = []
+            relation_resolutions: list[dict[str, Any]] = []
             for index, row in enumerate(raw_rows):
                 mapped: dict[str, Any] = {}
                 row_errors: list[str] = []
                 for source, target in mapping.items():
                     if source in row:
-                        value, err = _coerce(fields_by_name[target], row[source])
+                        value, err, info = _coerce(fields_by_name[target], row[source], db)
                         if err:
                             row_errors.append(err)
                         elif value is not None:
                             mapped[target] = value
+                            if info:
+                                relation_resolutions.append({"row": index + 1, "source_column": source, **info})
                 for field in fields:
                     if field.get("required") and field["name"] not in mapped:
                         message = f"{field['name']} is required"
@@ -404,11 +478,11 @@ def _backend_imports_module(model: ModelDrivenApp) -> str:
                     errors.append({"row": index + 1, "errors": row_errors})
                 else:
                     cleaned.append(mapped)
-            return cleaned, errors, mapping
+            return cleaned, errors, mapping, relation_resolutions
 
 
         def preview_records(spec: dict, raw_rows: list[dict[str, Any]], db: Session, fmt: str = "records") -> dict:
-            cleaned, errors, mapping = _map_and_validate(spec, raw_rows)
+            cleaned, errors, mapping, relation_resolutions = _map_and_validate(spec, raw_rows, db)
             valid_rows = [row for row in cleaned if row is not None]
             upsert_key = spec.get("upsert_key") or ""
             would_create = 0
@@ -438,6 +512,7 @@ def _backend_imports_module(model: ModelDrivenApp) -> str:
                 "mapped_fields": sorted({target for target in mapping.values()}),
                 "would_create": would_create,
                 "would_update": would_update,
+                "relation_resolutions": relation_resolutions,
             }
 
 
@@ -447,7 +522,7 @@ def _backend_imports_module(model: ModelDrivenApp) -> str:
 
 
         def commit_records(spec: dict, raw_rows: list[dict[str, Any]], db: Session, fmt: str = "records") -> dict:
-            cleaned, errors, _ = _map_and_validate(spec, raw_rows)
+            cleaned, errors, _, _relation_resolutions = _map_and_validate(spec, raw_rows, db)
             invalid_count = len(errors)
             created_count = 0
             updated_count = 0
@@ -511,7 +586,7 @@ def _backend_imports_module(model: ModelDrivenApp) -> str:
             return commit_records(spec, raw_rows, db, fmt)
     ''').strip()
 
-    return "\n\n".join([header, imports_literal, fields_literal, classes_literal, body]) + "\n"
+    return "\n\n".join([header, imports_literal, fields_literal, meta_literal, classes_literal, body]) + "\n"
 
 
 def _seed_value(value: Any, field: ModelField | None = None) -> str:
@@ -1100,7 +1175,8 @@ type Card = {{ type: 'count' | 'enum_breakdown' | 'attention_list'; entity: stri
 type Focus = {{ primary_entity?: string; secondary_entity?: string; group_by?: string; title_field?: string; badge_field?: string; secondary_field?: string }};
 type ImportConfig = {{ id: string; label: string; entity: string; formats: string[]; upsertKey: string; fieldMap: Record<string, string> }};
 type ImportRun = {{ id: number; import_id: string; entity: string; format: string; status: string; total_rows: number; created_count: number; updated_count: number; skipped_count: number; error_count: number; error_summary: string | null }};
-type ImportPreview = {{ import_id: string; entity: string; format: string; total_rows: number; valid_rows: number; invalid_rows: number; errors: {{ row: number; errors: string[] }}[]; mapped_fields: string[]; would_create: number; would_update: number }};
+type RelationResolution = {{ row: number; source_column: string; field: string; source_field: string; target_entity: string; target_label?: string; display_field?: string; source_value?: string; matched_id: number; matched_by: 'id' | 'label' }};
+type ImportPreview = {{ import_id: string; entity: string; format: string; total_rows: number; valid_rows: number; invalid_rows: number; errors: {{ row: number; errors: string[] }}[]; mapped_fields: string[]; would_create: number; would_update: number; relation_resolutions?: RelationResolution[] }};
 type ImportCommit = {{ import_id: string; status: string; total_rows: number; valid_rows: number; invalid_rows: number; created_count: number; updated_count: number; skipped_count: number; error_count: number; errors: {{ row: number; errors: string[] }}[]; run_id: number; provider_id?: string }};
 type ProviderConfig = {{ id: string; label: string; type: string; mode: string; targetImport: string; env: {{ token: string; repo: string }}; source: {{ state?: string; labels?: string[] }} }};
 type ProviderStatus = {{ id: string; label: string; type: string; mode: string; target_import: string; target_entity: string; env_status: {{ configured: boolean; missing: string[]; required: string[] }}; source: {{ state?: string; labels?: string[] }} }};
@@ -1170,9 +1246,12 @@ function EmptyState({{ text, compact = false }}: {{ text: string; compact?: bool
 
 function RecordCard({{ entity, row, rowsByEntity, actions, onAction }}: {{ entity: Entity; row: Row; rowsByEntity: RowMap; actions: Action[]; onAction: (target: Entity, name: string, id: number) => void }}) {{ const view = display(entity); const titleField = view.title_field || (entity.name === model.ui.focus.primary_entity ? model.ui.focus.title_field : '') || ''; const badgeField = view.badge_field || (entity.name === model.ui.focus.primary_entity ? model.ui.focus.badge_field : '') || ''; const secondaryField = view.secondary_field || (entity.name === model.ui.focus.primary_entity ? model.ui.focus.secondary_field : '') || ''; const titleFieldDef = fieldFor(entity, titleField); const subtitleFieldDef = fieldFor(entity, view.subtitle_field); const secondaryFieldDef = fieldFor(entity, secondaryField); const badgeFieldDef = fieldFor(entity, badgeField); const badge = value(row, badgeField); const titleText = cellValue(titleFieldDef, row[titleField], rowsByEntity); return <article className="record-card"><div>{{badge && <span className={{`badge badge-${{badge.toLowerCase().replace(/[^a-z0-9]+/g, '-')}}`}}>{{badgeFieldDef ? cellValue(badgeFieldDef, row[badgeField], rowsByEntity) : humanize(badge)}}</span>}}<h3>{{titleText || `${{entity.labelSingular}} #${{row.id}}`}}</h3><p>{{cellValue(subtitleFieldDef, row[view.subtitle_field || ''], rowsByEntity)}}</p><small>{{cellValue(secondaryFieldDef, row[secondaryField], rowsByEntity)}}</small></div><div>{{actions.map((action) => <button key={{action.name}} onClick={{() => row.id && onAction(entity, action.name, row.id)}}>{{action.label || humanize(action.name)}}</button>)}}</div></article>; }}
 
+function relationImportAliases(field: Field, config: ImportConfig): string[] {{ const aliases = new Set<string>(); aliases.add(field.name); if (field.name.endsWith('_id')) aliases.add(field.name.slice(0, -3)); if (field.label) aliases.add(field.label); const target = entityByName(field.targetEntity); if (target) {{ aliases.add(target.labelSingular); aliases.add(target.labelPlural); }} Object.entries(config.fieldMap || {{}}).forEach(([source, targetField]) => {{ if (targetField === field.name) aliases.add(source); }}); return Array.from(aliases).filter(Boolean); }}
+function relationFieldsForImport(config?: ImportConfig): {{ field: Field; aliases: string[]; target?: Entity }}[] {{ if (!config) return []; const entity = entityByName(config.entity); if (!entity) return []; return entity.fields.filter((field) => field.type === 'relation').map((field) => ({{ field, aliases: relationImportAliases(field, config), target: entityByName(field.targetEntity) }})); }}
+
 function ProviderPanel({{ reload }}: {{ reload: () => Promise<void> }}) {{ const [providers, setProviders] = useState<ProviderStatus[]>([]); const [selectedId, setSelectedId] = useState<string>(model.providers[0]?.id || ''); const [preview, setPreview] = useState<ImportPreview | null>(null); const [synced, setSynced] = useState<ImportCommit | null>(null); const [runs, setRuns] = useState<ImportRun[]>([]); const [error, setError] = useState<string>(''); async function loadProviders() {{ const response = await fetch(`${{API}}/providers`); if (response.ok) {{ const data = (await response.json()) as ProviderStatus[]; setProviders(data); if (!selectedId && data[0]) setSelectedId(data[0].id); }} }} async function loadRuns() {{ const response = await fetch(`${{API}}/providers/runs`); if (response.ok) setRuns(await response.json()); }} useEffect(() => {{ void loadProviders(); void loadRuns(); }}, []); const provider = providers.find((item) => item.id === selectedId) || providers[0]; async function callProvider(path: 'preview' | 'sync') {{ if (!provider) return; try {{ setError(''); const response = await fetch(`${{API}}/providers/${{provider.id}}/${{path}}`, {{ method: 'POST' }}); if (!response.ok) {{ const detail = await response.json().catch(() => ({{}})); throw new Error((detail && detail.detail) || `${{path}} failed`); }} const result = await response.json(); if (path === 'preview') {{ setPreview(result as ImportPreview); setSynced(null); }} else {{ setSynced(result as ImportCommit); await loadRuns(); await reload(); }} }} catch (caught) {{ setError((caught as Error).message); }} }} if (model.providers.length === 0) return <section className="content"><h2>No providers configured</h2></section>; const missing = provider?.env_status.missing || []; const ready = provider?.env_status.configured ?? false; return <section className="content provider-panel" data-ui-surface="provider-panel"><section className="hero"><div><p className="eyebrow">Provider Runtime v0</p><h2>Providers</h2><p>Preview and sync read-only external records through the shared importer pipeline.</p></div><strong>{{runs.length}} {{runs.length === 1 ? 'run' : 'runs'}}</strong></section><div className="card provider-controls"><label>Provider<select value={{provider?.id || ''}} onChange={{(event) => {{ setSelectedId(event.target.value); setPreview(null); setSynced(null); setError(''); }}}} data-ui-control="provider-select">{{providers.map((item) => <option key={{item.id}} value={{item.id}}>{{item.label}}</option>)}}</select></label>{{provider && <><p><b>{{provider.label}}</b> · {{provider.type}} · {{provider.mode}} · target {{provider.target_import}}/{{provider.target_entity}}</p><p data-ui-state={{ready ? 'configured' : 'missing-env'}}>{{ready ? 'Environment configured' : `Missing env vars: ${{missing.join(', ')}}`}}</p><p><small>Required env vars: {{provider.env_status.required.join(', ')}}. Secret values are never shown.</small></p><div className="import-buttons"><button type="button" onClick={{() => callProvider('preview')}} data-ui-action="provider-preview" disabled={{!ready}}>Preview</button><button type="button" onClick={{() => callProvider('sync')}} data-ui-action="provider-sync" disabled={{!ready || !preview || preview.invalid_rows > 0}}>Sync</button></div></>}}{{error && <p className="import-error" data-ui-state="error">{{error}}</p>}}</div>{{preview && <article className="card import-preview" data-ui-surface="provider-preview"><h3>Preview</h3><p><b>{{preview.total_rows}}</b> rows · <b>{{preview.valid_rows}}</b> valid · <b>{{preview.invalid_rows}}</b> invalid · would create <b>{{preview.would_create}}</b>, update <b>{{preview.would_update}}</b></p><p><small>Mapped fields: {{preview.mapped_fields.join(', ') || 'none'}}</small></p>{{preview.errors.length > 0 && <ul className="import-errors">{{preview.errors.slice(0, 10).map((err) => <li key={{err.row}}>Row {{err.row}}: {{err.errors.join(', ')}}</li>)}}</ul>}}</article>}}{{synced && <article className="card import-commit" data-ui-surface="provider-sync"><h3>Last sync</h3><p>Status: <b>{{synced.status}}</b> · Created <b>{{synced.created_count}}</b> · Updated <b>{{synced.updated_count}}</b> · Skipped <b>{{synced.skipped_count}}</b> · Errors <b>{{synced.error_count}}</b></p></article>}}<article className="card import-runs" data-ui-surface="provider-runs"><h3>Recent provider/import runs</h3>{{runs.length === 0 ? <EmptyState text="No provider syncs yet." /> : <ul>{{runs.slice(0, 10).map((run) => <li key={{run.id}}><b>{{run.import_id}}</b> · {{run.format}} · {{run.status}} · created {{run.created_count}} · updated {{run.updated_count}} · errors {{run.error_count}}{{run.error_summary ? ` — ${{run.error_summary}}` : ''}}</li>)}}</ul>}}</article></section>; }}
 
-function ImportPanel({{ reload }}: {{ reload: () => Promise<void> }}) {{ const [selectedId, setSelectedId] = useState<string>(model.imports[0]?.id || ''); const config = model.imports.find((item) => item.id === selectedId) || model.imports[0]; const [format, setFormat] = useState<string>(config?.formats[0] || 'csv'); const [data, setData] = useState<string>(''); const [preview, setPreview] = useState<ImportPreview | null>(null); const [committed, setCommitted] = useState<ImportCommit | null>(null); const [runs, setRuns] = useState<ImportRun[]>([]); const [error, setError] = useState<string>(''); async function loadRuns() {{ const response = await fetch(`${{API}}/imports/runs`); if (response.ok) setRuns(await response.json()); }} useEffect(() => {{ void loadRuns(); }}, []); useEffect(() => {{ setPreview(null); setCommitted(null); setError(''); setFormat(config?.formats[0] || 'csv'); }}, [selectedId]); useEffect(() => {{ setPreview(null); setCommitted(null); }}, [data, format]); async function callEndpoint(path: string): Promise<unknown> {{ const response = await fetch(`${{API}}/imports/${{config.id}}/${{path}}`, {{ method: 'POST', headers: {{ 'Content-Type': 'application/json' }}, body: JSON.stringify({{ format, data }}) }}); if (!response.ok) {{ const detail = await response.json().catch(() => ({{}})); throw new Error((detail && detail.detail) || `${{path}} failed`); }} return response.json(); }} async function runPreview() {{ try {{ setError(''); const result = (await callEndpoint('preview')) as ImportPreview; setPreview(result); setCommitted(null); }} catch (caught) {{ setError((caught as Error).message); }} }} async function runCommit() {{ try {{ setError(''); const result = (await callEndpoint('commit')) as ImportCommit; setCommitted(result); await loadRuns(); await reload(); }} catch (caught) {{ setError((caught as Error).message); }} }} if (!config) return <section className="content"><h2>No imports configured</h2></section>; const previewValid = !!preview && preview.invalid_rows === 0; return <section className="content import-panel" data-ui-surface="import-panel"><section className="hero"><div><p className="eyebrow">{{model.ui.dashboard.title}}</p><h2>Imports</h2><p>Paste CSV or JSON to preview, validate, and commit records.</p></div><strong>{{runs.length}} {{runs.length === 1 ? 'run' : 'runs'}}</strong></section><div className="card import-controls"><label>Import config<select value={{config.id}} onChange={{(event) => setSelectedId(event.target.value)}} data-ui-control="import-select">{{model.imports.map((item) => <option key={{item.id}} value={{item.id}}>{{item.label}}</option>)}}</select></label><label>Format<select value={{format}} onChange={{(event) => setFormat(event.target.value)}} data-ui-control="import-format">{{config.formats.map((fmt) => <option key={{fmt}} value={{fmt}}>{{fmt.toUpperCase()}}</option>)}}</select></label><label className="import-data-label">Data ({{format.toUpperCase()}})<textarea value={{data}} onChange={{(event) => setData(event.target.value)}} placeholder={{format === 'csv' ? 'paste CSV here (with header row)' : 'paste JSON array or {{ "records": [...] }}'}} data-ui-control="import-data" rows={{8}} /></label><div className="import-buttons"><button type="button" onClick={{runPreview}} data-ui-action="import-preview" disabled={{!data.trim()}}>Preview</button><button type="button" onClick={{runCommit}} data-ui-action="import-commit" disabled={{!previewValid}}>Commit import</button></div>{{error && <p className="import-error" data-ui-state="error">{{error}}</p>}}</div>{{preview && <article className="card import-preview" data-ui-surface="import-preview"><h3>Preview</h3><p><b>{{preview.total_rows}}</b> rows · <b>{{preview.valid_rows}}</b> valid · <b>{{preview.invalid_rows}}</b> invalid · would create <b>{{preview.would_create}}</b>, update <b>{{preview.would_update}}</b></p><p><small>Mapped fields: {{preview.mapped_fields.join(', ') || 'none'}}</small></p>{{preview.errors.length > 0 && <ul className="import-errors">{{preview.errors.slice(0, 10).map((err) => <li key={{err.row}}>Row {{err.row}}: {{err.errors.join(', ')}}</li>)}}</ul>}}</article>}}{{committed && <article className="card import-commit" data-ui-surface="import-commit"><h3>Last commit</h3><p>Status: <b>{{committed.status}}</b> · Created <b>{{committed.created_count}}</b> · Updated <b>{{committed.updated_count}}</b> · Skipped <b>{{committed.skipped_count}}</b> · Errors <b>{{committed.error_count}}</b></p>{{committed.status === 'rejected' && committed.errors.length > 0 && <ul className="import-errors">{{committed.errors.slice(0, 10).map((err) => <li key={{err.row}}>Row {{err.row}}: {{err.errors.join(', ')}}</li>)}}</ul>}}</article>}}<article className="card import-runs" data-ui-surface="import-runs"><h3>Recent import runs</h3>{{runs.length === 0 ? <EmptyState text="No imports yet — preview and commit one to record a run." /> : <ul>{{runs.slice(0, 10).map((run) => <li key={{run.id}}><b>{{run.import_id}}</b> · {{run.format}} · {{run.status}} · created {{run.created_count}} · updated {{run.updated_count}} · errors {{run.error_count}}{{run.error_summary ? ` — ${{run.error_summary}}` : ''}}</li>)}}</ul>}}</article></section>; }}
+function ImportPanel({{ reload }}: {{ reload: () => Promise<void> }}) {{ const [selectedId, setSelectedId] = useState<string>(model.imports[0]?.id || ''); const config = model.imports.find((item) => item.id === selectedId) || model.imports[0]; const [format, setFormat] = useState<string>(config?.formats[0] || 'csv'); const [data, setData] = useState<string>(''); const [preview, setPreview] = useState<ImportPreview | null>(null); const [committed, setCommitted] = useState<ImportCommit | null>(null); const [runs, setRuns] = useState<ImportRun[]>([]); const [error, setError] = useState<string>(''); async function loadRuns() {{ const response = await fetch(`${{API}}/imports/runs`); if (response.ok) setRuns(await response.json()); }} useEffect(() => {{ void loadRuns(); }}, []); useEffect(() => {{ setPreview(null); setCommitted(null); setError(''); setFormat(config?.formats[0] || 'csv'); }}, [selectedId]); useEffect(() => {{ setPreview(null); setCommitted(null); }}, [data, format]); async function callEndpoint(path: string): Promise<unknown> {{ const response = await fetch(`${{API}}/imports/${{config.id}}/${{path}}`, {{ method: 'POST', headers: {{ 'Content-Type': 'application/json' }}, body: JSON.stringify({{ format, data }}) }}); if (!response.ok) {{ const detail = await response.json().catch(() => ({{}})); throw new Error((detail && detail.detail) || `${{path}} failed`); }} return response.json(); }} async function runPreview() {{ try {{ setError(''); const result = (await callEndpoint('preview')) as ImportPreview; setPreview(result); setCommitted(null); }} catch (caught) {{ setError((caught as Error).message); }} }} async function runCommit() {{ try {{ setError(''); const result = (await callEndpoint('commit')) as ImportCommit; setCommitted(result); await loadRuns(); await reload(); }} catch (caught) {{ setError((caught as Error).message); }} }} if (!config) return <section className="content"><h2>No imports configured</h2></section>; const previewValid = !!preview && preview.invalid_rows === 0; const relationFields = relationFieldsForImport(config); return <section className="content import-panel" data-ui-surface="import-panel"><section className="hero"><div><p className="eyebrow">{{model.ui.dashboard.title}}</p><h2>Imports</h2><p>Paste CSV or JSON to preview, validate, and commit records.</p></div><strong>{{runs.length}} {{runs.length === 1 ? 'run' : 'runs'}}</strong></section>{{relationFields.length > 0 && <article className="card import-relation-help" data-ui-surface="import-relation-help"><h3>Relation columns</h3><p>Relation columns can use either IDs or related record names. Related records must already exist; ambiguous or missing names are rejected.</p><ul>{{relationFields.map((item) => <li key={{item.field.name}}><b>{{item.field.label}}</b> → {{item.target?.labelSingular || item.field.targetEntity}}. Accepted columns: {{item.aliases.join(', ')}}.</li>)}}</ul></article>}}<div className="card import-controls"><label>Import config<select value={{config.id}} onChange={{(event) => setSelectedId(event.target.value)}} data-ui-control="import-select">{{model.imports.map((item) => <option key={{item.id}} value={{item.id}}>{{item.label}}</option>)}}</select></label><label>Format<select value={{format}} onChange={{(event) => setFormat(event.target.value)}} data-ui-control="import-format">{{config.formats.map((fmt) => <option key={{fmt}} value={{fmt}}>{{fmt.toUpperCase()}}</option>)}}</select></label><label className="import-data-label">Data ({{format.toUpperCase()}})<textarea value={{data}} onChange={{(event) => setData(event.target.value)}} placeholder={{format === 'csv' ? 'paste CSV here (with header row)' : 'paste JSON array or {{ "records": [...] }}'}} data-ui-control="import-data" rows={{8}} /></label><div className="import-buttons"><button type="button" onClick={{runPreview}} data-ui-action="import-preview" disabled={{!data.trim()}}>Preview</button><button type="button" onClick={{runCommit}} data-ui-action="import-commit" disabled={{!previewValid}}>Commit import</button></div>{{error && <p className="import-error" data-ui-state="error">{{error}}</p>}}</div>{{preview && <article className="card import-preview" data-ui-surface="import-preview"><h3>Preview</h3><p><b>{{preview.total_rows}}</b> rows · <b>{{preview.valid_rows}}</b> valid · <b>{{preview.invalid_rows}}</b> invalid · would create <b>{{preview.would_create}}</b>, update <b>{{preview.would_update}}</b></p><p><small>Mapped fields: {{preview.mapped_fields.join(', ') || 'none'}}</small></p>{{preview.errors.length > 0 && <ul className="import-errors">{{preview.errors.slice(0, 10).map((err) => <li key={{err.row}}>Row {{err.row}}: {{err.errors.join(', ')}}</li>)}}</ul>}}</article>}}{{committed && <article className="card import-commit" data-ui-surface="import-commit"><h3>Last commit</h3><p>Status: <b>{{committed.status}}</b> · Created <b>{{committed.created_count}}</b> · Updated <b>{{committed.updated_count}}</b> · Skipped <b>{{committed.skipped_count}}</b> · Errors <b>{{committed.error_count}}</b></p>{{committed.status === 'rejected' && committed.errors.length > 0 && <ul className="import-errors">{{committed.errors.slice(0, 10).map((err) => <li key={{err.row}}>Row {{err.row}}: {{err.errors.join(', ')}}</li>)}}</ul>}}</article>}}<article className="card import-runs" data-ui-surface="import-runs"><h3>Recent import runs</h3>{{runs.length === 0 ? <EmptyState text="No imports yet — preview and commit one to record a run." /> : <ul>{{runs.slice(0, 10).map((run) => <li key={{run.id}}><b>{{run.import_id}}</b> · {{run.format}} · {{run.status}} · created {{run.created_count}} · updated {{run.updated_count}} · errors {{run.error_count}}{{run.error_summary ? ` — ${{run.error_summary}}` : ''}}</li>)}}</ul>}}</article></section>; }}
 '''
 
 
@@ -1228,6 +1307,36 @@ def _makefile() -> str:
     ''')
 
 
+def _relation_import_examples(pack: DomainPack) -> str:
+    if not pack.model:
+        return ""
+    entities = {entity.name: entity for entity in pack.model.entities}
+    import_by_entity = {spec.entity: spec for spec in pack.model.imports}
+    lines: list[str] = []
+    for spec in pack.model.imports:
+        entity = entities.get(spec.entity)
+        if not entity:
+            continue
+        relation_fields = [field for field in entity.fields if field.type == "relation"]
+        for field in relation_fields:
+            target = entities.get(field.target_entity)
+            if not target:
+                continue
+            target_import = import_by_entity.get(target.name)
+            label_alias = field.name[:-3] if field.name.endswith("_id") else _label(field).lower().replace(" ", "_")
+            display_field = (pack.model.ui.entities.get(target.name).display.title_field if target.name in pack.model.ui.entities else "") or next((candidate for candidate in ["name", "title", "label", "summary"] if any(item.name == candidate for item in target.fields)), "id")
+            prefix = f"First import {target.label_plural}"
+            if target_import:
+                prefix += f" with `{target_import.id}`"
+            lines.append(f"- {prefix}, then import {entity.label_plural} with `{label_alias}` containing the related {target.label_singular} `{display_field}` value, or `{field.name}` containing the related id.")
+    if not lines:
+        return ""
+    return """
+        ### Relation import examples
+
+        """ + "\n".join(lines) + "\n"
+
+
 def _readme(pack: DomainPack) -> str:
     provider_doc = ""
     if pack.model and pack.model.providers:
@@ -1253,6 +1362,7 @@ def _readme(pack: DomainPack) -> str:
 
         `GITHUB_REPO` must use `owner/repo` format. Secret values are never shown in the UI. Default generated backend tests use mocked provider responses and do not require a live GitHub token or network access.
         """
+    relation_examples = _relation_import_examples(pack)
     return textwrap.dedent(f'''
         # {pack.display_name}
 
@@ -1295,8 +1405,9 @@ def _readme(pack: DomainPack) -> str:
         - **JSON format**: either an array of objects (`[{{...}}, {{...}}]`) or an object with a `records`, `items`, or `data` array (`{{"records": [{{...}}]}}`).
         - **Upsert**: when an import config sets `upsert_key`, commits update an existing record whose `upsert_key` value matches; otherwise they insert.
         - **Commit semantics**: any invalid row rejects the entire commit and persists a `rejected` import run — fix the data and retry. Valid commits create/update records and persist an `ok` run.
-        - **Relation fields**: in v0 you must supply the integer id of an existing related record (e.g. `client_id: 1`). Relation-by-label resolution is deferred.
+        - **Relation fields**: supply either the integer id of an existing related record (e.g. `client_id: 1`) or a related record label/name using a safe alias column such as `client` or `vendor`. Related records must already exist; ambiguous or missing labels are rejected.
 
+        {relation_examples}
         Each commit and rejection is logged via `GET /imports/runs`.
 
         {provider_doc}
