@@ -83,4 +83,7 @@ def validate_blueprint_result(
     )
 
 
-__all__ = ["Planner", "PlannerResult", "validate_blueprint_result"]
+from agentforge.planner.assistant import AssistantState, BuilderAssistant
+
+
+__all__ = ["AssistantState", "BuilderAssistant", "Planner", "PlannerResult", "validate_blueprint_result"]

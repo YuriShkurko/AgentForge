@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from agentforge.planner import PlannerResult, validate_blueprint_result
+from agentforge.planner.assistant import BuilderAssistant
 from agentforge.planner.scripted import ScriptedPlanner
 
 
@@ -17,6 +18,7 @@ class PlannerServer(ThreadingHTTPServer):
     def __init__(self, server_address: tuple[str, int], builder_dir: Path):
         self.builder_dir = builder_dir
         self.planner = ScriptedPlanner()
+        self.assistant = BuilderAssistant()
         super().__init__(server_address, PlannerRequestHandler)
 
 
@@ -57,22 +59,38 @@ class PlannerRequestHandler(SimpleHTTPRequestHandler):
                     str(payload.get("idea") or ""),
                     _string_map(payload.get("prior_answers")),
                 )
+                self._write_planner_result(result)
             elif self.path == "/api/planner/clarify":
                 result = self.server.planner.clarify(str(payload.get("idea") or ""))
+                self._write_planner_result(result)
             elif self.path == "/api/planner/refine":
                 result = self.server.planner.refine(
                     payload.get("blueprint") if isinstance(payload.get("blueprint"), dict) else {},
                     str(payload.get("instruction") or ""),
                 )
+                self._write_planner_result(result)
             elif self.path == "/api/planner/validate":
                 result = validate_blueprint_result(
                     payload.get("blueprint") if isinstance(payload.get("blueprint"), dict) else None,
                     path=str(payload.get("path") or "./domain-packs/draft/domain-pack.yaml"),
                 )
+                self._write_planner_result(result)
+            elif self.path == "/api/planner/assistant/start":
+                self._write_json(self.server.assistant.start(
+                    str(payload.get("idea") or ""),
+                    _optional_dict(payload.get("current_blueprint")),
+                ))
+            elif self.path == "/api/planner/assistant/message":
+                self._write_json(self.server.assistant.message(
+                    _optional_dict(payload.get("state")),
+                    str(payload.get("message") or ""),
+                    _optional_dict(payload.get("current_blueprint")),
+                ))
+            elif self.path == "/api/planner/assistant/apply-preview":
+                self._write_json(self.server.assistant.apply_preview(_optional_dict(payload.get("proposal"))))
             else:
                 self._write_json({"error": "unknown planner endpoint"}, HTTPStatus.NOT_FOUND)
                 return
-            self._write_planner_result(result)
         except Exception as exc:
             self._write_planner_result(PlannerResult(status="error", errors=[str(exc)]), HTTPStatus.BAD_REQUEST)
 
@@ -103,6 +121,10 @@ def _string_map(value: Any) -> dict[str, str] | None:
     if not isinstance(value, dict):
         return None
     return {str(key): str(item) for key, item in value.items() if str(item).strip()}
+
+
+def _optional_dict(value: Any) -> dict[str, Any] | None:
+    return value if isinstance(value, dict) else None
 
 
 def serve_builder(host: str = "127.0.0.1", port: int = 8765, builder_dir: Path | None = None) -> None:

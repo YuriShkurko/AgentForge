@@ -1,0 +1,363 @@
+"""Deterministic Builder Assistant state machine.
+
+The assistant is deliberately local, stateless between HTTP requests, and side-effect
+free. Clients send the returned ``state`` back on the next turn; the server never
+persists conversation data or writes blueprint files.
+"""
+from __future__ import annotations
+
+import re
+from copy import deepcopy
+from dataclasses import dataclass, field
+from typing import Any
+
+from agentforge.blueprints import create_starter_blueprint, sanitize_pack_name
+from agentforge.planner import validate_blueprint_result
+
+
+_ASSISTANT_QUESTIONS = [
+    "What entities should the app manage?",
+    "What fields matter for each entity?",
+    "What workflow action should users take on those records?",
+]
+
+_STOP_WORDS = {
+    "a", "an", "app", "application", "and", "build", "builder", "for", "make", "me", "of", "the", "to", "tool", "with",
+}
+
+
+@dataclass
+class AssistantState:
+    """Client-carried state for a deterministic assistant conversation."""
+
+    status: str = "idle"
+    idea: str = ""
+    answers: list[str] = field(default_factory=list)
+    questions: list[str] = field(default_factory=list)
+    proposal: dict[str, Any] | None = None
+    errors: list[str] = field(default_factory=list)
+
+    @classmethod
+    def from_payload(cls, value: Any) -> "AssistantState":
+        if not isinstance(value, dict):
+            return cls()
+        return cls(
+            status=str(value.get("status") or "idle"),
+            idea=str(value.get("idea") or ""),
+            answers=[str(item) for item in value.get("answers") or [] if str(item).strip()],
+            questions=[str(item) for item in value.get("questions") or [] if str(item).strip()],
+            proposal=value.get("proposal") if isinstance(value.get("proposal"), dict) else None,
+            errors=[str(item) for item in value.get("errors") or [] if str(item).strip()],
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "status": self.status,
+            "idea": self.idea,
+            "answers": self.answers,
+            "questions": self.questions,
+            "proposal": self.proposal,
+            "errors": self.errors,
+        }
+
+
+class BuilderAssistant:
+    """Local scripted assistant for model-driven Blueprint proposals."""
+
+    mode = "scripted"
+    live_provider = False
+
+    def start(self, idea: str, current_blueprint: dict[str, Any] | None = None) -> dict[str, Any]:
+        """Start a conversation from a plain-English app idea."""
+        clean_idea = str(idea or "").strip()
+        if not clean_idea:
+            state = AssistantState(status="needs_clarification", idea="", questions=[_ASSISTANT_QUESTIONS[0]])
+            return self._response(
+                state,
+                messages=["Tell me what kind of model-driven app you want to build."],
+            )
+        state = AssistantState(status="collecting", idea=clean_idea)
+        return self._advance(state, current_blueprint=current_blueprint)
+
+    def message(
+        self,
+        state_payload: dict[str, Any] | None,
+        message: str,
+        current_blueprint: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Advance a conversation with the user's next answer."""
+        state = AssistantState.from_payload(state_payload)
+        text = str(message or "").strip()
+        if not state.idea and text:
+            state.idea = text
+        elif text:
+            state.answers.append(text)
+        if not text:
+            state.status = "needs_clarification"
+            state.questions = ["Please answer the last question so I can propose a safe Blueprint change."]
+            return self._response(state, messages=["I need a little more detail before proposing changes."])
+        return self._advance(state, current_blueprint=current_blueprint)
+
+    def apply_preview(self, proposal: dict[str, Any] | None) -> dict[str, Any]:
+        """Validate a proposal before the Builder applies it in memory."""
+        if not isinstance(proposal, dict) or not isinstance(proposal.get("blueprint"), dict):
+            return {
+                "status": "error",
+                "apply_ready": False,
+                "errors": ["assistant proposal must include a blueprint object"],
+            }
+        result = validate_blueprint_result(proposal["blueprint"])
+        return {
+            "status": "apply_ready" if result.status == "draft" else "validation_error",
+            "apply_ready": result.status == "draft",
+            "proposal": proposal,
+            "validation": result.to_dict(),
+            "errors": result.errors,
+        }
+
+    def _advance(self, state: AssistantState, current_blueprint: dict[str, Any] | None) -> dict[str, Any]:
+        combined = _combined_text(state.idea, state.answers)
+        missing = _missing_requirements(combined)
+        if missing and len(state.answers) < 2:
+            state.status = "needs_clarification"
+            state.questions = missing
+            return self._response(
+                state,
+                messages=[_summary_message(combined), "I can propose a model-driven Blueprint after these details."],
+            )
+
+        proposal = self._build_proposal(combined, current_blueprint=current_blueprint)
+        state.status = proposal["status"]
+        state.questions = []
+        state.proposal = proposal if proposal["status"] == "proposed" else None
+        state.errors = proposal.get("errors", [])
+        if proposal["status"] != "proposed":
+            return self._response(state, messages=["I could not produce a valid Blueprint proposal yet."], proposal=None)
+        return self._response(
+            state,
+            messages=[_summary_message(combined), "I drafted a validated model-driven Blueprint proposal for review."],
+            proposal=proposal,
+        )
+
+    def _build_proposal(self, text: str, current_blueprint: dict[str, Any] | None) -> dict[str, Any]:
+        blueprint = _model_blueprint_from_text(text)
+        validation = validate_blueprint_result(
+            blueprint,
+            assumptions=["Builder Assistant phase 1 uses deterministic local heuristics only."],
+            warnings=["Review the proposed Blueprint diff before applying it to the in-memory Builder draft."],
+        )
+        if validation.status != "draft":
+            return {"status": "validation_error", "errors": validation.errors, "validation": validation.to_dict()}
+        changes = _changes(current_blueprint if isinstance(current_blueprint, dict) else None, blueprint)
+        return {
+            "status": "proposed",
+            "summary": f"Create a model-driven app with {len(blueprint['model']['entities'])} entity/relationship model.",
+            "changes": changes,
+            "blueprint": blueprint,
+            "yaml": validation.yaml,
+            "validation": validation.to_dict(),
+            "apply_ready": True,
+        }
+
+    @staticmethod
+    def _response(
+        state: AssistantState,
+        *,
+        messages: list[str],
+        proposal: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        return {
+            "mode": "scripted",
+            "live_provider": False,
+            "status": state.status,
+            "messages": messages,
+            "questions": state.questions,
+            "state": state.to_dict(),
+            "proposal": proposal,
+            "errors": state.errors,
+        }
+
+
+def _combined_text(idea: str, answers: list[str]) -> str:
+    return " ".join([idea, *answers]).strip()
+
+
+def _missing_requirements(text: str) -> list[str]:
+    compact = text.lower().strip()
+    if compact in {"", "app", "build app", "build me an app", "make an app", "tool"}:
+        return list(_ASSISTANT_QUESTIONS)
+    questions: list[str] = []
+    if not any(word in compact for word in ["ticket", "client", "task", "vendor", "risk", "issue", "lead", "candidate", "project"]):
+        questions.append(_ASSISTANT_QUESTIONS[0])
+    if not any(word in compact for word in ["status", "priority", "owner", "due", "date", "email", "severity", "notes", "title"]):
+        questions.append(_ASSISTANT_QUESTIONS[1])
+    if not any(word in compact for word in ["track", "review", "triage", "approve", "close", "complete", "onboard", "manage"]):
+        questions.append(_ASSISTANT_QUESTIONS[2])
+    return questions[:3]
+
+
+def _model_blueprint_from_text(text: str) -> dict[str, Any]:
+    spec = _infer_model_spec(text)
+    name = sanitize_pack_name(" ".join(_keywords(text)[:4]) or f"{spec['primary']}-workspace")
+    display = name.replace("-", " ").title()
+    blueprint = create_starter_blueprint(
+        name,
+        display_name=display,
+        description=f"{text.strip().rstrip('.')}. Drafted by the deterministic Builder Assistant.",
+        target_user=_target_user(text),
+        archetype="model_driven_app",
+        optional_modules=[],
+        workspace_enabled=False,
+        fixture_provider_enabled=True,
+    )
+    blueprint["model"] = spec["model"]
+    blueprint["compatibility_gaps"] = []
+    blueprint["future_extensions"] = {"features": ["assistant_refinement", "provider_imports"]}
+    return blueprint
+
+
+def _infer_model_spec(text: str) -> dict[str, Any]:
+    compact = text.lower()
+    if any(word in compact for word in ["client", "onboarding", "onboard"]):
+        return _client_onboarding_model()
+    if any(word in compact for word in ["vendor", "risk", "finding"]):
+        return _vendor_risk_model()
+    if any(word in compact for word in ["issue", "ticket", "support"]):
+        return _ticket_model()
+    return _task_model()
+
+
+def _ticket_model() -> dict[str, Any]:
+    return {
+        "primary": "ticket",
+        "model": {
+            "entities": [
+                {
+                    "name": "ticket",
+                    "label_singular": "Ticket",
+                    "label_plural": "Tickets",
+                    "fields": [
+                        {"name": "title", "label": "Title", "type": "string", "required": True, "semantic": "title"},
+                        {"name": "status", "label": "Status", "type": "enum", "required": True, "enum_values": ["open", "triage", "closed"], "semantic": "status"},
+                        {"name": "priority", "label": "Priority", "type": "enum", "enum_values": ["low", "medium", "high"], "semantic": "priority"},
+                        {"name": "owner", "label": "Owner", "type": "string", "semantic": "owner"},
+                        {"name": "notes", "label": "Notes", "type": "text", "semantic": "description"},
+                    ],
+                }
+            ],
+            "pages": [{"name": "dashboard", "type": "dashboard", "title": "Dashboard"}, {"name": "tickets", "type": "entity_list", "entity": "ticket", "title": "Tickets"}],
+            "actions": [{"name": "close_ticket", "label": "Close ticket", "type": "update_status", "entity": "ticket", "field": "status", "value": "closed"}],
+            "seed_data": {"ticket": [{"title": "Example support issue", "status": "open", "priority": "high", "owner": "Support", "notes": "Triage the reported issue."}]},
+            "ui": _board_ui("ticket", group_by="status", title_field="title", badge_field="priority"),
+        },
+    }
+
+
+def _client_onboarding_model() -> dict[str, Any]:
+    return {
+        "primary": "onboarding_task",
+        "model": {
+            "entities": [
+                {"name": "client", "label_singular": "Client", "label_plural": "Clients", "fields": [{"name": "name", "label": "Name", "type": "string", "required": True, "semantic": "title"}, {"name": "owner", "label": "Owner", "type": "string", "semantic": "owner"}]},
+                {"name": "onboarding_task", "label_singular": "Onboarding Task", "label_plural": "Onboarding Tasks", "fields": [{"name": "title", "label": "Title", "type": "string", "required": True, "semantic": "title"}, {"name": "status", "label": "Status", "type": "enum", "required": True, "enum_values": ["todo", "doing", "done"], "semantic": "status"}, {"name": "due_date", "label": "Due Date", "type": "date", "semantic": "due_date"}, {"name": "client_id", "label": "Client", "type": "relation", "target_entity": "client"}]},
+            ],
+            "pages": [{"name": "dashboard", "type": "dashboard", "title": "Dashboard"}, {"name": "clients", "type": "entity_list", "entity": "client", "title": "Clients"}, {"name": "tasks", "type": "entity_list", "entity": "onboarding_task", "title": "Tasks"}],
+            "actions": [{"name": "complete_task", "label": "Complete task", "type": "update_status", "entity": "onboarding_task", "field": "status", "value": "done"}],
+            "seed_data": {"client": [{"name": "Acme Co", "owner": "Taylor"}], "onboarding_task": [{"title": "Collect launch checklist", "status": "todo", "due_date": "2026-06-01"}]},
+            "ui": _board_ui("onboarding_task", secondary_entity="client", group_by="status", title_field="title", badge_field="due_date"),
+        },
+    }
+
+
+def _vendor_risk_model() -> dict[str, Any]:
+    return {
+        "primary": "risk_finding",
+        "model": {
+            "entities": [
+                {"name": "vendor", "label_singular": "Vendor", "label_plural": "Vendors", "fields": [{"name": "name", "label": "Name", "type": "string", "required": True, "semantic": "title"}, {"name": "owner", "label": "Owner", "type": "string", "semantic": "owner"}]},
+                {"name": "risk_finding", "label_singular": "Risk Finding", "label_plural": "Risk Findings", "fields": [{"name": "title", "label": "Title", "type": "string", "required": True, "semantic": "title"}, {"name": "severity", "label": "Severity", "type": "enum", "required": True, "enum_values": ["low", "medium", "high", "critical"], "semantic": "severity"}, {"name": "status", "label": "Status", "type": "enum", "required": True, "enum_values": ["open", "review", "resolved"], "semantic": "status"}, {"name": "vendor_id", "label": "Vendor", "type": "relation", "target_entity": "vendor"}]},
+            ],
+            "pages": [{"name": "dashboard", "type": "dashboard", "title": "Dashboard"}, {"name": "vendors", "type": "entity_list", "entity": "vendor", "title": "Vendors"}, {"name": "findings", "type": "entity_list", "entity": "risk_finding", "title": "Risk Findings"}],
+            "actions": [{"name": "resolve_finding", "label": "Resolve finding", "type": "update_status", "entity": "risk_finding", "field": "status", "value": "resolved"}],
+            "seed_data": {"vendor": [{"name": "Example Vendor", "owner": "Risk Team"}], "risk_finding": [{"title": "Missing review evidence", "severity": "high", "status": "open"}]},
+            "ui": _register_ui("risk_finding", secondary_entity="vendor", title_field="title", badge_field="severity"),
+        },
+    }
+
+
+def _task_model() -> dict[str, Any]:
+    return {
+        "primary": "task",
+        "model": {
+            "entities": [{"name": "task", "label_singular": "Task", "label_plural": "Tasks", "fields": [{"name": "title", "label": "Title", "type": "string", "required": True, "semantic": "title"}, {"name": "status", "label": "Status", "type": "enum", "required": True, "enum_values": ["todo", "doing", "done"], "semantic": "status"}, {"name": "owner", "label": "Owner", "type": "string", "semantic": "owner"}, {"name": "due_date", "label": "Due Date", "type": "date", "semantic": "due_date"}]}],
+            "pages": [{"name": "dashboard", "type": "dashboard", "title": "Dashboard"}, {"name": "tasks", "type": "entity_list", "entity": "task", "title": "Tasks"}],
+            "actions": [{"name": "complete_task", "label": "Complete task", "type": "update_status", "entity": "task", "field": "status", "value": "done"}],
+            "seed_data": {"task": [{"title": "Example task", "status": "todo", "owner": "Owner", "due_date": "2026-06-01"}]},
+            "ui": _board_ui("task", group_by="status", title_field="title", badge_field="owner"),
+        },
+    }
+
+
+def _board_ui(primary_entity: str, *, secondary_entity: str = "", group_by: str, title_field: str, badge_field: str) -> dict[str, Any]:
+    focus = {"primary_entity": primary_entity, "group_by": group_by, "title_field": title_field, "badge_field": badge_field}
+    if secondary_entity:
+        focus["secondary_entity"] = secondary_entity
+    return {
+        "composition": "board_workspace",
+        "recipe": "workspace_board",
+        "style": {"accent": "emerald", "density": "comfortable", "layout": "workspace"},
+        "focus": focus,
+        "entities": {primary_entity: {"display": {"layout": "board_by_status", "title_field": title_field, "badge_field": badge_field}}},
+        "dashboard": {"title": "Dashboard", "primary_entity": primary_entity, "cards": [{"type": "count", "entity": primary_entity, "label": "Total records"}, {"type": "enum_breakdown", "entity": primary_entity, "field": group_by, "label": "By status"}]},
+    }
+
+
+def _register_ui(primary_entity: str, *, secondary_entity: str = "", title_field: str, badge_field: str) -> dict[str, Any]:
+    focus = {"primary_entity": primary_entity, "title_field": title_field, "badge_field": badge_field}
+    if secondary_entity:
+        focus["secondary_entity"] = secondary_entity
+    return {
+        "composition": "register_table",
+        "recipe": "executive_register",
+        "style": {"accent": "amber", "density": "comfortable", "layout": "workspace"},
+        "focus": focus,
+        "entities": {primary_entity: {"display": {"layout": "table", "title_field": title_field, "badge_field": badge_field}}},
+        "dashboard": {"title": "Dashboard", "primary_entity": primary_entity, "cards": [{"type": "count", "entity": primary_entity, "label": "Total records"}]},
+    }
+
+
+def _target_user(text: str) -> str:
+    compact = text.lower()
+    if "support" in compact:
+        return "support operator"
+    if "risk" in compact or "vendor" in compact:
+        return "risk operator"
+    if "client" in compact:
+        return "customer success operator"
+    return "operator"
+
+
+def _keywords(text: str) -> list[str]:
+    words = [re.sub(r"[^a-z0-9]", "", word.lower()) for word in text.split()]
+    return [word for word in words if word and word not in _STOP_WORDS]
+
+
+def _summary_message(text: str) -> str:
+    compact = text.strip().rstrip(".")
+    return f"I understand you want: {compact}." if compact else "I need an app idea to continue."
+
+
+def _changes(current: dict[str, Any] | None, proposed: dict[str, Any]) -> list[dict[str, Any]]:
+    if current is None:
+        return [{"path": "/", "operation": "replace", "from": None, "to": "new validated model_driven_app Blueprint"}]
+    paths = ["name", "display_name", "domain", "app_archetype", "required_shell_modules", "optional_shell_modules", "model"]
+    changes: list[dict[str, Any]] = []
+    for path in paths:
+        before = current.get(path)
+        after = proposed.get(path)
+        if before != after:
+            changes.append({"path": f"/{path}", "operation": "replace", "from": before, "to": after})
+    return changes
+
+
+__all__ = ["AssistantState", "BuilderAssistant"]
