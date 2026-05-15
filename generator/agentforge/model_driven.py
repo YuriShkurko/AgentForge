@@ -35,6 +35,7 @@ def _files(pack: DomainPack, model: ModelDrivenApp) -> dict[str, str]:
         "backend/app/imports.py": _backend_imports_module(model),
         "backend/app/main.py": _backend_main(pack, model),
         "backend/tests/__init__.py": "",
+        "backend/tests/conftest.py": _backend_tests_conftest(),
         "backend/tests/test_model_driven_app.py": _backend_tests(model),
         "backend/requirements.txt": "fastapi==0.115.5\nuvicorn[standard]==0.32.1\nsqlalchemy==2.0.36\npydantic==2.10.3",
         "backend/requirements-dev.txt": "-r requirements.txt\npytest==8.3.4\nhttpx==0.28.0",
@@ -136,10 +137,12 @@ def _metadata(pack: DomainPack, model: ModelDrivenApp) -> dict[str, Any]:
 
 def _backend_database() -> str:
     return textwrap.dedent('''
+        import os
+
         from sqlalchemy import create_engine
         from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
-        DATABASE_URL = "sqlite:///./app.db"
+        DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite:///./app.db")
         engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
         SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
 
@@ -152,6 +155,26 @@ def _backend_database() -> str:
                 yield db
             finally:
                 db.close()
+    ''')
+
+
+def _backend_tests_conftest() -> str:
+    return textwrap.dedent('''
+        """Test isolation for the generated backend.
+
+        Each pytest session gets its own SQLite file so `make validate` is
+        repeatable: running tests does not pollute the development DB
+        (backend/app.db), and prior test runs do not leak state into the next
+        one. The DATABASE_URL override must happen before `app.database` is
+        imported, which is why this lives in the top-level test conftest.
+        """
+        import os
+        from pathlib import Path
+
+        _TEST_DB_PATH = Path(__file__).resolve().parent / "test_app.db"
+        os.environ["DATABASE_URL"] = f"sqlite:///{_TEST_DB_PATH.as_posix()}"
+        if _TEST_DB_PATH.exists():
+            _TEST_DB_PATH.unlink()
     ''')
 
 

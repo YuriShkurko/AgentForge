@@ -400,6 +400,35 @@ def test_generated_backend_test_covers_seed_idempotency(tmp_path):
     assert "first == second" in backend_test
 
 
+@pytest.mark.parametrize(
+    "pack_name",
+    ["client-onboarding-workspace", "vendor-risk-tracker", "github-issues-workspace"],
+)
+def test_generated_backend_database_honors_database_url_env(tmp_path, pack_name):
+    pack = load_pack(PACKS_DIR / pack_name / "domain-pack.yaml")
+    out = tmp_path / pack.name
+    generate(pack, out)
+    db_module = (out / "backend/app/database.py").read_text()
+    assert "import os" in db_module
+    assert 'os.environ.get("DATABASE_URL", "sqlite:///./app.db")' in db_module
+
+
+@pytest.mark.parametrize(
+    "pack_name",
+    ["client-onboarding-workspace", "vendor-risk-tracker", "github-issues-workspace"],
+)
+def test_generated_backend_tests_use_isolated_database(tmp_path, pack_name):
+    pack = load_pack(PACKS_DIR / pack_name / "domain-pack.yaml")
+    out = tmp_path / pack.name
+    generate(pack, out)
+    conftest_path = out / "backend/tests/conftest.py"
+    assert conftest_path.exists(), "generated backend must emit tests/conftest.py for isolation"
+    conftest = conftest_path.read_text()
+    assert 'os.environ["DATABASE_URL"]' in conftest
+    assert "test_app.db" in conftest
+    assert "_TEST_DB_PATH.unlink()" in conftest
+
+
 def test_app_exposes_active_entity_state(tmp_path):
     client = load_pack(PACKS_DIR / "client-onboarding-workspace" / "domain-pack.yaml")
     out = tmp_path / client.name
