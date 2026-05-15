@@ -58,6 +58,15 @@ const customizePanel = document.querySelector("#customize-panel");
 const customizeFamily = document.querySelector("#customize-family");
 const customizeFields = document.querySelector("#customize-fields");
 const resetCustomizationButton = document.querySelector("#reset-customization");
+const assistantPanel = document.querySelector("#assistant-panel");
+const assistantStatus = document.querySelector("#assistant-status");
+const assistantLog = document.querySelector("#assistant-log");
+const assistantQuestions = document.querySelector("#assistant-questions");
+const assistantProposal = document.querySelector("#assistant-proposal");
+const assistantForm = document.querySelector("#assistant-form");
+const assistantInput = document.querySelector("#assistant-input");
+const assistantSendButton = document.querySelector("#assistant-send");
+const assistantResetButton = document.querySelector("#assistant-reset");
 
 const plannerApi = window.location.protocol.startsWith("http") ? `${window.location.origin}/api/planner` : "http://127.0.0.1:8765/api/planner";
 let plannerAvailable = false;
@@ -70,6 +79,8 @@ let activeStep = "start";
 let customizationValues = null;
 let customizationDirty = false;
 let renderedCustomizationArchetype = "";
+let assistantSessionState = null;
+let assistantBusy = false;
 
 function state() {
   return {
@@ -342,6 +353,23 @@ async function checkPlannerStatus() {
     plannerAvailable = false;
     plannerStatus.textContent = "Static mode. Start `agentforge serve-builder` to enable scripted drafting.";
   }
+  updateAssistantAvailability();
+}
+
+function updateAssistantAvailability() {
+  if (!assistantPanel) return;
+  assistantPanel.dataset.state = plannerAvailable ? "ready" : "static";
+  if (plannerAvailable) {
+    assistantStatus.textContent = assistantSessionState
+      ? "Local assistant connected. Continue the conversation or reset to start over."
+      : "Local assistant connected. Send your app idea to start a scripted conversation.";
+    assistantSendButton.disabled = assistantBusy;
+    assistantInput.disabled = false;
+  } else {
+    assistantStatus.textContent = "Static mode. Start `agentforge serve-builder` to chat with the local scripted assistant.";
+    assistantSendButton.disabled = true;
+    assistantInput.disabled = true;
+  }
 }
 
 async function draftBlueprint() {
@@ -596,11 +624,117 @@ function downloadYaml() {
   URL.revokeObjectURL(url);
 }
 
+async function assistantRequest(action, payload) {
+  if (!plannerAvailable) throw new Error("Planner server is not running.");
+  const response = await fetch(`${plannerApi}/assistant/${action}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) throw new Error(`Assistant request failed with ${response.status}`);
+  return response.json();
+}
+
+function appendAssistantMessage(role, text) {
+  if (!assistantLog || !text) return;
+  const entry = document.createElement("div");
+  entry.className = `assistant-message assistant-message-${role}`;
+  const label = document.createElement("span");
+  label.className = "assistant-message-role";
+  label.textContent = role === "user" ? "You" : "Assistant";
+  const body = document.createElement("p");
+  body.className = "assistant-message-body";
+  body.textContent = text;
+  entry.appendChild(label);
+  entry.appendChild(body);
+  assistantLog.appendChild(entry);
+  assistantLog.scrollTop = assistantLog.scrollHeight;
+}
+
+function renderAssistantQuestions(questions) {
+  if (!assistantQuestions) return;
+  if (!questions || !questions.length) {
+    assistantQuestions.classList.add("hidden");
+    assistantQuestions.innerHTML = "";
+    return;
+  }
+  assistantQuestions.classList.remove("hidden");
+  assistantQuestions.innerHTML = `
+    <p class="assistant-questions-label">Open questions</p>
+    <ul>${questions.map((question) => `<li>${escapeHtml(question)}</li>`).join("")}</ul>
+  `;
+}
+
+function renderAssistantProposal(proposal) {
+  if (!assistantProposal) return;
+  if (!proposal || !proposal.blueprint) {
+    assistantProposal.classList.add("hidden");
+    assistantProposal.innerHTML = "";
+    return;
+  }
+  const changes = (proposal.changes || []).map((change) => `<li><code>${escapeHtml(change.path)}</code> · ${escapeHtml(change.operation)}</li>`).join("");
+  const archetype = proposal.blueprint.app_archetype || "model_driven_app";
+  const entities = (proposal.blueprint.model?.entities || []).map((entity) => escapeHtml(entity.name)).join(", ") || "(no entities)";
+  assistantProposal.classList.remove("hidden");
+  assistantProposal.innerHTML = `
+    <p class="eyebrow">Proposed Blueprint preview</p>
+    <p class="assistant-proposal-summary">${escapeHtml(proposal.summary || "Proposed model-driven Blueprint.")}</p>
+    <ul class="assistant-proposal-meta">
+      <li>App type: <strong>${escapeHtml(archetype)}</strong></li>
+      <li>Entities: <strong>${entities}</strong></li>
+      <li>Status: <strong>${escapeHtml(proposal.validation?.status || "draft")}</strong></li>
+    </ul>
+    ${changes ? `<details class="assistant-proposal-changes"><summary>Changed fields (${(proposal.changes || []).length})</summary><ul>${changes}</ul></details>` : ""}
+    <p class="assistant-proposal-note">Review only. The Builder draft above is unchanged. Apply/Reject controls arrive in a later phase.</p>
+  `;
+}
+
+function clearAssistantConversation() {
+  assistantSessionState = null;
+  if (assistantLog) assistantLog.innerHTML = "";
+  renderAssistantQuestions([]);
+  renderAssistantProposal(null);
+}
+
+function handleAssistantResponse(result) {
+  assistantSessionState = result.state || null;
+  (result.messages || []).forEach((message) => appendAssistantMessage("assistant", message));
+  renderAssistantQuestions(result.questions);
+  renderAssistantProposal(result.proposal);
+  if (result.errors && result.errors.length) {
+    appendAssistantMessage("assistant", result.errors.join(" "));
+  }
+}
+
+async function submitAssistantMessage() {
+  if (!plannerAvailable || assistantBusy) return;
+  const text = assistantInput.value.trim();
+  if (!text) return;
+  assistantBusy = true;
+  assistantSendButton.disabled = true;
+  appendAssistantMessage("user", text);
+  assistantInput.value = "";
+  try {
+    const result = assistantSessionState
+      ? await assistantRequest("message", { state: assistantSessionState, message: text })
+      : await assistantRequest("start", { idea: text });
+    handleAssistantResponse(result);
+    assistantStatus.textContent = "Local assistant connected. Continue the conversation or reset to start over.";
+  } catch (error) {
+    appendAssistantMessage("assistant", `Assistant error: ${error.message}`);
+  } finally {
+    assistantBusy = false;
+    if (plannerAvailable) assistantSendButton.disabled = false;
+    assistantInput.focus({ preventScroll: true });
+  }
+}
+
 renderArchetypes();
 renderEntryHelpers();
 renderModules();
 updatePreview();
 setActiveStep(activeStep);
+updateAssistantAvailability();
 checkPlannerStatus();
 
 form.archetype.addEventListener("change", () => {
@@ -644,4 +778,13 @@ ideaExamples.addEventListener("click", (event) => {
   if (!button) return;
   plannerIdea.value = button.dataset.idea;
   plannerIdea.focus({ preventScroll: true });
+});
+assistantForm?.addEventListener("submit", (event) => {
+  event.preventDefault();
+  submitAssistantMessage();
+});
+assistantResetButton?.addEventListener("click", () => {
+  clearAssistantConversation();
+  if (plannerAvailable) assistantStatus.textContent = "Local assistant connected. Send your app idea to start a scripted conversation.";
+  assistantInput.focus({ preventScroll: true });
 });

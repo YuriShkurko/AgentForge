@@ -76,6 +76,25 @@
                   <button id="submit-answers" type="button">Submit answers</button>
                 </div>
               </div>
+              <section class="assistant-panel" id="assistant-panel" aria-labelledby="assistant-heading" data-state="static">
+                <div class="section-head">
+                  <p class="eyebrow">Optional · scripted · local</p>
+                  <h3 id="assistant-heading">Chat with the Builder Assistant</h3>
+                  <p id="assistant-status" class="assistant-status">Static mode. Start `agentforge serve-builder` to enable the local scripted assistant.</p>
+                </div>
+                <div id="assistant-log" class="assistant-log" role="log" aria-live="polite" aria-label="Assistant conversation"></div>
+                <div id="assistant-questions" class="assistant-questions hidden" aria-label="Clarifying questions"></div>
+                <div id="assistant-proposal" class="assistant-proposal hidden" aria-label="Proposed Blueprint preview"></div>
+                <form id="assistant-form" class="assistant-form" autocomplete="off">
+                  <label class="assistant-input-label" for="assistant-input">Message the assistant</label>
+                  <textarea id="assistant-input" rows="2" placeholder="Describe what you want to build, or answer the assistant's last question."></textarea>
+                  <div class="actions">
+                    <button id="assistant-send" class="primary-button" type="submit" disabled>Send</button>
+                    <button id="assistant-reset" class="quiet-button" type="button">Reset chat</button>
+                  </div>
+                </form>
+                <p class="assistant-footnote">Assistant proposals are local and scripted. They are shown for review only and do not modify the Builder draft in this phase — Apply/Reject controls arrive in a later phase.</p>
+              </section>
             </section>
 
             <section id="review-flow" class="panel review-panel wizard-step" data-step="review" aria-labelledby="review-heading">

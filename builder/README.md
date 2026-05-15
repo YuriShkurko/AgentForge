@@ -14,6 +14,7 @@ Start → describe idea → review plan → generate locally with CLI
 
 - Static/manual mode: open `index.html` directly, edit the advanced fields if needed, review the generation preview, and copy or download the Blueprint Source YAML.
 - Scripted planner mode: run `agentforge serve-builder`, open the printed URL, then draft/refine/validate through the local Python planner.
+- Builder Assistant chat (optional, scripted): once the planner server is running, the Describe step shows an inline chat panel that talks to the deterministic local assistant (`/api/planner/assistant/*`). The chat is read-only with respect to the Builder draft — proposals are shown for review only, and Apply/Reject controls arrive in a later phase. The panel degrades gracefully when the planner is offline.
 
 ## Primary path: start from an app idea
 
