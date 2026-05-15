@@ -138,7 +138,7 @@ agentforge plan domain-packs/vendor-risk-tracker/domain-pack.yaml
 agentforge generate domain-packs/vendor-risk-tracker/domain-pack.yaml --output .tmp/vendor-risk-tracker --force
 ```
 
-Both examples use `app_archetype: model_driven_app` and the same generator path. They produce different FastAPI routes, SQLAlchemy/Pydantic models, React labels/pages/forms, enum values, workflow actions, seed records, dashboard cards, accent colors, entity layouts, bounded page compositions, and visual recipes from their `model` blocks. Client Onboarding uses a board/workspace composition with a workspace-board recipe; Vendor Risk uses a register/table composition with an executive-register recipe. This is bounded CRUD/workflow generation with controlled presentation hints, not arbitrary app generation, per-prompt UI design, provider integration, or visual builder support.
+Both examples use `app_archetype: model_driven_app` and the same generator path. They produce different FastAPI routes, SQLAlchemy/Pydantic models, React labels/pages/forms, enum values, workflow actions, seed records, dashboard cards, accent colors, entity layouts, bounded page compositions, and visual recipes from their `model` blocks. Client Onboarding uses a board/workspace composition with a workspace-board recipe; Vendor Risk uses a register/table composition with an executive-register recipe. This is bounded CRUD/workflow generation with controlled presentation hints, not arbitrary app generation, per-prompt UI design, arbitrary connector DSLs, or visual builder support. Provider Runtime v0 is a separate bounded model-driven option demonstrated below.
 
 Suggested validation:
 
@@ -146,6 +146,17 @@ Suggested validation:
 cd .tmp/client-onboarding-workspace
 make validate
 ```
+
+Provider Runtime v0 can be shown with the GitHub Issues Workspace example:
+
+```bash
+agentforge plan domain-packs/github-issues-workspace/domain-pack.yaml
+agentforge generate domain-packs/github-issues-workspace/domain-pack.yaml --output .tmp/github-issues-workspace --force
+cd .tmp/github-issues-workspace
+make validate
+```
+
+The Providers panel is read-only and reuses the generated import pipeline. Without environment variables it should show missing `GITHUB_TOKEN`/`GITHUB_REPO` status and still pass default validation because tests mock GitHub responses. With real env vars, `GITHUB_REPO` must be `owner/repo`. v0 has no OAuth, no write-back, no repo mutation, no provider marketplace, no arbitrary connector DSL, and no live network requirement for default validation.
 
 Suggested screenshot flow:
 

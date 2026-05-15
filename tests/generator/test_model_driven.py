@@ -846,3 +846,131 @@ def test_client_onboarding_import_creates_clients(generated_client_client):
     assert body["created_count"] == 1
     listing = generated_client_client.get("/client").json()
     assert any(row["name"] == "Northstar" and row["tier"] == "enterprise" for row in listing)
+
+
+# --------------------------------------------------------------------------- #
+# Provider Runtime v0 — schema, generation, and generated backend
+# --------------------------------------------------------------------------- #
+
+
+def _pack_with_provider(replace_providers=None, replace_imports=None):
+    data = _pack_with_imports(replace_imports=replace_imports)
+    data["model"]["providers"] = replace_providers if replace_providers is not None else [
+        {
+            "id": "github_issues",
+            "label": "GitHub Issues",
+            "type": "github_issues",
+            "mode": "read_only",
+            "target_import": "tickets_import",
+            "env": {"token": "GITHUB_TOKEN", "repo": "GITHUB_REPO"},
+            "source": {"state": "open", "labels": []},
+        }
+    ]
+    return data
+
+
+def test_provider_config_loads_for_github_issues_pack():
+    pack = load_pack(PACKS_DIR / "github-issues-workspace" / "domain-pack.yaml")
+    assert pack.model is not None
+    assert pack.model.providers[0].id == "github_issues"
+    assert pack.model.providers[0].target_import == "github_issues_import"
+    assert pack.model.imports[0].upsert_key == "external_id"
+
+
+def test_provider_schema_validation_failures():
+    with pytest.raises(Exception, match="provider id 'github_issues' is duplicated"):
+        DomainPack.model_validate(_pack_with_provider(replace_providers=[
+            {"id": "github_issues", "type": "github_issues", "mode": "read_only", "target_import": "tickets_import", "env": {"token": "GITHUB_TOKEN", "repo": "GITHUB_REPO"}},
+            {"id": "github_issues", "type": "github_issues", "mode": "read_only", "target_import": "tickets_import", "env": {"token": "GITHUB_TOKEN", "repo": "GITHUB_REPO"}},
+        ]))
+    with pytest.raises(Exception, match="unsupported provider type"):
+        DomainPack.model_validate(_pack_with_provider(replace_providers=[{"id": "bad", "type": "jira", "mode": "read_only", "target_import": "tickets_import", "env": {"token": "GITHUB_TOKEN", "repo": "GITHUB_REPO"}}]))
+    with pytest.raises(Exception, match="unsupported provider mode"):
+        DomainPack.model_validate(_pack_with_provider(replace_providers=[{"id": "bad", "type": "github_issues", "mode": "write_back", "target_import": "tickets_import", "env": {"token": "GITHUB_TOKEN", "repo": "GITHUB_REPO"}}]))
+    with pytest.raises(Exception, match="target_import is required"):
+        DomainPack.model_validate(_pack_with_provider(replace_providers=[{"id": "bad", "type": "github_issues", "mode": "read_only", "target_import": "", "env": {"token": "GITHUB_TOKEN", "repo": "GITHUB_REPO"}}]))
+    with pytest.raises(Exception, match="target_import references unknown import"):
+        DomainPack.model_validate(_pack_with_provider(replace_providers=[{"id": "bad", "type": "github_issues", "mode": "read_only", "target_import": "missing", "env": {"token": "GITHUB_TOKEN", "repo": "GITHUB_REPO"}}]))
+    with pytest.raises(Exception):
+        DomainPack.model_validate(_pack_with_provider(replace_providers=[{"id": "bad", "type": "github_issues", "mode": "read_only", "target_import": "tickets_import", "env": {"token": "github-token", "repo": "GITHUB_REPO"}}]))
+
+
+def test_generated_provider_metadata_and_files(tmp_path):
+    pack = load_pack(PACKS_DIR / "github-issues-workspace" / "domain-pack.yaml")
+    out = tmp_path / pack.name
+    generate(pack, out)
+    meta = json.loads((out / "app-model.json").read_text())
+    assert meta["providers"][0]["id"] == "github_issues"
+    assert meta["providers"][0]["targetImport"] == "github_issues_import"
+    assert (out / "backend/app/providers.py").exists()
+    assert "GET /providers" not in (out / "README.md").read_text()  # docs are user-facing, not route dumps
+    assert "GITHUB_TOKEN=" in (out / ".env.example").read_text()
+    assert "GITHUB_REPO=owner/repo" in (out / ".env.example").read_text()
+    main = (out / "backend/app/main.py").read_text()
+    assert "@app.get('/providers')" in main
+    assert "@app.post('/providers/{provider_id}/preview')" in main
+    assert "@app.post('/providers/{provider_id}/sync')" in main
+    app = (out / "frontend/src/App.tsx").read_text()
+    assert "function ProviderPanel" in app
+    assert 'data-ui-control="providers-nav"' in app
+    assert 'data-ui-action="provider-preview"' in app
+    assert 'data-ui-state={ready ? \'configured\' : \'missing-env\'}' in app
+
+
+def test_pack_without_providers_does_not_generate_provider_runtime(tmp_path):
+    pack = load_pack(PACKS_DIR / "vendor-risk-tracker" / "domain-pack.yaml")
+    out = tmp_path / pack.name
+    generate(pack, out)
+    assert not (out / "backend/app/providers.py").exists()
+    assert not (out / ".env.example").exists()
+    app = (out / "frontend/src/App.tsx").read_text()
+    assert "function ProviderPanel" in app
+    assert "model.providers.length > 0" in app
+
+
+@pytest.fixture
+def generated_github_client(tmp_path, monkeypatch):
+    return _make_generated_client(tmp_path, monkeypatch, "github-issues-workspace")
+
+
+def test_generated_provider_list_endpoint_hides_secrets(generated_github_client, monkeypatch):
+    monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+    monkeypatch.delenv("GITHUB_REPO", raising=False)
+    response = generated_github_client.get("/providers")
+    assert response.status_code == 200
+    provider = response.json()[0]
+    assert provider["id"] == "github_issues"
+    assert provider["target_import"] == "github_issues_import"
+    assert provider["env_status"]["configured"] is False
+    assert set(provider["env_status"]["missing"]) == {"GITHUB_TOKEN", "GITHUB_REPO"}
+    assert "test-token" not in json.dumps(provider)
+
+
+def test_generated_provider_preview_sync_and_upsert(generated_github_client, monkeypatch):
+    monkeypatch.setenv("GITHUB_TOKEN", "test-token")
+    monkeypatch.setenv("GITHUB_REPO", "owner/repo")
+    from app import providers
+    fixture = [
+        {"number": 777, "title": "Sync me", "body": "body", "state": "open", "html_url": "https://github.com/owner/repo/issues/777", "labels": [{"name": "bug"}], "user": {"login": "octocat"}, "updated_at": "2026-05-15T00:00:00Z"},
+        {"number": 778, "title": "Ignore PR", "state": "open", "pull_request": {"url": "https://api.github.com/pr/778"}},
+    ]
+    monkeypatch.setattr(providers, "fetch_github_issues", lambda provider: fixture)
+    preview = generated_github_client.post("/providers/github_issues/preview")
+    assert preview.status_code == 200
+    assert preview.json()["total_rows"] == 1
+    first = generated_github_client.post("/providers/github_issues/sync").json()
+    second = generated_github_client.post("/providers/github_issues/sync").json()
+    assert first["created_count"] == 1
+    assert second["updated_count"] == 1
+    rows = generated_github_client.get("/issue").json()
+    assert len([row for row in rows if row["external_id"] == "777"]) == 1
+    runs = generated_github_client.get("/providers/runs").json()
+    assert runs and runs[0]["format"] == "provider"
+
+
+def test_generated_provider_missing_env_error(generated_github_client, monkeypatch):
+    monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+    monkeypatch.delenv("GITHUB_REPO", raising=False)
+    response = generated_github_client.post("/providers/github_issues/sync")
+    assert response.status_code == 400
+    assert "missing provider env vars" in response.json()["detail"]

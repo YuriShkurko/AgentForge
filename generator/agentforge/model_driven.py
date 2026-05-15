@@ -27,7 +27,7 @@ def generate_model_driven_app(pack: DomainPack, output_dir: Path, *, dry_run: bo
 
 def _files(pack: DomainPack, model: ModelDrivenApp) -> dict[str, str]:
     meta = _metadata(pack, model)
-    return {
+    files = {
         "backend/app/__init__.py": "",
         "backend/app/database.py": _backend_database(),
         "backend/app/models.py": _backend_models(model),
@@ -50,6 +50,10 @@ def _files(pack: DomainPack, model: ModelDrivenApp) -> dict[str, str]:
         "app-model.json": json.dumps(meta, indent=2),
         "run_commands.txt": _run_commands(pack),
     }
+    if model.providers:
+        files["backend/app/providers.py"] = _backend_providers_module(model)
+        files[".env.example"] = _env_example(model)
+    return files
 
 
 def _class_name(name: str) -> str:
@@ -114,6 +118,18 @@ def _metadata(pack: DomainPack, model: ModelDrivenApp) -> dict[str, Any]:
                 "fieldMap": spec.field_map,
             }
             for spec in model.imports
+        ],
+        "providers": [
+            {
+                "id": provider.id,
+                "label": provider.label or provider.id.replace("_", " ").title(),
+                "type": provider.type,
+                "mode": provider.mode,
+                "targetImport": provider.target_import,
+                "env": provider.env.model_dump(),
+                "source": provider.source.model_dump(),
+            }
+            for provider in model.providers
         ],
     }
 
@@ -391,8 +407,7 @@ def _backend_imports_module(model: ModelDrivenApp) -> str:
             return cleaned, errors, mapping
 
 
-        def preview(spec: dict, fmt: str, data: str, db: Session) -> dict:
-            raw_rows = parse_csv(data) if fmt == "csv" else parse_json(data)
+        def preview_records(spec: dict, raw_rows: list[dict[str, Any]], db: Session, fmt: str = "records") -> dict:
             cleaned, errors, mapping = _map_and_validate(spec, raw_rows)
             valid_rows = [row for row in cleaned if row is not None]
             upsert_key = spec.get("upsert_key") or ""
@@ -426,8 +441,12 @@ def _backend_imports_module(model: ModelDrivenApp) -> str:
             }
 
 
-        def commit(spec: dict, fmt: str, data: str, db: Session) -> dict:
+        def preview(spec: dict, fmt: str, data: str, db: Session) -> dict:
             raw_rows = parse_csv(data) if fmt == "csv" else parse_json(data)
+            return preview_records(spec, raw_rows, db, fmt)
+
+
+        def commit_records(spec: dict, raw_rows: list[dict[str, Any]], db: Session, fmt: str = "records") -> dict:
             cleaned, errors, _ = _map_and_validate(spec, raw_rows)
             invalid_count = len(errors)
             created_count = 0
@@ -485,6 +504,11 @@ def _backend_imports_module(model: ModelDrivenApp) -> str:
                 "errors": errors,
                 "run_id": run.id,
             }
+
+
+        def commit(spec: dict, fmt: str, data: str, db: Session) -> dict:
+            raw_rows = parse_csv(data) if fmt == "csv" else parse_json(data)
+            return commit_records(spec, raw_rows, db, fmt)
     ''').strip()
 
     return "\n\n".join([header, imports_literal, fields_literal, classes_literal, body]) + "\n"
@@ -496,8 +520,181 @@ def _seed_value(value: Any, field: ModelField | None = None) -> str:
     return repr(value)
 
 
+def _backend_providers_module(model: ModelDrivenApp) -> str:
+    providers_payload = [
+        {
+            "id": provider.id,
+            "label": provider.label or provider.id.replace("_", " ").title(),
+            "type": provider.type,
+            "mode": provider.mode,
+            "target_import": provider.target_import,
+            "env": provider.env.model_dump(),
+            "source": provider.source.model_dump(),
+        }
+        for provider in model.providers
+    ]
+    providers_literal = f"PROVIDERS: list[dict[str, Any]] = {pprint.pformat(providers_payload, indent=4, width=100, sort_dicts=False)}"
+    body = textwrap.dedent('''
+        """Provider Runtime v0 for model-driven apps.
+
+        Providers are thin source adapters. They fetch and normalize external records,
+        then delegate validation, mapping, upsert, commit, and run history to the
+        generated generic importer pipeline.
+        """
+        from __future__ import annotations
+
+        import json
+        import os
+        import urllib.error
+        import urllib.parse
+        import urllib.request
+        from typing import Any
+
+        from sqlalchemy.orm import Session
+
+        from app import imports as importer
+    ''').strip()
+    impl = textwrap.dedent('''
+        def get_provider(provider_id: str) -> dict | None:
+            for provider in PROVIDERS:
+                if provider["id"] == provider_id:
+                    return provider
+            return None
+
+
+        def env_status(provider: dict) -> dict:
+            names = [provider["env"]["token"], provider["env"]["repo"]]
+            missing = [name for name in names if not os.getenv(name)]
+            return {"configured": len(missing) == 0, "missing": missing, "required": names}
+
+
+        def public_provider(provider: dict) -> dict:
+            spec = importer.get_import(provider["target_import"])
+            status = env_status(provider)
+            return {
+                "id": provider["id"],
+                "label": provider["label"],
+                "type": provider["type"],
+                "mode": provider["mode"],
+                "target_import": provider["target_import"],
+                "target_entity": spec["entity"] if spec else "",
+                "env_status": status,
+                "source": provider.get("source") or {},
+            }
+
+
+        def _require_ready(provider: dict) -> None:
+            status = env_status(provider)
+            if not status["configured"]:
+                raise ValueError("missing provider env vars: " + ", ".join(status["missing"]))
+            if importer.get_import(provider["target_import"]) is None:
+                raise ValueError("provider target import not found")
+
+
+        def fetch_github_issues(provider: dict) -> list[dict[str, Any]]:
+            env = provider["env"]
+            source = provider.get("source") or {}
+            token = os.environ[env["token"]]
+            repo = os.environ[env["repo"]]
+            if "/" not in repo:
+                raise ValueError(f"{env['repo']} must be in owner/repo format")
+            params: dict[str, str] = {"state": source.get("state") or "open", "per_page": "100"}
+            labels = source.get("labels") or []
+            if labels:
+                params["labels"] = ",".join(labels)
+            url = f"https://api.github.com/repos/{repo}/issues?{urllib.parse.urlencode(params)}"
+            request = urllib.request.Request(
+                url,
+                headers={
+                    "Accept": "application/vnd.github+json",
+                    "Authorization": f"Bearer {token}",
+                    "User-Agent": "AgentForge-ProviderRuntime-v0",
+                },
+            )
+            try:
+                with urllib.request.urlopen(request, timeout=20) as response:
+                    payload = json.loads(response.read().decode("utf-8"))
+            except urllib.error.HTTPError as exc:
+                detail = exc.read().decode("utf-8", errors="replace")[:200]
+                raise ValueError(f"GitHub API error {exc.code}: {detail}") from exc
+            except urllib.error.URLError as exc:
+                raise ValueError(f"GitHub API request failed: {exc.reason}") from exc
+            if not isinstance(payload, list):
+                raise ValueError("GitHub API response was not a list")
+            return [dict(item) for item in payload if isinstance(item, dict)]
+
+
+        def normalize_github_issues(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+            normalized: list[dict[str, Any]] = []
+            for record in records:
+                if record.get("pull_request"):
+                    continue
+                labels = record.get("labels") or []
+                label_names = [str(item.get("name", "")) for item in labels if isinstance(item, dict) and item.get("name")]
+                user = record.get("user") if isinstance(record.get("user"), dict) else {}
+                normalized.append(
+                    {
+                        "number": str(record.get("number", "")),
+                        "title": record.get("title") or "",
+                        "body": record.get("body") or "",
+                        "state": record.get("state") or "",
+                        "html_url": record.get("html_url") or "",
+                        "labels": ", ".join(label_names),
+                        "user_login": user.get("login") or "",
+                        "updated_at": record.get("updated_at") or "",
+                    }
+                )
+            return normalized
+
+
+        def fetch_records(provider: dict) -> list[dict[str, Any]]:
+            if provider["type"] == "github_issues":
+                return normalize_github_issues(fetch_github_issues(provider))
+            raise ValueError(f"unsupported provider type: {provider['type']}")
+
+
+        def preview(provider: dict, db: Session) -> dict:
+            _require_ready(provider)
+            spec = importer.get_import(provider["target_import"])
+            if spec is None:
+                raise ValueError("provider target import not found")
+            records = fetch_records(provider)
+            result = importer.preview_records(spec, records, db, "provider")
+            result["provider_id"] = provider["id"]
+            return result
+
+
+        def sync(provider: dict, db: Session) -> dict:
+            _require_ready(provider)
+            spec = importer.get_import(provider["target_import"])
+            if spec is None:
+                raise ValueError("provider target import not found")
+            records = fetch_records(provider)
+            result = importer.commit_records(spec, records, db, "provider")
+            result["provider_id"] = provider["id"]
+            return result
+    ''').strip()
+    return "\n\n".join([body, providers_literal, impl]) + "\n"
+
+
+def _env_example(model: ModelDrivenApp) -> str:
+    names: list[str] = []
+    for provider in model.providers:
+        for name in (provider.env.token, provider.env.repo):
+            if name not in names:
+                names.append(name)
+    lines = ["# Provider Runtime v0 environment variables"]
+    for name in names:
+        value = "owner/repo" if name.endswith("REPO") else ""
+        lines.append(f"{name}={value}")
+    return "\n".join(lines) + "\n"
+
+
 def _backend_main(pack: DomainPack, model: ModelDrivenApp) -> str:
-    imports = ["from datetime import date", "from fastapi import Depends, FastAPI, HTTPException", "from fastapi.middleware.cors import CORSMiddleware", "from sqlalchemy.orm import Session", "from app.database import Base, engine, get_db", "from app import models, schemas", "from app import imports as importer", ""]
+    imports = ["from datetime import date", "from fastapi import Depends, FastAPI, HTTPException", "from fastapi.middleware.cors import CORSMiddleware", "from sqlalchemy.orm import Session", "from app.database import Base, engine, get_db", "from app import models, schemas", "from app import imports as importer"]
+    if model.providers:
+        imports.append("from app import providers as provider_runtime")
+    imports.append("")
     body = [*imports, f"app = FastAPI(title={pack.display_name!r})", "app.add_middleware(CORSMiddleware, allow_origins=['http://localhost:5173'], allow_methods=['*'], allow_headers=['*'])", "Base.metadata.create_all(bind=engine)", ""]
     body += ["@app.get('/health')", "def health():", "    return {'status': 'ok'}", ""]
     body += ["@app.post('/seed')", "def seed(db: Session = Depends(get_db)):", "    created = {}"]
@@ -566,6 +763,58 @@ def _backend_main(pack: DomainPack, model: ModelDrivenApp) -> str:
         "        for run in runs",
         "    ]",
         "",
+    ]
+    if model.providers:
+        body += [
+            "@app.get('/providers')",
+            "def list_providers():",
+            "    return [provider_runtime.public_provider(provider) for provider in provider_runtime.PROVIDERS]",
+            "",
+            "@app.get('/providers/runs')",
+            "def list_provider_runs(db: Session = Depends(get_db)):",
+            "    target_imports = {provider['target_import'] for provider in provider_runtime.PROVIDERS}",
+            "    runs = db.query(models.ImportRun).filter(models.ImportRun.import_id.in_(target_imports)).order_by(models.ImportRun.id.desc()).limit(50).all() if target_imports else []",
+            "    return [",
+            "        {",
+            "            'id': run.id,",
+            "            'import_id': run.import_id,",
+            "            'entity': run.entity,",
+            "            'format': run.format,",
+            "            'status': run.status,",
+            "            'total_rows': run.total_rows,",
+            "            'created_count': run.created_count,",
+            "            'updated_count': run.updated_count,",
+            "            'skipped_count': run.skipped_count,",
+            "            'error_count': run.error_count,",
+            "            'error_summary': run.error_summary,",
+            "        }",
+            "        for run in runs",
+            "    ]",
+            "",
+            "def _resolve_provider(provider_id: str) -> dict:",
+            "    provider = provider_runtime.get_provider(provider_id)",
+            "    if not provider:",
+            "        raise HTTPException(status_code=404, detail='provider not found')",
+            "    return provider",
+            "",
+            "@app.post('/providers/{provider_id}/preview')",
+            "def preview_provider(provider_id: str, db: Session = Depends(get_db)):",
+            "    provider = _resolve_provider(provider_id)",
+            "    try:",
+            "        return provider_runtime.preview(provider, db)",
+            "    except ValueError as exc:",
+            "        raise HTTPException(status_code=400, detail=str(exc))",
+            "",
+            "@app.post('/providers/{provider_id}/sync')",
+            "def sync_provider(provider_id: str, db: Session = Depends(get_db)):",
+            "    provider = _resolve_provider(provider_id)",
+            "    try:",
+            "        return provider_runtime.sync(provider, db)",
+            "    except ValueError as exc:",
+            "        raise HTTPException(status_code=400, detail=str(exc))",
+            "",
+        ]
+    body += [
         "def _resolve_import(import_id: str, fmt: str) -> dict:",
         "    spec = importer.get_import(import_id)",
         "    if not spec:",
@@ -612,7 +861,65 @@ def _backend_tests(model: ModelDrivenApp) -> str:
         a = model.actions[0]; ar = a.entity.replace('_','-')
         lines += ["", "def test_workflow_action_endpoint():", "    client.post('/seed')", f"    records = client.get('/{ar}').json()", "    assert records", f"    response = client.post('/{ar}/{{}}/actions/{a.name}'.format(records[0]['id']))", "    assert response.status_code == 200", "    assert response.json()['ok'] is True"]
     lines += _import_test_lines(model)
+    lines += _provider_test_lines(model)
     return "\n".join(lines)
+
+
+def _provider_test_lines(model: ModelDrivenApp) -> list[str]:
+    if not model.providers:
+        return []
+    provider = model.providers[0]
+    target_import = next((item for item in model.imports if item.id == provider.target_import), None)
+    if target_import is None:
+        return []
+    route = target_import.entity.replace('_', '-')
+    return [
+        "",
+        "def test_providers_endpoint_reports_missing_env(monkeypatch):",
+        "    monkeypatch.delenv('GITHUB_TOKEN', raising=False)",
+        "    monkeypatch.delenv('GITHUB_REPO', raising=False)",
+        "    response = client.get('/providers')",
+        "    assert response.status_code == 200",
+        "    provider = response.json()[0]",
+        "    assert provider['id'] == 'github_issues'",
+        "    assert provider['env_status']['configured'] is False",
+        "    assert 'GITHUB_TOKEN' in provider['env_status']['missing']",
+        "    assert 'GITHUB_REPO' in provider['env_status']['missing']",
+        "    assert 'token' not in provider and 'secret' not in provider",
+        "",
+        "def test_provider_preview_and_sync_use_importer(monkeypatch):",
+        "    monkeypatch.setenv('GITHUB_TOKEN', 'test-token')",
+        "    monkeypatch.setenv('GITHUB_REPO', 'owner/repo')",
+        "    from app import providers",
+        "    fixture = [",
+        "        {'number': 202, 'title': 'Provider issue', 'body': 'From GitHub', 'state': 'open', 'html_url': 'https://github.com/owner/repo/issues/202', 'labels': [{'name': 'bug'}], 'user': {'login': 'octocat'}, 'updated_at': '2026-05-15T00:00:00Z'},",
+        "        {'number': 203, 'title': 'PR should be ignored', 'state': 'open', 'pull_request': {'url': 'https://api.github.com/pr/203'}},",
+        "    ]",
+        "    monkeypatch.setattr(providers, 'fetch_github_issues', lambda provider: fixture)",
+        "    preview = client.post('/providers/github_issues/preview')",
+        "    assert preview.status_code == 200",
+        "    preview_body = preview.json()",
+        "    assert preview_body['provider_id'] == 'github_issues'",
+        "    assert preview_body['total_rows'] == 1",
+        "    assert preview_body['valid_rows'] == 1",
+        "    first = client.post('/providers/github_issues/sync').json()",
+        "    second = client.post('/providers/github_issues/sync').json()",
+        "    assert first['status'] == 'ok' and second['status'] == 'ok'",
+        "    assert first['created_count'] == 1",
+        "    assert second['updated_count'] == 1",
+        f"    listing = client.get('/{route}').json()",
+        "    matches = [row for row in listing if row.get('external_id') == '202']",
+        "    assert len(matches) == 1",
+        "    runs = client.get('/providers/runs').json()",
+        "    assert runs and runs[0]['format'] == 'provider'",
+        "",
+        "def test_provider_missing_env_returns_clear_error(monkeypatch):",
+        "    monkeypatch.delenv('GITHUB_TOKEN', raising=False)",
+        "    monkeypatch.delenv('GITHUB_REPO', raising=False)",
+        "    response = client.post('/providers/github_issues/preview')",
+        "    assert response.status_code == 400",
+        "    assert 'missing provider env vars' in response.json()['detail']",
+    ]
 
 
 def _import_test_lines(model: ModelDrivenApp) -> list[str]:
@@ -794,8 +1101,10 @@ type Focus = {{ primary_entity?: string; secondary_entity?: string; group_by?: s
 type ImportConfig = {{ id: string; label: string; entity: string; formats: string[]; upsertKey: string; fieldMap: Record<string, string> }};
 type ImportRun = {{ id: number; import_id: string; entity: string; format: string; status: string; total_rows: number; created_count: number; updated_count: number; skipped_count: number; error_count: number; error_summary: string | null }};
 type ImportPreview = {{ import_id: string; entity: string; format: string; total_rows: number; valid_rows: number; invalid_rows: number; errors: {{ row: number; errors: string[] }}[]; mapped_fields: string[]; would_create: number; would_update: number }};
-type ImportCommit = {{ import_id: string; status: string; total_rows: number; valid_rows: number; invalid_rows: number; created_count: number; updated_count: number; skipped_count: number; error_count: number; errors: {{ row: number; errors: string[] }}[]; run_id: number }};
-type AppModel = {{ app: {{ name: string; displayName: string; description: string }}; entities: Entity[]; actions: Action[]; pages?: unknown[]; seedData?: unknown; imports: ImportConfig[]; ui: {{ composition: 'standard' | 'board_workspace' | 'register_table'; recipe: 'standard' | 'workspace_board' | 'executive_register' | 'ops_console'; style: {{ accent: string; density: string; layout: string }}; focus: Focus; dashboard: {{ title: string; primary_entity?: string; cards: Card[] }}; entities?: unknown }} }};
+type ImportCommit = {{ import_id: string; status: string; total_rows: number; valid_rows: number; invalid_rows: number; created_count: number; updated_count: number; skipped_count: number; error_count: number; errors: {{ row: number; errors: string[] }}[]; run_id: number; provider_id?: string }};
+type ProviderConfig = {{ id: string; label: string; type: string; mode: string; targetImport: string; env: {{ token: string; repo: string }}; source: {{ state?: string; labels?: string[] }} }};
+type ProviderStatus = {{ id: string; label: string; type: string; mode: string; target_import: string; target_entity: string; env_status: {{ configured: boolean; missing: string[]; required: string[] }}; source: {{ state?: string; labels?: string[] }} }};
+type AppModel = {{ app: {{ name: string; displayName: string; description: string }}; entities: Entity[]; actions: Action[]; pages?: unknown[]; seedData?: unknown; imports: ImportConfig[]; providers: ProviderConfig[]; ui: {{ composition: 'standard' | 'board_workspace' | 'register_table'; recipe: 'standard' | 'workspace_board' | 'executive_register' | 'ops_console'; style: {{ accent: string; density: string; layout: string }}; focus: Focus; dashboard: {{ title: string; primary_entity?: string; cards: Card[] }}; entities?: unknown }} }};
 type Row = Record<string, string | number | boolean | null> & {{ id?: number }};
 type RowMap = Record<string, Row[]>;
 const model: AppModel = {meta_json};
@@ -832,13 +1141,14 @@ export default function App() {{
   const isPrimaryActive = entity.name === primary.name;
   const context = {{ rowsByEntity, form, setForm, save, runAction, activeEntity: entity, message, setActive, seed, primary, secondary, isPrimaryActive }};
   const importsMode = active === '__imports__';
-  return <main className={{shellClass}} data-composition={{model.ui.composition}} data-recipe={{model.ui.recipe}} data-active-entity={{active}} data-primary-active={{isPrimaryActive ? 'true' : 'false'}} data-imports-active={{importsMode ? 'true' : 'false'}}>
+  const providersMode = active === '__providers__';
+  return <main className={{shellClass}} data-composition={{model.ui.composition}} data-recipe={{model.ui.recipe}} data-active-entity={{active}} data-primary-active={{isPrimaryActive ? 'true' : 'false'}} data-imports-active={{importsMode ? 'true' : 'false'}} data-providers-active={{providersMode ? 'true' : 'false'}}>
     <Sidebar active={{active}} setActive={{setActive}} seed={{seed}} />
-    {{importsMode ? <ImportPanel reload={{loadAll}} /> : model.ui.composition === 'standard' ? <StandardLayout {{...context}} /> : isPrimaryActive && model.ui.composition === 'board_workspace' ? <BoardWorkspace {{...context}} /> : isPrimaryActive && model.ui.composition === 'register_table' ? <RegisterTable {{...context}} /> : <FocusedSurface {{...context}} />}}
+    {{providersMode ? <ProviderPanel reload={{loadAll}} /> : importsMode ? <ImportPanel reload={{loadAll}} /> : model.ui.composition === 'standard' ? <StandardLayout {{...context}} /> : isPrimaryActive && model.ui.composition === 'board_workspace' ? <BoardWorkspace {{...context}} /> : isPrimaryActive && model.ui.composition === 'register_table' ? <RegisterTable {{...context}} /> : <FocusedSurface {{...context}} />}}
   </main>;
 }}
 
-function Sidebar({{ active, setActive, seed }}: {{ active: string; setActive: (name: string) => void; seed: () => void }}) {{ return <aside><p className="eyebrow">AgentForge model-driven app</p><h1>{pack.display_name}</h1><p>{pack.domain.product_purpose}</p><button onClick={{seed}}>Load seed data</button>{{model.entities.map((item) => <button className={{item.name === active ? 'active' : ''}} key={{item.name}} onClick={{() => setActive(item.name)}}>{{item.labelPlural}}</button>)}}{{model.imports.length > 0 && <button className={{active === '__imports__' ? 'active' : ''}} data-ui-control="imports-nav" onClick={{() => setActive('__imports__')}}>Imports</button>}}</aside>; }}
+function Sidebar({{ active, setActive, seed }}: {{ active: string; setActive: (name: string) => void; seed: () => void }}) {{ return <aside><p className="eyebrow">AgentForge model-driven app</p><h1>{pack.display_name}</h1><p>{pack.domain.product_purpose}</p><button onClick={{seed}}>Load seed data</button>{{model.entities.map((item) => <button className={{item.name === active ? 'active' : ''}} key={{item.name}} onClick={{() => setActive(item.name)}}>{{item.labelPlural}}</button>)}}{{model.imports.length > 0 && <button className={{active === '__imports__' ? 'active' : ''}} data-ui-control="imports-nav" onClick={{() => setActive('__imports__')}}>Imports</button>}}{{model.providers.length > 0 && <button className={{active === '__providers__' ? 'active' : ''}} data-ui-control="providers-nav" onClick={{() => setActive('__providers__')}}>Providers</button>}}</aside>; }}
 
 type LayoutContext = {{ rowsByEntity: RowMap; form: Row; setForm: (row: Row) => void; save: (event: React.FormEvent) => void; runAction: (target: Entity, actionName: string, id: number) => void; activeEntity: Entity; message: string; setActive: (name: string) => void; seed: () => void; primary: Entity; secondary?: Entity; isPrimaryActive: boolean }};
 
@@ -859,6 +1169,8 @@ function EntityRows({{ entity, rows, rowsByEntity, actions, onAction, forcedLayo
 function EmptyState({{ text, compact = false }}: {{ text: string; compact?: boolean }}) {{ return <div className={{compact ? 'empty-state compact-empty' : 'empty-state'}} data-ui-state="empty">{{text}}</div>; }}
 
 function RecordCard({{ entity, row, rowsByEntity, actions, onAction }}: {{ entity: Entity; row: Row; rowsByEntity: RowMap; actions: Action[]; onAction: (target: Entity, name: string, id: number) => void }}) {{ const view = display(entity); const titleField = view.title_field || (entity.name === model.ui.focus.primary_entity ? model.ui.focus.title_field : '') || ''; const badgeField = view.badge_field || (entity.name === model.ui.focus.primary_entity ? model.ui.focus.badge_field : '') || ''; const secondaryField = view.secondary_field || (entity.name === model.ui.focus.primary_entity ? model.ui.focus.secondary_field : '') || ''; const titleFieldDef = fieldFor(entity, titleField); const subtitleFieldDef = fieldFor(entity, view.subtitle_field); const secondaryFieldDef = fieldFor(entity, secondaryField); const badgeFieldDef = fieldFor(entity, badgeField); const badge = value(row, badgeField); const titleText = cellValue(titleFieldDef, row[titleField], rowsByEntity); return <article className="record-card"><div>{{badge && <span className={{`badge badge-${{badge.toLowerCase().replace(/[^a-z0-9]+/g, '-')}}`}}>{{badgeFieldDef ? cellValue(badgeFieldDef, row[badgeField], rowsByEntity) : humanize(badge)}}</span>}}<h3>{{titleText || `${{entity.labelSingular}} #${{row.id}}`}}</h3><p>{{cellValue(subtitleFieldDef, row[view.subtitle_field || ''], rowsByEntity)}}</p><small>{{cellValue(secondaryFieldDef, row[secondaryField], rowsByEntity)}}</small></div><div>{{actions.map((action) => <button key={{action.name}} onClick={{() => row.id && onAction(entity, action.name, row.id)}}>{{action.label || humanize(action.name)}}</button>)}}</div></article>; }}
+
+function ProviderPanel({{ reload }}: {{ reload: () => Promise<void> }}) {{ const [providers, setProviders] = useState<ProviderStatus[]>([]); const [selectedId, setSelectedId] = useState<string>(model.providers[0]?.id || ''); const [preview, setPreview] = useState<ImportPreview | null>(null); const [synced, setSynced] = useState<ImportCommit | null>(null); const [runs, setRuns] = useState<ImportRun[]>([]); const [error, setError] = useState<string>(''); async function loadProviders() {{ const response = await fetch(`${{API}}/providers`); if (response.ok) {{ const data = (await response.json()) as ProviderStatus[]; setProviders(data); if (!selectedId && data[0]) setSelectedId(data[0].id); }} }} async function loadRuns() {{ const response = await fetch(`${{API}}/providers/runs`); if (response.ok) setRuns(await response.json()); }} useEffect(() => {{ void loadProviders(); void loadRuns(); }}, []); const provider = providers.find((item) => item.id === selectedId) || providers[0]; async function callProvider(path: 'preview' | 'sync') {{ if (!provider) return; try {{ setError(''); const response = await fetch(`${{API}}/providers/${{provider.id}}/${{path}}`, {{ method: 'POST' }}); if (!response.ok) {{ const detail = await response.json().catch(() => ({{}})); throw new Error((detail && detail.detail) || `${{path}} failed`); }} const result = await response.json(); if (path === 'preview') {{ setPreview(result as ImportPreview); setSynced(null); }} else {{ setSynced(result as ImportCommit); await loadRuns(); await reload(); }} }} catch (caught) {{ setError((caught as Error).message); }} }} if (model.providers.length === 0) return <section className="content"><h2>No providers configured</h2></section>; const missing = provider?.env_status.missing || []; const ready = provider?.env_status.configured ?? false; return <section className="content provider-panel" data-ui-surface="provider-panel"><section className="hero"><div><p className="eyebrow">Provider Runtime v0</p><h2>Providers</h2><p>Preview and sync read-only external records through the shared importer pipeline.</p></div><strong>{{runs.length}} {{runs.length === 1 ? 'run' : 'runs'}}</strong></section><div className="card provider-controls"><label>Provider<select value={{provider?.id || ''}} onChange={{(event) => {{ setSelectedId(event.target.value); setPreview(null); setSynced(null); setError(''); }}}} data-ui-control="provider-select">{{providers.map((item) => <option key={{item.id}} value={{item.id}}>{{item.label}}</option>)}}</select></label>{{provider && <><p><b>{{provider.label}}</b> · {{provider.type}} · {{provider.mode}} · target {{provider.target_import}}/{{provider.target_entity}}</p><p data-ui-state={{ready ? 'configured' : 'missing-env'}}>{{ready ? 'Environment configured' : `Missing env vars: ${{missing.join(', ')}}`}}</p><p><small>Required env vars: {{provider.env_status.required.join(', ')}}. Secret values are never shown.</small></p><div className="import-buttons"><button type="button" onClick={{() => callProvider('preview')}} data-ui-action="provider-preview" disabled={{!ready}}>Preview</button><button type="button" onClick={{() => callProvider('sync')}} data-ui-action="provider-sync" disabled={{!ready || !preview || preview.invalid_rows > 0}}>Sync</button></div></>}}{{error && <p className="import-error" data-ui-state="error">{{error}}</p>}}</div>{{preview && <article className="card import-preview" data-ui-surface="provider-preview"><h3>Preview</h3><p><b>{{preview.total_rows}}</b> rows · <b>{{preview.valid_rows}}</b> valid · <b>{{preview.invalid_rows}}</b> invalid · would create <b>{{preview.would_create}}</b>, update <b>{{preview.would_update}}</b></p><p><small>Mapped fields: {{preview.mapped_fields.join(', ') || 'none'}}</small></p>{{preview.errors.length > 0 && <ul className="import-errors">{{preview.errors.slice(0, 10).map((err) => <li key={{err.row}}>Row {{err.row}}: {{err.errors.join(', ')}}</li>)}}</ul>}}</article>}}{{synced && <article className="card import-commit" data-ui-surface="provider-sync"><h3>Last sync</h3><p>Status: <b>{{synced.status}}</b> · Created <b>{{synced.created_count}}</b> · Updated <b>{{synced.updated_count}}</b> · Skipped <b>{{synced.skipped_count}}</b> · Errors <b>{{synced.error_count}}</b></p></article>}}<article className="card import-runs" data-ui-surface="provider-runs"><h3>Recent provider/import runs</h3>{{runs.length === 0 ? <EmptyState text="No provider syncs yet." /> : <ul>{{runs.slice(0, 10).map((run) => <li key={{run.id}}><b>{{run.import_id}}</b> · {{run.format}} · {{run.status}} · created {{run.created_count}} · updated {{run.updated_count}} · errors {{run.error_count}}{{run.error_summary ? ` — ${{run.error_summary}}` : ''}}</li>)}}</ul>}}</article></section>; }}
 
 function ImportPanel({{ reload }}: {{ reload: () => Promise<void> }}) {{ const [selectedId, setSelectedId] = useState<string>(model.imports[0]?.id || ''); const config = model.imports.find((item) => item.id === selectedId) || model.imports[0]; const [format, setFormat] = useState<string>(config?.formats[0] || 'csv'); const [data, setData] = useState<string>(''); const [preview, setPreview] = useState<ImportPreview | null>(null); const [committed, setCommitted] = useState<ImportCommit | null>(null); const [runs, setRuns] = useState<ImportRun[]>([]); const [error, setError] = useState<string>(''); async function loadRuns() {{ const response = await fetch(`${{API}}/imports/runs`); if (response.ok) setRuns(await response.json()); }} useEffect(() => {{ void loadRuns(); }}, []); useEffect(() => {{ setPreview(null); setCommitted(null); setError(''); setFormat(config?.formats[0] || 'csv'); }}, [selectedId]); useEffect(() => {{ setPreview(null); setCommitted(null); }}, [data, format]); async function callEndpoint(path: string): Promise<unknown> {{ const response = await fetch(`${{API}}/imports/${{config.id}}/${{path}}`, {{ method: 'POST', headers: {{ 'Content-Type': 'application/json' }}, body: JSON.stringify({{ format, data }}) }}); if (!response.ok) {{ const detail = await response.json().catch(() => ({{}})); throw new Error((detail && detail.detail) || `${{path}} failed`); }} return response.json(); }} async function runPreview() {{ try {{ setError(''); const result = (await callEndpoint('preview')) as ImportPreview; setPreview(result); setCommitted(null); }} catch (caught) {{ setError((caught as Error).message); }} }} async function runCommit() {{ try {{ setError(''); const result = (await callEndpoint('commit')) as ImportCommit; setCommitted(result); await loadRuns(); await reload(); }} catch (caught) {{ setError((caught as Error).message); }} }} if (!config) return <section className="content"><h2>No imports configured</h2></section>; const previewValid = !!preview && preview.invalid_rows === 0; return <section className="content import-panel" data-ui-surface="import-panel"><section className="hero"><div><p className="eyebrow">{{model.ui.dashboard.title}}</p><h2>Imports</h2><p>Paste CSV or JSON to preview, validate, and commit records.</p></div><strong>{{runs.length}} {{runs.length === 1 ? 'run' : 'runs'}}</strong></section><div className="card import-controls"><label>Import config<select value={{config.id}} onChange={{(event) => setSelectedId(event.target.value)}} data-ui-control="import-select">{{model.imports.map((item) => <option key={{item.id}} value={{item.id}}>{{item.label}}</option>)}}</select></label><label>Format<select value={{format}} onChange={{(event) => setFormat(event.target.value)}} data-ui-control="import-format">{{config.formats.map((fmt) => <option key={{fmt}} value={{fmt}}>{{fmt.toUpperCase()}}</option>)}}</select></label><label className="import-data-label">Data ({{format.toUpperCase()}})<textarea value={{data}} onChange={{(event) => setData(event.target.value)}} placeholder={{format === 'csv' ? 'paste CSV here (with header row)' : 'paste JSON array or {{ "records": [...] }}'}} data-ui-control="import-data" rows={{8}} /></label><div className="import-buttons"><button type="button" onClick={{runPreview}} data-ui-action="import-preview" disabled={{!data.trim()}}>Preview</button><button type="button" onClick={{runCommit}} data-ui-action="import-commit" disabled={{!previewValid}}>Commit import</button></div>{{error && <p className="import-error" data-ui-state="error">{{error}}</p>}}</div>{{preview && <article className="card import-preview" data-ui-surface="import-preview"><h3>Preview</h3><p><b>{{preview.total_rows}}</b> rows · <b>{{preview.valid_rows}}</b> valid · <b>{{preview.invalid_rows}}</b> invalid · would create <b>{{preview.would_create}}</b>, update <b>{{preview.would_update}}</b></p><p><small>Mapped fields: {{preview.mapped_fields.join(', ') || 'none'}}</small></p>{{preview.errors.length > 0 && <ul className="import-errors">{{preview.errors.slice(0, 10).map((err) => <li key={{err.row}}>Row {{err.row}}: {{err.errors.join(', ')}}</li>)}}</ul>}}</article>}}{{committed && <article className="card import-commit" data-ui-surface="import-commit"><h3>Last commit</h3><p>Status: <b>{{committed.status}}</b> · Created <b>{{committed.created_count}}</b> · Updated <b>{{committed.updated_count}}</b> · Skipped <b>{{committed.skipped_count}}</b> · Errors <b>{{committed.error_count}}</b></p>{{committed.status === 'rejected' && committed.errors.length > 0 && <ul className="import-errors">{{committed.errors.slice(0, 10).map((err) => <li key={{err.row}}>Row {{err.row}}: {{err.errors.join(', ')}}</li>)}}</ul>}}</article>}}<article className="card import-runs" data-ui-surface="import-runs"><h3>Recent import runs</h3>{{runs.length === 0 ? <EmptyState text="No imports yet — preview and commit one to record a run." /> : <ul>{{runs.slice(0, 10).map((run) => <li key={{run.id}}><b>{{run.import_id}}</b> · {{run.format}} · {{run.status}} · created {{run.created_count}} · updated {{run.updated_count}} · errors {{run.error_count}}{{run.error_summary ? ` — ${{run.error_summary}}` : ''}}</li>)}}</ul>}}</article></section>; }}
 '''
@@ -917,6 +1229,30 @@ def _makefile() -> str:
 
 
 def _readme(pack: DomainPack) -> str:
+    provider_doc = ""
+    if pack.model and pack.model.providers:
+        env_lines = []
+        seen: set[str] = set()
+        for provider in pack.model.providers:
+            for name in (provider.env.token, provider.env.repo):
+                if name not in seen:
+                    seen.add(name)
+                    env_lines.append(f"{name}={'owner/repo' if name.endswith('REPO') else ''}")
+        provider_doc = """
+        ## Providers panel
+
+        This generated app includes Provider Runtime v0. Providers are optional, read-only input adapters that fetch external records and feed the same generic importer pipeline used by CSV/JSON imports. Provider sync uses the target import config for mapping, validation, upsert/idempotency, and import-run history.
+
+        Configured provider support is bounded to GitHub Issues in read-only mode. There is no OAuth flow, secret entry UI, write-back behavior, provider marketplace, or GitHub repo mutation.
+
+        To use the Providers panel with a real GitHub repo, copy `.env.example` values into your shell environment before starting the backend:
+
+        ```bash
+        """ + "\n".join(env_lines) + """
+        ```
+
+        `GITHUB_REPO` must use `owner/repo` format. Secret values are never shown in the UI. Default generated backend tests use mocked provider responses and do not require a live GitHub token or network access.
+        """
     return textwrap.dedent(f'''
         # {pack.display_name}
 
@@ -962,6 +1298,8 @@ def _readme(pack: DomainPack) -> str:
         - **Relation fields**: in v0 you must supply the integer id of an existing related record (e.g. `client_id: 1`). Relation-by-label resolution is deferred.
 
         Each commit and rejection is logged via `GET /imports/runs`.
+
+        {provider_doc}
     ''')
 
 

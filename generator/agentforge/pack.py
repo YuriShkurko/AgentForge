@@ -168,6 +168,9 @@ _VALID_MODEL_FIELD_TYPES = {"string", "text", "integer", "boolean", "date", "enu
 _VALID_MODEL_PAGE_TYPES = {"dashboard", "entity_list", "entity_detail"}
 _VALID_MODEL_ACTION_TYPES = {"update_status", "add_note", "mark_complete"}
 _VALID_IMPORT_FORMATS = {"csv", "json"}
+_VALID_MODEL_PROVIDER_TYPES = {"github_issues"}
+_VALID_MODEL_PROVIDER_MODES = {"read_only"}
+_ENV_VAR_RE = r"^[A-Z][A-Z0-9_]*$"
 _VALID_UI_ACCENTS = {"blue", "emerald", "amber", "red", "slate", "violet"}
 _VALID_UI_DENSITIES = {"compact", "comfortable", "spacious"}
 _VALID_UI_LAYOUTS = {"workspace", "register", "operations"}
@@ -417,6 +420,65 @@ class ModelImport(BaseModel):
         return deduped
 
 
+
+
+class ModelProviderEnv(BaseModel):
+    token: str = Field(pattern=_ENV_VAR_RE)
+    repo: str = Field(pattern=_ENV_VAR_RE)
+
+
+class ModelProviderSource(BaseModel):
+    state: str = "open"
+    labels: list[str] = Field(default_factory=list)
+
+    @field_validator("state")
+    @classmethod
+    def state_is_supported(cls, value: str) -> str:
+        if value not in {"open", "closed", "all"}:
+            raise ValueError("provider source.state must be one of open, closed, all")
+        return value
+
+    @field_validator("labels")
+    @classmethod
+    def labels_are_safe(cls, value: list[str]) -> list[str]:
+        return _clean_custom_list(value, field_name="provider labels", max_items=20, max_length=60)
+
+
+class ModelProvider(BaseModel):
+    id: str = Field(pattern=_IDENTIFIER_RE)
+    label: str = ""
+    type: str
+    mode: str = "read_only"
+    target_import: str
+    env: ModelProviderEnv
+    source: ModelProviderSource = Field(default_factory=ModelProviderSource)
+
+    @field_validator("label")
+    @classmethod
+    def label_is_safe(cls, value: str) -> str:
+        return _clean_custom_text(value, field_name="provider label", max_length=120)
+
+    @field_validator("type")
+    @classmethod
+    def type_must_be_supported(cls, value: str) -> str:
+        if value not in _VALID_MODEL_PROVIDER_TYPES:
+            raise ValueError(f"unsupported provider type '{value}'; valid: {sorted(_VALID_MODEL_PROVIDER_TYPES)}")
+        return value
+
+    @field_validator("mode")
+    @classmethod
+    def mode_must_be_supported(cls, value: str) -> str:
+        if value not in _VALID_MODEL_PROVIDER_MODES:
+            raise ValueError(f"unsupported provider mode '{value}'; valid: {sorted(_VALID_MODEL_PROVIDER_MODES)}")
+        return value
+
+    @field_validator("target_import")
+    @classmethod
+    def target_import_is_required(cls, value: str) -> str:
+        if not value:
+            raise ValueError("provider target_import is required")
+        return value
+
 class ModelDrivenApp(BaseModel):
     entities: list[ModelEntity]
     pages: list[ModelPage] = Field(default_factory=list)
@@ -424,6 +486,7 @@ class ModelDrivenApp(BaseModel):
     seed_data: dict[str, list[dict[str, Any]]] = Field(default_factory=dict)
     ui: ModelUI = Field(default_factory=ModelUI)
     imports: list[ModelImport] = Field(default_factory=list)
+    providers: list[ModelProvider] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def validate_references(self) -> "ModelDrivenApp":
@@ -521,6 +584,13 @@ class ModelDrivenApp(BaseModel):
                     raise ValueError(f"import '{spec.id}' field_map has empty source key")
                 if target_field not in field_names:
                     raise ValueError(f"import '{spec.id}' field_map target field '{target_field}' is not defined on '{spec.entity}'")
+        provider_ids: set[str] = set()
+        for provider in self.providers:
+            if provider.id in provider_ids:
+                raise ValueError(f"provider id '{provider.id}' is duplicated")
+            provider_ids.add(provider.id)
+            if provider.target_import not in import_ids:
+                raise ValueError(f"provider '{provider.id}' target_import references unknown import '{provider.target_import}'")
         for entity_name, rows in self.seed_data.items():
             if entity_name not in entity_map:
                 raise ValueError(f"seed_data references unknown entity '{entity_name}'")

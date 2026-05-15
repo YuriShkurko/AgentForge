@@ -1,0 +1,92 @@
+name: github-issues-workspace
+display_name: GitHub Issues Workspace
+version: 0.1.0
+
+domain:
+  domain_name: GitHub Issues Workspace
+  app_type: model_driven_app
+  target_users: [engineering manager, maintainer]
+  product_purpose: Track GitHub issues as local model-driven records using a read-only provider that syncs through the generic importer pipeline.
+  main_user_goals: [preview_github_issues, sync_issues, review_issue_status]
+
+app_archetype: model_driven_app
+required_shell_modules: [model_driven, operations_ui, persistence, test]
+optional_shell_modules: []
+
+model:
+  entities:
+    - name: issue
+      label_singular: Issue
+      label_plural: Issues
+      fields:
+        - {name: external_id, label: Issue number, type: string, required: true}
+        - {name: title, label: Title, type: string, required: true}
+        - {name: body, label: Body, type: text}
+        - {name: state, label: State, type: enum, required: true, enum_values: [open, closed]}
+        - {name: source_url, label: Source URL, type: string}
+        - {name: labels, label: Labels, type: text}
+        - {name: author, label: Author, type: string}
+        - {name: updated_at, label: Updated at, type: string}
+  pages:
+    - {name: dashboard, type: dashboard, title: Issues dashboard}
+    - {name: issues, type: entity_list, entity: issue, title: Issues}
+  actions:
+    - {name: close_issue_locally, label: Mark closed locally, type: update_status, entity: issue, field: state, value: closed}
+  ui:
+    composition: register_table
+    recipe: ops_console
+    style: {accent: violet, density: comfortable, layout: operations}
+    focus: {primary_entity: issue, group_by: state, title_field: title, badge_field: state, secondary_field: updated_at}
+    dashboard:
+      title: GitHub Issues Command Center
+      primary_entity: issue
+      cards:
+        - {type: count, entity: issue, label: Synced issues}
+        - {type: enum_breakdown, entity: issue, field: state, label: Issue state}
+        - {type: attention_list, entity: issue, field: state, value: open, label: Open issues}
+    entities:
+      issue:
+        display: {layout: table, title_field: title, subtitle_field: author, badge_field: state, secondary_field: updated_at}
+  seed_data:
+    issue:
+      - {external_id: '101', title: Example provider issue, body: Seeded local issue for demo mode., state: open, source_url: 'https://github.com/example/repo/issues/101', labels: demo, author: octocat, updated_at: '2026-05-01T00:00:00Z'}
+  imports:
+    - id: github_issues_import
+      label: Import GitHub issues (JSON)
+      entity: issue
+      formats: [csv, json]
+      upsert_key: external_id
+      field_map:
+        number: external_id
+        title: title
+        body: body
+        state: state
+        html_url: source_url
+        labels: labels
+        user_login: author
+        updated_at: updated_at
+  providers:
+    - id: github_issues
+      label: GitHub Issues
+      type: github_issues
+      mode: read_only
+      target_import: github_issues_import
+      env:
+        token: GITHUB_TOKEN
+        repo: GITHUB_REPO
+      source:
+        state: open
+        labels: []
+
+tests:
+  expectations:
+    no_live_provider_in_tests: true
+    deterministic_fixture_data: true
+  commands:
+    backend: pytest
+    frontend_build: npm run build
+    frontend_lint: npm run lint
+
+future_extensions:
+  features: [oauth, writeback, provider_marketplace]
+compatibility_gaps: []
