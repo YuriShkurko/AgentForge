@@ -1,4 +1,5 @@
 """Domain Pack loading and validation."""
+import re
 from pathlib import Path
 from typing import Any
 
@@ -168,8 +169,11 @@ _VALID_MODEL_FIELD_TYPES = {"string", "text", "integer", "boolean", "date", "enu
 _VALID_MODEL_PAGE_TYPES = {"dashboard", "entity_list", "entity_detail"}
 _VALID_MODEL_ACTION_TYPES = {"update_status", "add_note", "mark_complete"}
 _VALID_IMPORT_FORMATS = {"csv", "json"}
-_VALID_MODEL_PROVIDER_TYPES = {"github_issues"}
+_VALID_MODEL_PROVIDER_TYPES = {"github_issues", "http_json"}
 _VALID_MODEL_PROVIDER_MODES = {"read_only"}
+_VALID_MODEL_PROVIDER_AUTHS = {"none", "bearer"}
+_VALID_MODEL_PROVIDER_SOURCE_STATES = {"open", "closed", "all"}
+_RECORDS_PATH_RE = re.compile(r"^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*$")
 _ENV_VAR_RE = r"^[A-Z][A-Z0-9_]*$"
 _VALID_UI_ACCENTS = {"blue", "emerald", "amber", "red", "slate", "violet"}
 _VALID_UI_DENSITIES = {"compact", "comfortable", "spacious"}
@@ -422,19 +426,45 @@ class ModelImport(BaseModel):
 
 
 
+def _validate_env_var_name(value: str, *, field_label: str) -> str:
+    if not value:
+        return value
+    if not re.match(_ENV_VAR_RE, value):
+        raise ValueError(f"provider {field_label} must be an UPPER_SNAKE_CASE env var name; got '{value}'")
+    return value
+
+
 class ModelProviderEnv(BaseModel):
-    token: str = Field(pattern=_ENV_VAR_RE)
-    repo: str = Field(pattern=_ENV_VAR_RE)
+    token: str = ""
+    repo: str = ""
+    url: str = ""
+
+    @field_validator("token")
+    @classmethod
+    def token_is_safe(cls, value: str) -> str:
+        return _validate_env_var_name(value, field_label="env.token")
+
+    @field_validator("repo")
+    @classmethod
+    def repo_is_safe(cls, value: str) -> str:
+        return _validate_env_var_name(value, field_label="env.repo")
+
+    @field_validator("url")
+    @classmethod
+    def url_is_safe(cls, value: str) -> str:
+        return _validate_env_var_name(value, field_label="env.url")
 
 
 class ModelProviderSource(BaseModel):
     state: str = "open"
     labels: list[str] = Field(default_factory=list)
+    records_path: str = ""
+    auth: str = "none"
 
     @field_validator("state")
     @classmethod
     def state_is_supported(cls, value: str) -> str:
-        if value not in {"open", "closed", "all"}:
+        if value not in _VALID_MODEL_PROVIDER_SOURCE_STATES:
             raise ValueError("provider source.state must be one of open, closed, all")
         return value
 
@@ -442,6 +472,26 @@ class ModelProviderSource(BaseModel):
     @classmethod
     def labels_are_safe(cls, value: list[str]) -> list[str]:
         return _clean_custom_list(value, field_name="provider labels", max_items=20, max_length=60)
+
+    @field_validator("records_path")
+    @classmethod
+    def records_path_is_safe(cls, value: str) -> str:
+        if not value:
+            return value
+        if not _RECORDS_PATH_RE.match(value):
+            raise ValueError(
+                "provider source.records_path must be a simple key or dotted path of lowercase identifiers (e.g. 'data', 'data.items')"
+            )
+        return value
+
+    @field_validator("auth")
+    @classmethod
+    def auth_is_supported(cls, value: str) -> str:
+        if value not in _VALID_MODEL_PROVIDER_AUTHS:
+            raise ValueError(
+                f"unsupported provider source.auth '{value}'; valid: {sorted(_VALID_MODEL_PROVIDER_AUTHS)}"
+            )
+        return value
 
 
 class ModelProvider(BaseModel):
@@ -478,6 +528,19 @@ class ModelProvider(BaseModel):
         if not value:
             raise ValueError("provider target_import is required")
         return value
+
+    @model_validator(mode="after")
+    def type_specific_env_is_present(self) -> "ModelProvider":
+        if self.type == "github_issues":
+            missing = [name for name, value in {"env.token": self.env.token, "env.repo": self.env.repo}.items() if not value]
+            if missing:
+                raise ValueError(
+                    f"github_issues provider '{self.id}' requires {', '.join(missing)}"
+                )
+        elif self.type == "http_json":
+            if not self.env.url:
+                raise ValueError(f"http_json provider '{self.id}' requires env.url")
+        return self
 
 class ModelDrivenApp(BaseModel):
     entities: list[ModelEntity]

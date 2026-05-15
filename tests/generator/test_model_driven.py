@@ -1092,3 +1092,228 @@ def test_generated_provider_missing_env_error(generated_github_client, monkeypat
     response = generated_github_client.post("/providers/github_issues/sync")
     assert response.status_code == 400
     assert "missing provider env vars" in response.json()["detail"]
+
+
+# --------------------------------------------------------------------------- #
+# HTTP JSON Provider v0 — schema, generation, generated backend
+# --------------------------------------------------------------------------- #
+
+
+def _http_json_provider_block(**overrides):
+    base = {
+        "id": "external_vendor_feed",
+        "label": "External Vendor Feed",
+        "type": "http_json",
+        "mode": "read_only",
+        "target_import": "tickets_import",
+        "env": {"url": "EXTERNAL_VENDOR_FEED_URL", "token": "EXTERNAL_VENDOR_FEED_TOKEN"},
+        "source": {"records_path": "data", "auth": "bearer"},
+    }
+    base.update(overrides)
+    return base
+
+
+def test_http_json_provider_config_loads():
+    pack = load_pack(PACKS_DIR / "http-json-vendor-feed" / "domain-pack.yaml")
+    assert pack.model is not None
+    provider = pack.model.providers[0]
+    assert provider.type == "http_json"
+    assert provider.env.url == "EXTERNAL_VENDOR_FEED_URL"
+    assert provider.env.token == "EXTERNAL_VENDOR_FEED_TOKEN"
+    assert provider.env.repo == ""
+    assert provider.source.records_path == "data"
+    assert provider.source.auth == "bearer"
+
+
+def test_http_json_provider_minimal_no_token_no_records_path():
+    block = _http_json_provider_block(
+        env={"url": "EXAMPLE_FEED_URL"},
+        source={"auth": "none"},
+    )
+    pack = DomainPack.model_validate(_pack_with_provider(replace_providers=[block]))
+    assert pack.model.providers[0].env.token == ""
+    assert pack.model.providers[0].source.records_path == ""
+    assert pack.model.providers[0].source.auth == "none"
+
+
+def test_http_json_provider_schema_validation_failures():
+    with pytest.raises(Exception, match="requires env.url"):
+        DomainPack.model_validate(_pack_with_provider(replace_providers=[
+            _http_json_provider_block(env={"url": "", "token": "TOK"}),
+        ]))
+    with pytest.raises(Exception, match="source.auth"):
+        DomainPack.model_validate(_pack_with_provider(replace_providers=[
+            _http_json_provider_block(source={"records_path": "data", "auth": "oauth"}),
+        ]))
+    with pytest.raises(Exception, match="records_path"):
+        DomainPack.model_validate(_pack_with_provider(replace_providers=[
+            _http_json_provider_block(source={"records_path": "Bad-Path!", "auth": "bearer"}),
+        ]))
+    with pytest.raises(Exception, match="env.url"):
+        DomainPack.model_validate(_pack_with_provider(replace_providers=[
+            _http_json_provider_block(env={"url": "not_uppercase", "token": "TOK"}),
+        ]))
+    with pytest.raises(Exception, match="target_import references unknown import"):
+        DomainPack.model_validate(_pack_with_provider(replace_providers=[
+            _http_json_provider_block(target_import="missing_import"),
+        ]))
+
+
+def test_github_issues_pack_still_validates_after_schema_changes():
+    pack = load_pack(PACKS_DIR / "github-issues-workspace" / "domain-pack.yaml")
+    provider = pack.model.providers[0]
+    assert provider.type == "github_issues"
+    assert provider.env.token == "GITHUB_TOKEN"
+    assert provider.env.repo == "GITHUB_REPO"
+    assert provider.env.url == ""
+
+
+def test_http_json_generated_metadata_and_files(tmp_path):
+    pack = load_pack(PACKS_DIR / "http-json-vendor-feed" / "domain-pack.yaml")
+    out = tmp_path / pack.name
+    generate(pack, out)
+    meta = json.loads((out / "app-model.json").read_text())
+    assert meta["providers"][0]["type"] == "http_json"
+    assert meta["providers"][0]["env"]["url"] == "EXTERNAL_VENDOR_FEED_URL"
+    assert meta["providers"][0]["source"]["records_path"] == "data"
+    assert (out / "backend/app/providers.py").exists()
+    env_example = (out / ".env.example").read_text()
+    assert "EXTERNAL_VENDOR_FEED_URL=" in env_example
+    assert "EXTERNAL_VENDOR_FEED_TOKEN=" in env_example
+    providers_module = (out / "backend/app/providers.py").read_text()
+    assert "def fetch_http_json" in providers_module
+    assert "_extract_http_json_records" in providers_module
+    backend_test = (out / "backend/tests/test_model_driven_app.py").read_text()
+    assert "fetch_http_json" in backend_test
+    assert "EXTERNAL_VENDOR_FEED_URL" in backend_test
+
+
+def test_http_json_env_example_omits_token_when_unconfigured(tmp_path):
+    data = _pack_with_provider(replace_providers=[_http_json_provider_block(
+        env={"url": "ONLY_URL"},
+        source={"auth": "none"},
+    )])
+    pack = DomainPack.model_validate(data)
+    out = tmp_path / pack.name
+    generate(pack, out)
+    env_example = (out / ".env.example").read_text()
+    assert "ONLY_URL=" in env_example
+    assert "TOKEN" not in env_example
+
+
+def test_http_json_readme_documents_provider(tmp_path):
+    pack = load_pack(PACKS_DIR / "http-json-vendor-feed" / "domain-pack.yaml")
+    out = tmp_path / pack.name
+    generate(pack, out)
+    readme = (out / "README.md").read_text()
+    assert "Generic HTTP JSON" in readme
+    assert "EXTERNAL_VENDOR_FEED_URL" in readme
+    assert "EXTERNAL_VENDOR_FEED_TOKEN" in readme
+    assert "mock provider responses" in readme
+
+
+def test_http_json_frontend_provider_panel_is_reused(tmp_path):
+    pack = load_pack(PACKS_DIR / "http-json-vendor-feed" / "domain-pack.yaml")
+    out = tmp_path / pack.name
+    generate(pack, out)
+    app = (out / "frontend/src/App.tsx").read_text()
+    assert "function ProviderPanel" in app
+    assert 'data-ui-control="providers-nav"' in app
+    assert 'data-ui-action="provider-preview"' in app
+    # Provider panel reuses the same ProviderPanel component for any provider type.
+    assert app.count("function ProviderPanel") == 1
+
+
+def test_http_json_generation_is_deterministic(tmp_path):
+    pack = load_pack(PACKS_DIR / "http-json-vendor-feed" / "domain-pack.yaml")
+    first = tmp_path / "a"
+    second = tmp_path / "b"
+    generate(pack, first)
+    generate(pack, second)
+    for relative in ("backend/app/providers.py", "backend/tests/test_model_driven_app.py", "app-model.json", ".env.example", "README.md"):
+        assert (first / relative).read_text() == (second / relative).read_text(), relative
+
+
+@pytest.fixture
+def generated_http_json_client(tmp_path, monkeypatch):
+    return _make_generated_client(tmp_path, monkeypatch, "http-json-vendor-feed")
+
+
+def test_generated_http_json_list_endpoint_hides_secrets(generated_http_json_client, monkeypatch):
+    monkeypatch.delenv("EXTERNAL_VENDOR_FEED_URL", raising=False)
+    monkeypatch.delenv("EXTERNAL_VENDOR_FEED_TOKEN", raising=False)
+    response = generated_http_json_client.get("/providers")
+    assert response.status_code == 200
+    provider = response.json()[0]
+    assert provider["type"] == "http_json"
+    assert provider["env_status"]["configured"] is False
+    assert "EXTERNAL_VENDOR_FEED_URL" in provider["env_status"]["missing"]
+    # token only required when bearer configured AND token env var set; with bearer auth + token configured it's in required
+    assert provider["env_status"]["required"] == ["EXTERNAL_VENDOR_FEED_URL", "EXTERNAL_VENDOR_FEED_TOKEN"]
+
+
+def test_generated_http_json_preview_sync_uses_importer(generated_http_json_client, monkeypatch):
+    monkeypatch.setenv("EXTERNAL_VENDOR_FEED_URL", "https://example.invalid/feed")
+    monkeypatch.setenv("EXTERNAL_VENDOR_FEED_TOKEN", "should-not-leak")
+    from app import providers
+    fixture_record = {
+        "external_id": "ext-99",
+        "name": "Acme Cloud",
+        "service_area": "Cloud",
+        "risk_level": "high",
+        "owner": "ops-team",
+        "source_url": "https://example.invalid/vendors/ext-99",
+    }
+    monkeypatch.setattr(providers, "fetch_http_json", lambda provider: {"data": [fixture_record]})
+    preview = generated_http_json_client.post("/providers/external_vendor_feed/preview")
+    assert preview.status_code == 200
+    assert preview.json()["valid_rows"] == 1
+    first = generated_http_json_client.post("/providers/external_vendor_feed/sync").json()
+    second = generated_http_json_client.post("/providers/external_vendor_feed/sync").json()
+    assert first["created_count"] == 1
+    assert second["updated_count"] == 1
+    listing = generated_http_json_client.get("/vendor").json()
+    assert [row for row in listing if row["external_id"] == "ext-99"]
+    runs = generated_http_json_client.get("/providers/runs").json()
+    assert runs and runs[0]["format"] == "provider"
+
+
+def test_generated_http_json_records_path_missing_returns_clear_error(generated_http_json_client, monkeypatch):
+    monkeypatch.setenv("EXTERNAL_VENDOR_FEED_URL", "https://example.invalid/feed")
+    monkeypatch.setenv("EXTERNAL_VENDOR_FEED_TOKEN", "tok")
+    from app import providers
+    monkeypatch.setattr(providers, "fetch_http_json", lambda provider: {"wrong_key": []})
+    response = generated_http_json_client.post("/providers/external_vendor_feed/preview")
+    assert response.status_code == 400
+    assert "records_path" in response.json()["detail"]
+
+
+def test_generated_http_json_records_not_a_list_returns_clear_error(generated_http_json_client, monkeypatch):
+    monkeypatch.setenv("EXTERNAL_VENDOR_FEED_URL", "https://example.invalid/feed")
+    monkeypatch.setenv("EXTERNAL_VENDOR_FEED_TOKEN", "tok")
+    from app import providers
+    monkeypatch.setattr(providers, "fetch_http_json", lambda provider: {"data": "not-a-list"})
+    response = generated_http_json_client.post("/providers/external_vendor_feed/preview")
+    assert response.status_code == 400
+    assert "not a list" in response.json()["detail"]
+
+
+def test_generated_http_json_record_not_object_returns_clear_error(generated_http_json_client, monkeypatch):
+    monkeypatch.setenv("EXTERNAL_VENDOR_FEED_URL", "https://example.invalid/feed")
+    monkeypatch.setenv("EXTERNAL_VENDOR_FEED_TOKEN", "tok")
+    from app import providers
+    monkeypatch.setattr(providers, "fetch_http_json", lambda provider: {"data": ["just-a-string"]})
+    response = generated_http_json_client.post("/providers/external_vendor_feed/preview")
+    assert response.status_code == 400
+    assert "JSON object" in response.json()["detail"]
+
+
+def test_generated_http_json_bearer_token_only_when_configured(generated_http_json_client, monkeypatch):
+    monkeypatch.setenv("EXTERNAL_VENDOR_FEED_URL", "https://example.invalid/feed")
+    monkeypatch.setenv("EXTERNAL_VENDOR_FEED_TOKEN", "secret-token")
+    from app import providers
+    headers_with = providers._http_json_request_headers(providers.PROVIDERS[0])
+    assert headers_with.get("Authorization") == "Bearer secret-token"
+    monkeypatch.delenv("EXTERNAL_VENDOR_FEED_TOKEN", raising=False)
+    headers_without = providers._http_json_request_headers(providers.PROVIDERS[0])
+    assert "Authorization" not in headers_without

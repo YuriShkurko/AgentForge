@@ -660,8 +660,23 @@ def _backend_providers_module(model: ModelDrivenApp) -> str:
             return None
 
 
+        def required_env_vars(provider: dict) -> list[str]:
+            env = provider.get("env") or {}
+            source = provider.get("source") or {}
+            if provider["type"] == "github_issues":
+                names = [env.get("token") or "", env.get("repo") or ""]
+            elif provider["type"] == "http_json":
+                names = [env.get("url") or ""]
+                token = env.get("token") or ""
+                if token and (source.get("auth") or "none") == "bearer":
+                    names.append(token)
+            else:
+                names = []
+            return [name for name in names if name]
+
+
         def env_status(provider: dict) -> dict:
-            names = [provider["env"]["token"], provider["env"]["repo"]]
+            names = required_env_vars(provider)
             missing = [name for name in names if not os.getenv(name)]
             return {"configured": len(missing) == 0, "missing": missing, "required": names}
 
@@ -745,9 +760,73 @@ def _backend_providers_module(model: ModelDrivenApp) -> str:
             return normalized
 
 
+        def _http_json_request_headers(provider: dict) -> dict[str, str]:
+            env = provider.get("env") or {}
+            source = provider.get("source") or {}
+            headers = {"Accept": "application/json", "User-Agent": "AgentForge-ProviderRuntime-v0"}
+            token_var = env.get("token") or ""
+            if token_var and (source.get("auth") or "none") == "bearer":
+                token = os.environ.get(token_var)
+                if token:
+                    headers["Authorization"] = f"Bearer {token}"
+            return headers
+
+
+        def fetch_http_json(provider: dict) -> Any:
+            env = provider.get("env") or {}
+            url_var = env.get("url") or ""
+            url = os.environ[url_var]
+            request = urllib.request.Request(url, headers=_http_json_request_headers(provider))
+            try:
+                with urllib.request.urlopen(request, timeout=20) as response:
+                    raw = response.read().decode("utf-8")
+            except urllib.error.HTTPError as exc:
+                detail = exc.read().decode("utf-8", errors="replace")[:200]
+                raise ValueError(f"HTTP JSON provider error {exc.code}: {detail}") from exc
+            except urllib.error.URLError as exc:
+                raise ValueError(f"HTTP JSON provider request failed: {exc.reason}") from exc
+            try:
+                return json.loads(raw)
+            except json.JSONDecodeError as exc:
+                raise ValueError(f"HTTP JSON provider returned invalid JSON: {exc.msg}") from exc
+
+
+        def _extract_http_json_records(payload: Any, records_path: str) -> list[dict[str, Any]]:
+            if records_path:
+                current: Any = payload
+                for segment in records_path.split("."):
+                    if not isinstance(current, dict) or segment not in current:
+                        raise ValueError(f"HTTP JSON provider: records_path '{records_path}' not found in response")
+                    current = current[segment]
+                records = current
+            elif isinstance(payload, list):
+                records = payload
+            elif isinstance(payload, dict):
+                for key in ("records", "items", "data"):
+                    if isinstance(payload.get(key), list):
+                        records = payload[key]
+                        break
+                else:
+                    raise ValueError("HTTP JSON provider: response object did not contain a 'records', 'items', or 'data' array")
+            else:
+                raise ValueError("HTTP JSON provider: response was not a JSON array or object")
+            if not isinstance(records, list):
+                raise ValueError("HTTP JSON provider: extracted records value is not a list")
+            cleaned: list[dict[str, Any]] = []
+            for item in records:
+                if not isinstance(item, dict):
+                    raise ValueError("HTTP JSON provider: every record must be a JSON object")
+                cleaned.append(dict(item))
+            return cleaned
+
+
         def fetch_records(provider: dict) -> list[dict[str, Any]]:
             if provider["type"] == "github_issues":
                 return normalize_github_issues(fetch_github_issues(provider))
+            if provider["type"] == "http_json":
+                source = provider.get("source") or {}
+                payload = fetch_http_json(provider)
+                return _extract_http_json_records(payload, source.get("records_path") or "")
             raise ValueError(f"unsupported provider type: {provider['type']}")
 
 
@@ -775,10 +854,26 @@ def _backend_providers_module(model: ModelDrivenApp) -> str:
     return "\n\n".join([body, providers_literal, impl]) + "\n"
 
 
+def _provider_env_vars(provider) -> list[str]:
+    names: list[str] = []
+    if provider.type == "github_issues":
+        candidates = [provider.env.token, provider.env.repo]
+    elif provider.type == "http_json":
+        candidates = [provider.env.url]
+        if provider.env.token and provider.source.auth == "bearer":
+            candidates.append(provider.env.token)
+    else:
+        candidates = []
+    for name in candidates:
+        if name and name not in names:
+            names.append(name)
+    return names
+
+
 def _env_example(model: ModelDrivenApp) -> str:
     names: list[str] = []
     for provider in model.providers:
-        for name in (provider.env.token, provider.env.repo):
+        for name in _provider_env_vars(provider):
             if name not in names:
                 names.append(name)
     lines = ["# Provider Runtime v0 environment variables"]
@@ -970,7 +1065,19 @@ def _provider_test_lines(model: ModelDrivenApp) -> list[str]:
     target_import = next((item for item in model.imports if item.id == provider.target_import), None)
     if target_import is None:
         return []
+    if provider.type == "github_issues":
+        return _github_issues_provider_tests(provider, target_import)
+    if provider.type == "http_json":
+        entity = next((e for e in model.entities if e.name == target_import.entity), None)
+        if entity is None:
+            return []
+        return _http_json_provider_tests(provider, target_import, entity)
+    return []
+
+
+def _github_issues_provider_tests(provider, target_import) -> list[str]:
     route = target_import.entity.replace('_', '-')
+    provider_id = provider.id
     return [
         "",
         "def test_providers_endpoint_reports_missing_env(monkeypatch):",
@@ -979,7 +1086,7 @@ def _provider_test_lines(model: ModelDrivenApp) -> list[str]:
         "    response = client.get('/providers')",
         "    assert response.status_code == 200",
         "    provider = response.json()[0]",
-        "    assert provider['id'] == 'github_issues'",
+        f"    assert provider['id'] == {provider_id!r}",
         "    assert provider['env_status']['configured'] is False",
         "    assert 'GITHUB_TOKEN' in provider['env_status']['missing']",
         "    assert 'GITHUB_REPO' in provider['env_status']['missing']",
@@ -994,14 +1101,14 @@ def _provider_test_lines(model: ModelDrivenApp) -> list[str]:
         "        {'number': 203, 'title': 'PR should be ignored', 'state': 'open', 'pull_request': {'url': 'https://api.github.com/pr/203'}},",
         "    ]",
         "    monkeypatch.setattr(providers, 'fetch_github_issues', lambda provider: fixture)",
-        "    preview = client.post('/providers/github_issues/preview')",
+        f"    preview = client.post('/providers/{provider_id}/preview')",
         "    assert preview.status_code == 200",
         "    preview_body = preview.json()",
-        "    assert preview_body['provider_id'] == 'github_issues'",
+        f"    assert preview_body['provider_id'] == {provider_id!r}",
         "    assert preview_body['total_rows'] == 1",
         "    assert preview_body['valid_rows'] == 1",
-        "    first = client.post('/providers/github_issues/sync').json()",
-        "    second = client.post('/providers/github_issues/sync').json()",
+        f"    first = client.post('/providers/{provider_id}/sync').json()",
+        f"    second = client.post('/providers/{provider_id}/sync').json()",
         "    assert first['status'] == 'ok' and second['status'] == 'ok'",
         "    assert first['created_count'] == 1",
         "    assert second['updated_count'] == 1",
@@ -1014,10 +1121,154 @@ def _provider_test_lines(model: ModelDrivenApp) -> list[str]:
         "def test_provider_missing_env_returns_clear_error(monkeypatch):",
         "    monkeypatch.delenv('GITHUB_TOKEN', raising=False)",
         "    monkeypatch.delenv('GITHUB_REPO', raising=False)",
-        "    response = client.post('/providers/github_issues/preview')",
+        f"    response = client.post('/providers/{provider_id}/preview')",
         "    assert response.status_code == 400",
         "    assert 'missing provider env vars' in response.json()['detail']",
     ]
+
+
+def _http_json_provider_tests(provider, target_import, entity) -> list[str]:
+    provider_id = provider.id
+    url_env = provider.env.url
+    token_env = provider.env.token
+    auth = provider.source.auth
+    bearer_configured = bool(token_env) and auth == "bearer"
+    records_path = provider.source.records_path
+
+    target_to_source: dict[str, str] = {}
+    for source, target in target_import.field_map.items():
+        target_to_source.setdefault(target, source)
+    for field in entity.fields:
+        target_to_source.setdefault(field.name, field.name)
+
+    def _sample(field, variant: str):
+        if field.type == 'enum':
+            return field.enum_values[0]
+        if field.type == 'boolean':
+            return True
+        if field.type == 'integer':
+            return 1
+        if field.type == 'date':
+            return "2026-09-01"
+        if field.name == "external_id":
+            return f"ext-{variant}"
+        return f"Provider {field.name}".strip()
+
+    primary_record = {target_to_source[field.name]: _sample(field, "1") for field in entity.fields}
+
+    if records_path:
+        fixture_payload: Any = {}
+        current = fixture_payload
+        parts = records_path.split(".")
+        for part in parts[:-1]:
+            current[part] = {}
+            current = current[part]
+        current[parts[-1]] = [primary_record]
+        wrong_payload = {"wrong_key": [primary_record]}
+    else:
+        fixture_payload = {"records": [primary_record]}
+        wrong_payload = "<<UNUSED>>"
+
+    route = entity.name.replace('_', '-')
+    upsert_key = target_import.upsert_key or "external_id"
+    upsert_value = primary_record.get(target_to_source.get(upsert_key, upsert_key)) or primary_record.get(upsert_key)
+
+    env_setup = [f"    monkeypatch.setenv({url_env!r}, 'https://example.invalid/feed')"]
+    env_teardown = [f"    monkeypatch.delenv({url_env!r}, raising=False)"]
+    if token_env:
+        env_setup.append(f"    monkeypatch.setenv({token_env!r}, 'test-token-value')")
+        env_teardown.append(f"    monkeypatch.delenv({token_env!r}, raising=False)")
+
+    lines = [
+        "",
+        "def test_providers_endpoint_reports_missing_env(monkeypatch):",
+        *env_teardown,
+        "    response = client.get('/providers')",
+        "    assert response.status_code == 200",
+        "    provider = response.json()[0]",
+        f"    assert provider['id'] == {provider_id!r}",
+        "    assert provider['type'] == 'http_json'",
+        "    assert provider['env_status']['configured'] is False",
+        f"    assert {url_env!r} in provider['env_status']['missing']",
+        "    # URL/token values are never exposed; only env var names",
+        f"    assert 'test-token-value' not in __import__('json').dumps(provider)",
+        "    assert 'https://example.invalid/feed' not in __import__('json').dumps(provider)",
+        "",
+        "def test_provider_preview_and_sync_use_importer(monkeypatch):",
+        *env_setup,
+        "    from app import providers",
+        f"    fixture = {fixture_payload!r}",
+        "    monkeypatch.setattr(providers, 'fetch_http_json', lambda provider: fixture)",
+        f"    preview = client.post('/providers/{provider_id}/preview')",
+        "    assert preview.status_code == 200, preview.json()",
+        "    preview_body = preview.json()",
+        f"    assert preview_body['provider_id'] == {provider_id!r}",
+        "    assert preview_body['total_rows'] == 1",
+        "    assert preview_body['valid_rows'] == 1",
+        f"    first = client.post('/providers/{provider_id}/sync').json()",
+        f"    second = client.post('/providers/{provider_id}/sync').json()",
+        "    assert first['status'] == 'ok' and second['status'] == 'ok'",
+        "    assert first['created_count'] == 1",
+        "    assert second['updated_count'] == 1",
+        f"    listing = client.get('/{route}').json()",
+        f"    matches = [row for row in listing if str(row.get({upsert_key!r})) == {str(upsert_value)!r}]",
+        "    assert len(matches) == 1",
+        "    runs = client.get('/providers/runs').json()",
+        "    assert runs and runs[0]['format'] == 'provider'",
+        "",
+        "def test_provider_missing_env_returns_clear_error(monkeypatch):",
+        *env_teardown,
+        f"    response = client.post('/providers/{provider_id}/preview')",
+        "    assert response.status_code == 400",
+        "    assert 'missing provider env vars' in response.json()['detail']",
+        "",
+        "def test_provider_non_2xx_response_returns_clear_error(monkeypatch):",
+        *env_setup,
+        "    from app import providers",
+        "    def boom(provider):",
+        "        raise ValueError('HTTP JSON provider error 500: upstream failure')",
+        "    monkeypatch.setattr(providers, 'fetch_http_json', boom)",
+        f"    response = client.post('/providers/{provider_id}/sync')",
+        "    assert response.status_code == 400",
+        "    assert 'HTTP JSON provider error 500' in response.json()['detail']",
+        "",
+        "def test_provider_invalid_json_returns_clear_error(monkeypatch):",
+        *env_setup,
+        "    from app import providers",
+        "    def bad_json(provider):",
+        "        raise ValueError('HTTP JSON provider returned invalid JSON: Expecting value')",
+        "    monkeypatch.setattr(providers, 'fetch_http_json', bad_json)",
+        f"    response = client.post('/providers/{provider_id}/preview')",
+        "    assert response.status_code == 400",
+        "    assert 'invalid JSON' in response.json()['detail']",
+    ]
+
+    if records_path:
+        lines += [
+            "",
+            "def test_provider_records_path_missing_returns_clear_error(monkeypatch):",
+            *env_setup,
+            "    from app import providers",
+            f"    monkeypatch.setattr(providers, 'fetch_http_json', lambda provider: {wrong_payload!r})",
+            f"    response = client.post('/providers/{provider_id}/preview')",
+            "    assert response.status_code == 400",
+            f"    assert {records_path!r} in response.json()['detail']",
+        ]
+
+    if bearer_configured:
+        lines += [
+            "",
+            "def test_provider_bearer_header_only_when_token_configured(monkeypatch):",
+            *env_setup,
+            "    from app import providers",
+            "    headers_with = providers._http_json_request_headers(providers.PROVIDERS[0])",
+            "    assert headers_with.get('Authorization') == 'Bearer test-token-value'",
+            f"    monkeypatch.delenv({token_env!r}, raising=False)",
+            "    headers_without = providers._http_json_request_headers(providers.PROVIDERS[0])",
+            "    assert 'Authorization' not in headers_without",
+        ]
+
+    return lines
 
 
 def _import_test_lines(model: ModelDrivenApp) -> list[str]:
@@ -1055,6 +1306,18 @@ def _import_test_lines(model: ModelDrivenApp) -> list[str]:
     json_payload = json.dumps([primary_row])
     enum_field = next((field for field in entity.fields if field.type == 'enum'), None)
 
+    has_csv = 'csv' in spec.formats
+    has_json = 'json' in spec.formats
+    primary_format = 'csv' if has_csv else 'json'
+
+    def _payload_literal(row: dict, fmt: str) -> str:
+        if fmt == 'csv':
+            header = ",".join(row.keys())
+            row_csv = ",".join(str(row[key]) for key in row.keys())
+            csv_data = f"{header}\n{row_csv}"
+            return f"{{'format': 'csv', 'data': {csv_data!r}}}"
+        return f"{{'format': 'json', 'data': {json.dumps([row])!r}}}"
+
     lines = [
         "",
         "def test_imports_endpoint_lists_configured_imports():",
@@ -1062,41 +1325,46 @@ def _import_test_lines(model: ModelDrivenApp) -> list[str]:
         "    assert response.status_code == 200",
         "    ids = [item['id'] for item in response.json()]",
         f"    assert {spec.id!r} in ids",
-        "",
-        "def test_import_preview_csv():",
-        f"    payload = {{'format': 'csv', 'data': {csv_payload!r}}}",
-        f"    response = client.post('/imports/{spec.id}/preview', json=payload)",
-        "    assert response.status_code == 200",
-        "    body = response.json()",
-        "    assert body['total_rows'] == 1",
-        "    assert body['valid_rows'] == 1",
-        "    assert body['invalid_rows'] == 0",
-        "",
-        "def test_import_preview_json():",
-        f"    payload = {{'format': 'json', 'data': {json_payload!r}}}",
-        f"    response = client.post('/imports/{spec.id}/preview', json=payload)",
-        "    assert response.status_code == 200",
-        "    body = response.json()",
-        "    assert body['total_rows'] == 1",
-        "    assert body['valid_rows'] == 1",
-        "",
-        "def test_import_preview_json_records_envelope():",
-        f"    envelope = {{'records': [{primary_row!r}]}}",
-        f"    response = client.post('/imports/{spec.id}/preview', json={{'format': 'json', 'data': __import__('json').dumps(envelope)}})",
-        "    assert response.status_code == 200",
-        "    assert response.json()['total_rows'] == 1",
     ]
+
+    if has_csv:
+        lines += [
+            "",
+            "def test_import_preview_csv():",
+            f"    payload = {{'format': 'csv', 'data': {csv_payload!r}}}",
+            f"    response = client.post('/imports/{spec.id}/preview', json=payload)",
+            "    assert response.status_code == 200",
+            "    body = response.json()",
+            "    assert body['total_rows'] == 1",
+            "    assert body['valid_rows'] == 1",
+            "    assert body['invalid_rows'] == 0",
+        ]
+
+    if has_json:
+        lines += [
+            "",
+            "def test_import_preview_json():",
+            f"    payload = {{'format': 'json', 'data': {json_payload!r}}}",
+            f"    response = client.post('/imports/{spec.id}/preview', json=payload)",
+            "    assert response.status_code == 200",
+            "    body = response.json()",
+            "    assert body['total_rows'] == 1",
+            "    assert body['valid_rows'] == 1",
+            "",
+            "def test_import_preview_json_records_envelope():",
+            f"    envelope = {{'records': [{primary_row!r}]}}",
+            f"    response = client.post('/imports/{spec.id}/preview', json={{'format': 'json', 'data': __import__('json').dumps(envelope)}})",
+            "    assert response.status_code == 200",
+            "    assert response.json()['total_rows'] == 1",
+        ]
 
     if enum_field:
         bad_row = dict(primary_row)
         bad_row[target_to_source[enum_field.name]] = "not_allowed"
-        bad_csv_header = ",".join(bad_row.keys())
-        bad_csv_row = ",".join(str(bad_row[key]) for key in bad_row.keys())
-        bad_csv_payload = f"{bad_csv_header}\n{bad_csv_row}"
         lines += [
             "",
             "def test_import_preview_invalid_enum_row():",
-            f"    payload = {{'format': 'csv', 'data': {bad_csv_payload!r}}}",
+            f"    payload = {_payload_literal(bad_row, primary_format)}",
             f"    response = client.post('/imports/{spec.id}/preview', json=payload)",
             "    body = response.json()",
             "    assert body['invalid_rows'] == 1",
@@ -1108,13 +1376,10 @@ def _import_test_lines(model: ModelDrivenApp) -> list[str]:
     if integer_field:
         bad_row = dict(primary_row)
         bad_row[target_to_source[integer_field.name]] = "not-a-number"
-        bad_csv_header = ",".join(bad_row.keys())
-        bad_csv_row = ",".join(str(bad_row[key]) for key in bad_row.keys())
-        bad_csv_payload = f"{bad_csv_header}\n{bad_csv_row}"
         lines += [
             "",
             "def test_import_preview_invalid_integer_row():",
-            f"    payload = {{'format': 'csv', 'data': {bad_csv_payload!r}}}",
+            f"    payload = {_payload_literal(bad_row, primary_format)}",
             f"    response = client.post('/imports/{spec.id}/preview', json=payload)",
             "    assert response.json()['invalid_rows'] == 1",
         ]
@@ -1124,7 +1389,7 @@ def _import_test_lines(model: ModelDrivenApp) -> list[str]:
     lines += [
         "",
         "def test_import_commit_creates_records():",
-        f"    payload = {{'format': 'csv', 'data': {csv_payload!r}}}",
+        f"    payload = {_payload_literal(primary_row, primary_format)}",
         f"    response = client.post('/imports/{spec.id}/commit', json=payload)",
         "    body = response.json()",
         "    assert body['status'] == 'ok'",
@@ -1140,7 +1405,7 @@ def _import_test_lines(model: ModelDrivenApp) -> list[str]:
         lines += [
             "",
             "def test_import_commit_upsert_is_idempotent():",
-            f"    payload = {{'format': 'csv', 'data': {csv_payload!r}}}",
+            f"    payload = {_payload_literal(primary_row, primary_format)}",
             f"    first = client.post('/imports/{spec.id}/commit', json=payload).json()",
             f"    second = client.post('/imports/{spec.id}/commit', json=payload).json()",
             "    assert first['status'] == 'ok' and second['status'] == 'ok'",
@@ -1153,13 +1418,10 @@ def _import_test_lines(model: ModelDrivenApp) -> list[str]:
     if enum_field:
         bad_row = dict(primary_row)
         bad_row[target_to_source[enum_field.name]] = "not_allowed"
-        bad_csv_header = ",".join(bad_row.keys())
-        bad_csv_row = ",".join(str(bad_row[key]) for key in bad_row.keys())
-        bad_csv_payload = f"{bad_csv_header}\n{bad_csv_row}"
         lines += [
             "",
             "def test_import_commit_rejects_invalid_rows():",
-            f"    payload = {{'format': 'csv', 'data': {bad_csv_payload!r}}}",
+            f"    payload = {_payload_literal(bad_row, primary_format)}",
             f"    response = client.post('/imports/{spec.id}/commit', json=payload)",
             "    body = response.json()",
             "    assert body['status'] == 'rejected'",
@@ -1201,7 +1463,7 @@ type ImportRun = {{ id: number; import_id: string; entity: string; format: strin
 type RelationResolution = {{ row: number; source_column: string; field: string; source_field: string; target_entity: string; target_label?: string; display_field?: string; source_value?: string; matched_id: number; matched_by: 'id' | 'label' }};
 type ImportPreview = {{ import_id: string; entity: string; format: string; total_rows: number; valid_rows: number; invalid_rows: number; errors: {{ row: number; errors: string[] }}[]; mapped_fields: string[]; would_create: number; would_update: number; relation_resolutions?: RelationResolution[] }};
 type ImportCommit = {{ import_id: string; status: string; total_rows: number; valid_rows: number; invalid_rows: number; created_count: number; updated_count: number; skipped_count: number; error_count: number; errors: {{ row: number; errors: string[] }}[]; run_id: number; provider_id?: string }};
-type ProviderConfig = {{ id: string; label: string; type: string; mode: string; targetImport: string; env: {{ token: string; repo: string }}; source: {{ state?: string; labels?: string[] }} }};
+type ProviderConfig = {{ id: string; label: string; type: string; mode: string; targetImport: string; env: {{ token?: string; repo?: string; url?: string }}; source: {{ state?: string; labels?: string[]; records_path?: string; auth?: string }} }};
 type ProviderStatus = {{ id: string; label: string; type: string; mode: string; target_import: string; target_entity: string; env_status: {{ configured: boolean; missing: string[]; required: string[] }}; source: {{ state?: string; labels?: string[] }} }};
 type AppModel = {{ app: {{ name: string; displayName: string; description: string }}; entities: Entity[]; actions: Action[]; pages?: unknown[]; seedData?: unknown; imports: ImportConfig[]; providers: ProviderConfig[]; ui: {{ composition: 'standard' | 'board_workspace' | 'register_table'; recipe: 'standard' | 'workspace_board' | 'executive_register' | 'ops_console'; style: {{ accent: string; density: string; layout: string }}; focus: Focus; dashboard: {{ title: string; primary_entity?: string; cards: Card[] }}; entities?: unknown }} }};
 type Row = Record<string, string | number | boolean | null> & {{ id?: number }};
@@ -1363,27 +1625,38 @@ def _relation_import_examples(pack: DomainPack) -> str:
 def _readme(pack: DomainPack) -> str:
     provider_doc = ""
     if pack.model and pack.model.providers:
-        env_lines = []
+        env_lines: list[str] = []
         seen: set[str] = set()
         for provider in pack.model.providers:
-            for name in (provider.env.token, provider.env.repo):
+            for name in _provider_env_vars(provider):
                 if name not in seen:
                     seen.add(name)
                     env_lines.append(f"{name}={'owner/repo' if name.endswith('REPO') else ''}")
         env_block = "\n".join(f"        {line}" for line in env_lines)
+        provider_types = sorted({provider.type for provider in pack.model.providers})
+        type_descriptions = {
+            "github_issues": "GitHub Issues (read-only) — fetches open/closed issues from a configured `owner/repo`.",
+            "http_json": "Generic HTTP JSON (read-only) — fetches a configured URL, optionally with a bearer token, and extracts records from the response (top-level array, `records`/`items`/`data` wrapper, or configured `source.records_path`).",
+        }
+        descriptions = "\n".join(f"        - {type_descriptions[t]}" for t in provider_types if t in type_descriptions)
+        repo_note = "`GITHUB_REPO` must use `owner/repo` format. " if "github_issues" in provider_types else ""
         provider_doc = f"""## Providers panel
 
-        This generated app includes Provider Runtime v0. Providers are optional, read-only input adapters that fetch external records and feed the same generic importer pipeline used by CSV/JSON imports. Provider sync uses the target import config for mapping, validation, upsert/idempotency, and import-run history.
+        This generated app includes Provider Runtime v0. Providers are optional, read-only input adapters that fetch external records and feed the same generic importer pipeline used by CSV/JSON imports. Provider sync reuses the target import config for mapping, validation, upsert/idempotency, and import-run history — provider code never writes entity rows directly.
 
-        Configured provider support is bounded to GitHub Issues in read-only mode. There is no OAuth flow, secret entry UI, write-back behavior, provider marketplace, or GitHub repo mutation.
+        Configured provider types in this app:
 
-        To use the Providers panel with a real GitHub repo, copy `.env.example` values into your shell environment before starting the backend:
+{descriptions}
+
+        There is no OAuth flow, secret entry UI, write-back behavior, provider marketplace, or scheduled sync. URL and token values are never exposed to the Providers panel; only env var names appear.
+
+        To use the Providers panel with real data, copy `.env.example` values into your shell environment before starting the backend:
 
         ```bash
 {env_block}
         ```
 
-        `GITHUB_REPO` must use `owner/repo` format. Secret values are never shown in the UI. Default generated backend tests use mocked provider responses and do not require a live GitHub token or network access."""
+        {repo_note}Default generated backend tests mock provider responses, so `make validate` does not require a live token, URL, or network access. Do not commit secret values to source control."""
     relation_examples = _relation_import_examples(pack)
     return textwrap.dedent(f'''
         # {pack.display_name}

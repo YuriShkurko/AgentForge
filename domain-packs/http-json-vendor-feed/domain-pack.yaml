@@ -1,0 +1,87 @@
+name: http-json-vendor-feed
+display_name: HTTP JSON Vendor Feed
+version: 0.1.0
+
+domain:
+  domain_name: HTTP JSON Vendor Feed
+  app_type: model_driven_app
+  target_users: [vendor intake analyst]
+  product_purpose: Demonstrate the generic HTTP JSON provider by syncing an external vendor feed into local model-driven records through the shared importer pipeline.
+  main_user_goals: [preview_vendor_feed, sync_vendor_feed, review_vendor_risk]
+
+app_archetype: model_driven_app
+required_shell_modules: [model_driven, operations_ui, persistence, test]
+optional_shell_modules: []
+
+model:
+  entities:
+    - name: vendor
+      label_singular: Vendor
+      label_plural: Vendors
+      fields:
+        - {name: external_id, label: External ID, type: string, required: true}
+        - {name: name, label: Vendor name, type: string, required: true}
+        - {name: service_area, label: Service area, type: string}
+        - {name: risk_level, label: Risk level, type: enum, required: true, enum_values: [low, medium, high]}
+        - {name: owner, label: Owner, type: string}
+        - {name: source_url, label: Source URL, type: string}
+  pages:
+    - {name: dashboard, type: dashboard, title: Vendor feed dashboard}
+    - {name: vendors, type: entity_list, entity: vendor, title: Vendors}
+  actions: []
+  ui:
+    composition: register_table
+    recipe: ops_console
+    style: {accent: slate, density: comfortable, layout: operations}
+    focus: {primary_entity: vendor, group_by: risk_level, title_field: name, badge_field: risk_level, secondary_field: owner}
+    dashboard:
+      title: External Vendor Feed
+      primary_entity: vendor
+      cards:
+        - {type: count, entity: vendor, label: Synced vendors}
+        - {type: enum_breakdown, entity: vendor, field: risk_level, label: Risk level breakdown}
+        - {type: attention_list, entity: vendor, field: risk_level, value: high, label: High-risk vendors}
+    entities:
+      vendor:
+        display: {layout: table, title_field: name, subtitle_field: service_area, badge_field: risk_level, secondary_field: owner}
+  seed_data:
+    vendor:
+      - {external_id: 'seed-1', name: Example Seeded Vendor, service_area: Cloud, risk_level: low, owner: ops-team, source_url: 'https://example.invalid/vendors/seed-1'}
+  imports:
+    - id: vendor_feed_import
+      label: Import vendor feed (JSON)
+      entity: vendor
+      formats: [json]
+      upsert_key: external_id
+      field_map:
+        external_id: external_id
+        name: name
+        service_area: service_area
+        risk_level: risk_level
+        owner: owner
+        source_url: source_url
+  providers:
+    - id: external_vendor_feed
+      label: External Vendor Feed
+      type: http_json
+      mode: read_only
+      target_import: vendor_feed_import
+      env:
+        url: EXTERNAL_VENDOR_FEED_URL
+        token: EXTERNAL_VENDOR_FEED_TOKEN
+      source:
+        records_path: data
+        auth: bearer
+
+tests:
+  expectations:
+    no_live_provider_in_tests: true
+    deterministic_fixture_data: true
+  commands:
+    backend: pytest
+    frontend_build: npm run build
+    frontend_lint: npm run lint
+
+future_extensions:
+  features: [additional_http_auth_modes, paginated_responses, response_caching]
+compatibility_gaps: []
