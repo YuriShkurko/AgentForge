@@ -64,6 +64,28 @@ model:
       - {vendor_id: 1, summary: SOC 2 bridge letter missing, severity: medium, state: open, evidence_note: Requested from account team., remediation_complete: false}
       - {vendor_id: 2, summary: SPF alignment exception, severity: low, state: investigating, evidence_note: Compensating controls documented., remediation_complete: false}
       - {vendor_id: 1, summary: Privileged access review overdue, severity: high, state: open, evidence_note: Quarterly access certification not returned., remediation_complete: false}
+  imports:
+    - id: vendors_import
+      label: Import vendors (CSV/JSON)
+      entity: vendor
+      formats: [csv, json]
+      upsert_key: name
+      field_map:
+        Vendor name: name
+        Service area: service_area
+        Inherent risk: inherent_risk
+        Next review date: next_review_date
+    - id: risk_findings_import
+      label: Import risk findings (CSV/JSON)
+      entity: risk_finding
+      formats: [csv, json]
+      field_map:
+        Vendor ID: vendor_id
+        Summary: summary
+        Severity: severity
+        State: state
+        Evidence note: evidence_note
+        Remediation complete: remediation_complete
 
 tests:
   expectations:

@@ -64,6 +64,28 @@ model:
       - {client_id: 1, title: Configure SSO, status: in_progress, owner: Maya, due_date: '2026-05-28', notes: Waiting on identity metadata.}
       - {client_id: 2, title: Import starter data, status: todo, owner: Theo, due_date: '2026-06-04', notes: Use CSV export from legacy system.}
       - {client_id: 1, title: Finalize launch checklist, status: blocked, owner: Priya, due_date: '2026-05-30', notes: Needs executive sponsor approval.}
+  imports:
+    - id: clients_import
+      label: Import clients (CSV/JSON)
+      entity: client
+      formats: [csv, json]
+      upsert_key: name
+      field_map:
+        Client name: name
+        Tier: tier
+        Launch date: launch_date
+        Kickoff complete: kickoff_complete
+    - id: onboarding_tasks_import
+      label: Import onboarding tasks (CSV/JSON)
+      entity: onboarding_task
+      formats: [csv, json]
+      field_map:
+        Client ID: client_id
+        Task title: title
+        Status: status
+        Owner: owner
+        Due date: due_date
+        Notes: notes
 
 tests:
   expectations:

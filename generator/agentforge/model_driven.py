@@ -2,11 +2,12 @@
 from __future__ import annotations
 
 import json
+import pprint
 import textwrap
 from pathlib import Path
 from typing import Any
 
-from agentforge.pack import DomainPack, ModelDrivenApp, ModelField
+from agentforge.pack import DomainPack, ModelDrivenApp, ModelField, ModelImport
 
 
 def generate_model_driven_app(pack: DomainPack, output_dir: Path, *, dry_run: bool = False) -> list[str]:
@@ -31,6 +32,7 @@ def _files(pack: DomainPack, model: ModelDrivenApp) -> dict[str, str]:
         "backend/app/database.py": _backend_database(),
         "backend/app/models.py": _backend_models(model),
         "backend/app/schemas.py": _backend_schemas(model),
+        "backend/app/imports.py": _backend_imports_module(model),
         "backend/app/main.py": _backend_main(pack, model),
         "backend/tests/__init__.py": "",
         "backend/tests/test_model_driven_app.py": _backend_tests(model),
@@ -102,6 +104,17 @@ def _metadata(pack: DomainPack, model: ModelDrivenApp) -> dict[str, Any]:
         "actions": [a.model_dump() for a in model.actions],
         "seedData": model.seed_data,
         "ui": model.ui.model_dump(),
+        "imports": [
+            {
+                "id": spec.id,
+                "label": spec.label or f"Import {spec.entity.replace('_', ' ')}",
+                "entity": spec.entity,
+                "formats": spec.formats,
+                "upsertKey": spec.upsert_key,
+                "fieldMap": spec.field_map,
+            }
+            for spec in model.imports
+        ],
     }
 
 
@@ -138,7 +151,27 @@ def _backend_models(model: ModelDrivenApp) -> str:
                 default = ", default=False"
             lines.append(f"    {field.name}: Mapped[{_py_type(field)}{' | None' if not field.required else ''}] = mapped_column({col}, nullable={nullable}{default})")
         chunks.append("\n".join(lines))
+    chunks.append(_import_run_model())
     return "\n\n".join(chunks)
+
+
+def _import_run_model() -> str:
+    return textwrap.dedent('''
+        class ImportRun(Base):
+            __tablename__ = "import_runs"
+
+            id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+            import_id: Mapped[str] = mapped_column(String(120), nullable=False, index=True)
+            entity: Mapped[str] = mapped_column(String(120), nullable=False)
+            format: Mapped[str] = mapped_column(String(16), nullable=False)
+            status: Mapped[str] = mapped_column(String(32), nullable=False)
+            total_rows: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+            created_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+            updated_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+            skipped_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+            error_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+            error_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    ''').strip()
 
 
 def _backend_schemas(model: ModelDrivenApp) -> str:
@@ -158,7 +191,303 @@ def _backend_schemas(model: ModelDrivenApp) -> str:
         update = [f"class {cls}Update(BaseModel):"] + [f"    {f.name}: {_py_type(f)} | None = None" for f in entity.fields]
         read = [f"class {cls}Read({cls}Create):", "    id: int", "    model_config = ConfigDict(from_attributes=True)"]
         chunks.append("\n".join(create + [""] + update + [""] + read))
+    chunks.append("class ImportPayload(BaseModel):\n    format: str\n    data: str")
     return "\n\n".join(chunks)
+
+
+def _field_descriptor(field: ModelField) -> dict[str, Any]:
+    return {
+        "name": field.name,
+        "type": field.type,
+        "required": field.required,
+        "enum_values": list(field.enum_values),
+        "target_entity": field.target_entity,
+    }
+
+
+def _backend_imports_module(model: ModelDrivenApp) -> str:
+    entity_fields = {entity.name: [_field_descriptor(f) for f in entity.fields] for entity in model.entities}
+    entity_classes = {entity.name: _class_name(entity.name) for entity in model.entities}
+    imports_payload = [
+        {
+            "id": spec.id,
+            "label": spec.label or f"Import {spec.entity.replace('_', ' ')}",
+            "entity": spec.entity,
+            "formats": list(spec.formats),
+            "upsert_key": spec.upsert_key,
+            "field_map": dict(spec.field_map),
+        }
+        for spec in model.imports
+    ]
+
+    header = textwrap.dedent('''
+        """Generic importer pipeline (model-driven app).
+
+        CSV and JSON are thin input adapters that produce the same list[dict] shape.
+        After parsing, mapping/validation/upsert/run-history logic is shared.
+        """
+        from __future__ import annotations
+
+        import csv
+        import io
+        import json
+        from datetime import date
+        from typing import Any, Iterable
+
+        from sqlalchemy.orm import Session
+
+        from app import models
+    ''').strip()
+
+    imports_literal = f"IMPORTS: list[dict[str, Any]] = {pprint.pformat(imports_payload, indent=4, width=100, sort_dicts=False)}"
+    fields_literal = f"ENTITY_FIELDS: dict[str, list[dict[str, Any]]] = {pprint.pformat(entity_fields, indent=4, width=100, sort_dicts=False)}"
+    classes_lines = ["ENTITY_MODELS = {"]
+    for name, cls in entity_classes.items():
+        classes_lines.append(f"    {name!r}: models.{cls},")
+    classes_lines.append("}")
+    classes_literal = "\n".join(classes_lines)
+
+    body = textwrap.dedent('''
+        def get_import(import_id: str) -> dict | None:
+            for spec in IMPORTS:
+                if spec["id"] == import_id:
+                    return spec
+            return None
+
+
+        def _normalize_key(text: str) -> str:
+            return "".join(ch if ch.isalnum() else "_" for ch in str(text).strip().lower()).strip("_")
+
+
+        def parse_csv(text: str) -> list[dict[str, Any]]:
+            reader = csv.DictReader(io.StringIO(text or ""))
+            rows: list[dict[str, Any]] = []
+            for row in reader:
+                cleaned: dict[str, Any] = {}
+                for key, value in row.items():
+                    if key is None:
+                        continue
+                    header = key.strip()
+                    if not header:
+                        continue
+                    cleaned[header] = value if value is not None else ""
+                rows.append(cleaned)
+            return rows
+
+
+        def parse_json(text: str) -> list[dict[str, Any]]:
+            try:
+                payload = json.loads(text or "")
+            except json.JSONDecodeError as exc:
+                raise ValueError(f"invalid JSON: {exc.msg}") from exc
+            if isinstance(payload, list):
+                records = payload
+            elif isinstance(payload, dict):
+                records = None
+                for key in ("records", "items", "data"):
+                    candidate = payload.get(key)
+                    if isinstance(candidate, list):
+                        records = candidate
+                        break
+                if records is None:
+                    raise ValueError("JSON object must include a 'records', 'items', or 'data' array")
+            else:
+                raise ValueError("JSON payload must be a list of objects or an object with records/items/data")
+            out: list[dict[str, Any]] = []
+            for record in records:
+                if not isinstance(record, dict):
+                    raise ValueError("JSON records must be objects")
+                out.append(dict(record))
+            return out
+
+
+        def _build_mapping(spec: dict, source_keys: Iterable[str]) -> dict[str, str]:
+            fields = ENTITY_FIELDS[spec["entity"]]
+            field_names = {field["name"] for field in fields}
+            mapping: dict[str, str] = {}
+            for key in source_keys:
+                normalized = _normalize_key(key)
+                if normalized in field_names:
+                    mapping[key] = normalized
+            for source, target in (spec.get("field_map") or {}).items():
+                if target in field_names:
+                    mapping[source] = target
+            return mapping
+
+
+        def _coerce(field: dict, raw: Any) -> tuple[Any, str | None]:
+            if raw is None or (isinstance(raw, str) and raw.strip() == ""):
+                if field.get("required"):
+                    return None, f"{field['name']} is required"
+                return None, None
+            kind = field["type"]
+            if kind in ("string", "text"):
+                return str(raw), None
+            if kind == "integer":
+                try:
+                    return int(str(raw).strip()), None
+                except (ValueError, TypeError):
+                    return None, f"{field['name']} must be an integer"
+            if kind == "boolean":
+                if isinstance(raw, bool):
+                    return raw, None
+                text = str(raw).strip().lower()
+                if text in ("true", "1", "yes", "y"):
+                    return True, None
+                if text in ("false", "0", "no", "n"):
+                    return False, None
+                return None, f"{field['name']} must be a boolean (true/false)"
+            if kind == "date":
+                try:
+                    return date.fromisoformat(str(raw).strip()), None
+                except (ValueError, TypeError):
+                    return None, f"{field['name']} must be an ISO date (YYYY-MM-DD)"
+            if kind == "enum":
+                text = str(raw).strip()
+                if text not in field["enum_values"]:
+                    return None, f"{field['name']} must be one of {field['enum_values']}"
+                return text, None
+            if kind == "relation":
+                try:
+                    return int(str(raw).strip()), None
+                except (ValueError, TypeError):
+                    return None, f"{field['name']} must be a relation id (integer)"
+            return raw, None
+
+
+        def _map_and_validate(spec: dict, raw_rows: list[dict[str, Any]]) -> tuple[list[dict[str, Any] | None], list[dict[str, Any]], dict[str, str]]:
+            fields = ENTITY_FIELDS[spec["entity"]]
+            fields_by_name = {field["name"]: field for field in fields}
+            source_keys: list[str] = []
+            seen: set[str] = set()
+            for row in raw_rows:
+                for key in row.keys():
+                    if key not in seen:
+                        seen.add(key)
+                        source_keys.append(key)
+            mapping = _build_mapping(spec, source_keys)
+            cleaned: list[dict[str, Any] | None] = []
+            errors: list[dict[str, Any]] = []
+            for index, row in enumerate(raw_rows):
+                mapped: dict[str, Any] = {}
+                row_errors: list[str] = []
+                for source, target in mapping.items():
+                    if source in row:
+                        value, err = _coerce(fields_by_name[target], row[source])
+                        if err:
+                            row_errors.append(err)
+                        elif value is not None:
+                            mapped[target] = value
+                for field in fields:
+                    if field.get("required") and field["name"] not in mapped:
+                        message = f"{field['name']} is required"
+                        if message not in row_errors:
+                            row_errors.append(message)
+                if row_errors:
+                    cleaned.append(None)
+                    errors.append({"row": index + 1, "errors": row_errors})
+                else:
+                    cleaned.append(mapped)
+            return cleaned, errors, mapping
+
+
+        def preview(spec: dict, fmt: str, data: str, db: Session) -> dict:
+            raw_rows = parse_csv(data) if fmt == "csv" else parse_json(data)
+            cleaned, errors, mapping = _map_and_validate(spec, raw_rows)
+            valid_rows = [row for row in cleaned if row is not None]
+            upsert_key = spec.get("upsert_key") or ""
+            would_create = 0
+            would_update = 0
+            if upsert_key:
+                Model = ENTITY_MODELS[spec["entity"]]
+                for row in valid_rows:
+                    key_value = row.get(upsert_key)
+                    if key_value is None:
+                        would_create += 1
+                        continue
+                    existing = db.query(Model).filter(getattr(Model, upsert_key) == key_value).one_or_none()
+                    if existing is None:
+                        would_create += 1
+                    else:
+                        would_update += 1
+            else:
+                would_create = len(valid_rows)
+            return {
+                "import_id": spec["id"],
+                "entity": spec["entity"],
+                "format": fmt,
+                "total_rows": len(raw_rows),
+                "valid_rows": len(valid_rows),
+                "invalid_rows": len(errors),
+                "errors": errors,
+                "mapped_fields": sorted({target for target in mapping.values()}),
+                "would_create": would_create,
+                "would_update": would_update,
+            }
+
+
+        def commit(spec: dict, fmt: str, data: str, db: Session) -> dict:
+            raw_rows = parse_csv(data) if fmt == "csv" else parse_json(data)
+            cleaned, errors, _ = _map_and_validate(spec, raw_rows)
+            invalid_count = len(errors)
+            created_count = 0
+            updated_count = 0
+            skipped_count = 0
+            if invalid_count == 0:
+                Model = ENTITY_MODELS[spec["entity"]]
+                upsert_key = spec.get("upsert_key") or ""
+                for row in cleaned:
+                    if row is None:
+                        continue
+                    if upsert_key and row.get(upsert_key) is not None:
+                        existing = db.query(Model).filter(getattr(Model, upsert_key) == row[upsert_key]).one_or_none()
+                        if existing is None:
+                            db.add(Model(**row))
+                            created_count += 1
+                        else:
+                            for key, value in row.items():
+                                setattr(existing, key, value)
+                            updated_count += 1
+                    else:
+                        db.add(Model(**row))
+                        created_count += 1
+                db.commit()
+                status = "ok"
+            else:
+                status = "rejected"
+                skipped_count = len(raw_rows)
+            summary = "; ".join(f"row {entry['row']}: {', '.join(entry['errors'])}" for entry in errors[:5])
+            run = models.ImportRun(
+                import_id=spec["id"],
+                entity=spec["entity"],
+                format=fmt,
+                status=status,
+                total_rows=len(raw_rows),
+                created_count=created_count,
+                updated_count=updated_count,
+                skipped_count=skipped_count,
+                error_count=invalid_count,
+                error_summary=(summary[:512] if summary else None),
+            )
+            db.add(run)
+            db.commit()
+            db.refresh(run)
+            return {
+                "import_id": spec["id"],
+                "status": status,
+                "total_rows": len(raw_rows),
+                "valid_rows": len(raw_rows) - invalid_count,
+                "invalid_rows": invalid_count,
+                "created_count": created_count,
+                "updated_count": updated_count,
+                "skipped_count": skipped_count,
+                "error_count": invalid_count,
+                "errors": errors,
+                "run_id": run.id,
+            }
+    ''').strip()
+
+    return "\n\n".join([header, imports_literal, fields_literal, classes_literal, body]) + "\n"
 
 
 def _seed_value(value: Any, field: ModelField | None = None) -> str:
@@ -168,7 +497,7 @@ def _seed_value(value: Any, field: ModelField | None = None) -> str:
 
 
 def _backend_main(pack: DomainPack, model: ModelDrivenApp) -> str:
-    imports = ["from datetime import date", "from fastapi import Depends, FastAPI, HTTPException", "from fastapi.middleware.cors import CORSMiddleware", "from sqlalchemy.orm import Session", "from app.database import Base, engine, get_db", "from app import models, schemas", ""]
+    imports = ["from datetime import date", "from fastapi import Depends, FastAPI, HTTPException", "from fastapi.middleware.cors import CORSMiddleware", "from sqlalchemy.orm import Session", "from app.database import Base, engine, get_db", "from app import models, schemas", "from app import imports as importer", ""]
     body = [*imports, f"app = FastAPI(title={pack.display_name!r})", "app.add_middleware(CORSMiddleware, allow_origins=['http://localhost:5173'], allow_methods=['*'], allow_headers=['*'])", "Base.metadata.create_all(bind=engine)", ""]
     body += ["@app.get('/health')", "def health():", "    return {'status': 'ok'}", ""]
     body += ["@app.post('/seed')", "def seed(db: Session = Depends(get_db)):", "    created = {}"]
@@ -202,6 +531,66 @@ def _backend_main(pack: DomainPack, model: ModelDrivenApp) -> str:
         else:
             body.append("    # add_note v0 records acknowledgement only")
         body += ["    db.commit()", "    db.refresh(item)", f"    return {{'ok': True, 'entity': '{entity.name}', 'id': item.id}}", ""]
+    body += [
+        "@app.get('/imports')",
+        "def list_imports():",
+        "    return [",
+        "        {",
+        "            'id': spec['id'],",
+        "            'label': spec['label'],",
+        "            'entity': spec['entity'],",
+        "            'formats': spec['formats'],",
+        "            'upsert_key': spec['upsert_key'],",
+        "            'field_map': spec['field_map'],",
+        "        }",
+        "        for spec in importer.IMPORTS",
+        "    ]",
+        "",
+        "@app.get('/imports/runs')",
+        "def list_import_runs(db: Session = Depends(get_db)):",
+        "    runs = db.query(models.ImportRun).order_by(models.ImportRun.id.desc()).limit(50).all()",
+        "    return [",
+        "        {",
+        "            'id': run.id,",
+        "            'import_id': run.import_id,",
+        "            'entity': run.entity,",
+        "            'format': run.format,",
+        "            'status': run.status,",
+        "            'total_rows': run.total_rows,",
+        "            'created_count': run.created_count,",
+        "            'updated_count': run.updated_count,",
+        "            'skipped_count': run.skipped_count,",
+        "            'error_count': run.error_count,",
+        "            'error_summary': run.error_summary,",
+        "        }",
+        "        for run in runs",
+        "    ]",
+        "",
+        "def _resolve_import(import_id: str, fmt: str) -> dict:",
+        "    spec = importer.get_import(import_id)",
+        "    if not spec:",
+        "        raise HTTPException(status_code=404, detail='import not found')",
+        "    if fmt not in spec['formats']:",
+        "        raise HTTPException(status_code=400, detail=f\"format must be one of {spec['formats']}\")",
+        "    return spec",
+        "",
+        "@app.post('/imports/{import_id}/preview')",
+        "def preview_import(import_id: str, payload: schemas.ImportPayload, db: Session = Depends(get_db)):",
+        "    spec = _resolve_import(import_id, payload.format)",
+        "    try:",
+        "        return importer.preview(spec, payload.format, payload.data, db)",
+        "    except ValueError as exc:",
+        "        raise HTTPException(status_code=400, detail=str(exc))",
+        "",
+        "@app.post('/imports/{import_id}/commit')",
+        "def commit_import(import_id: str, payload: schemas.ImportPayload, db: Session = Depends(get_db)):",
+        "    spec = _resolve_import(import_id, payload.format)",
+        "    try:",
+        "        return importer.commit(spec, payload.format, payload.data, db)",
+        "    except ValueError as exc:",
+        "        raise HTTPException(status_code=400, detail=str(exc))",
+        "",
+    ]
     return "\n".join(body)
 
 
@@ -222,7 +611,158 @@ def _backend_tests(model: ModelDrivenApp) -> str:
     if model.actions:
         a = model.actions[0]; ar = a.entity.replace('_','-')
         lines += ["", "def test_workflow_action_endpoint():", "    client.post('/seed')", f"    records = client.get('/{ar}').json()", "    assert records", f"    response = client.post('/{ar}/{{}}/actions/{a.name}'.format(records[0]['id']))", "    assert response.status_code == 200", "    assert response.json()['ok'] is True"]
+    lines += _import_test_lines(model)
     return "\n".join(lines)
+
+
+def _import_test_lines(model: ModelDrivenApp) -> list[str]:
+    if not model.imports:
+        return []
+    entity_map = {entity.name: entity for entity in model.entities}
+    spec = next((item for item in model.imports if (entity_map.get(item.entity) and not any(f.type == 'relation' for f in entity_map[item.entity].fields))), model.imports[0])
+    entity = entity_map[spec.entity]
+    target_to_source: dict[str, str] = {}
+    for source, target in spec.field_map.items():
+        target_to_source.setdefault(target, source)
+    for field in entity.fields:
+        target_to_source.setdefault(field.name, field.name)
+
+    def sample_value(field: ModelField, variant: str = "primary") -> Any:
+        if field.type == 'enum':
+            return field.enum_values[0]
+        if field.type == 'boolean':
+            return True
+        if field.type == 'integer':
+            return 1
+        if field.type == 'relation':
+            return 1
+        if field.type == 'date':
+            return "2026-09-01"
+        if variant == "primary":
+            return f"Imported {field.name}"
+        return f"Updated {field.name}"
+
+    primary_row = {target_to_source[field.name]: sample_value(field, "primary") for field in entity.fields}
+    header_keys = list(primary_row.keys())
+    csv_header = ",".join(header_keys)
+    csv_row = ",".join(str(primary_row[key]) for key in header_keys)
+    csv_payload = f"{csv_header}\n{csv_row}"
+    json_payload = json.dumps([primary_row])
+    enum_field = next((field for field in entity.fields if field.type == 'enum'), None)
+
+    lines = [
+        "",
+        "def test_imports_endpoint_lists_configured_imports():",
+        "    response = client.get('/imports')",
+        "    assert response.status_code == 200",
+        "    ids = [item['id'] for item in response.json()]",
+        f"    assert {spec.id!r} in ids",
+        "",
+        "def test_import_preview_csv():",
+        f"    payload = {{'format': 'csv', 'data': {csv_payload!r}}}",
+        f"    response = client.post('/imports/{spec.id}/preview', json=payload)",
+        "    assert response.status_code == 200",
+        "    body = response.json()",
+        "    assert body['total_rows'] == 1",
+        "    assert body['valid_rows'] == 1",
+        "    assert body['invalid_rows'] == 0",
+        "",
+        "def test_import_preview_json():",
+        f"    payload = {{'format': 'json', 'data': {json_payload!r}}}",
+        f"    response = client.post('/imports/{spec.id}/preview', json=payload)",
+        "    assert response.status_code == 200",
+        "    body = response.json()",
+        "    assert body['total_rows'] == 1",
+        "    assert body['valid_rows'] == 1",
+        "",
+        "def test_import_preview_json_records_envelope():",
+        f"    envelope = {{'records': [{primary_row!r}]}}",
+        f"    response = client.post('/imports/{spec.id}/preview', json={{'format': 'json', 'data': __import__('json').dumps(envelope)}})",
+        "    assert response.status_code == 200",
+        "    assert response.json()['total_rows'] == 1",
+    ]
+
+    if enum_field:
+        bad_row = dict(primary_row)
+        bad_row[target_to_source[enum_field.name]] = "not_allowed"
+        bad_csv_header = ",".join(bad_row.keys())
+        bad_csv_row = ",".join(str(bad_row[key]) for key in bad_row.keys())
+        bad_csv_payload = f"{bad_csv_header}\n{bad_csv_row}"
+        lines += [
+            "",
+            "def test_import_preview_invalid_enum_row():",
+            f"    payload = {{'format': 'csv', 'data': {bad_csv_payload!r}}}",
+            f"    response = client.post('/imports/{spec.id}/preview', json=payload)",
+            "    body = response.json()",
+            "    assert body['invalid_rows'] == 1",
+            "    assert body['valid_rows'] == 0",
+            "    assert body['errors']",
+        ]
+
+    integer_field = next((field for field in entity.fields if field.type == 'integer'), None)
+    if integer_field:
+        bad_row = dict(primary_row)
+        bad_row[target_to_source[integer_field.name]] = "not-a-number"
+        bad_csv_header = ",".join(bad_row.keys())
+        bad_csv_row = ",".join(str(bad_row[key]) for key in bad_row.keys())
+        bad_csv_payload = f"{bad_csv_header}\n{bad_csv_row}"
+        lines += [
+            "",
+            "def test_import_preview_invalid_integer_row():",
+            f"    payload = {{'format': 'csv', 'data': {bad_csv_payload!r}}}",
+            f"    response = client.post('/imports/{spec.id}/preview', json=payload)",
+            "    assert response.json()['invalid_rows'] == 1",
+        ]
+
+    primary_target_value = sample_value(next((f for f in entity.fields if f.required and f.type in ("string", "text")), entity.fields[0]), "primary")
+    primary_target_field = next((f.name for f in entity.fields if f.required and f.type in ("string", "text")), entity.fields[0].name)
+    lines += [
+        "",
+        "def test_import_commit_creates_records():",
+        f"    payload = {{'format': 'csv', 'data': {csv_payload!r}}}",
+        f"    response = client.post('/imports/{spec.id}/commit', json=payload)",
+        "    body = response.json()",
+        "    assert body['status'] == 'ok'",
+        "    assert body['error_count'] == 0",
+        "    assert body['created_count'] + body['updated_count'] >= 1",
+        f"    listing = client.get('/{spec.entity.replace('_', '-')}').json()",
+        f"    assert any(row.get({primary_target_field!r}) == {primary_target_value!r} for row in listing)",
+        "    runs = client.get('/imports/runs').json()",
+        f"    assert any(run['import_id'] == {spec.id!r} for run in runs)",
+    ]
+
+    if spec.upsert_key:
+        lines += [
+            "",
+            "def test_import_commit_upsert_is_idempotent():",
+            f"    payload = {{'format': 'csv', 'data': {csv_payload!r}}}",
+            f"    first = client.post('/imports/{spec.id}/commit', json=payload).json()",
+            f"    second = client.post('/imports/{spec.id}/commit', json=payload).json()",
+            "    assert first['status'] == 'ok' and second['status'] == 'ok'",
+            "    assert second['updated_count'] >= 1 or second['created_count'] == 0",
+            "    listing = client.get('/imports').json()",
+            f"    spec = next(item for item in listing if item['id'] == {spec.id!r})",
+            f"    assert spec['upsert_key'] == {spec.upsert_key!r}",
+        ]
+
+    if enum_field:
+        bad_row = dict(primary_row)
+        bad_row[target_to_source[enum_field.name]] = "not_allowed"
+        bad_csv_header = ",".join(bad_row.keys())
+        bad_csv_row = ",".join(str(bad_row[key]) for key in bad_row.keys())
+        bad_csv_payload = f"{bad_csv_header}\n{bad_csv_row}"
+        lines += [
+            "",
+            "def test_import_commit_rejects_invalid_rows():",
+            f"    payload = {{'format': 'csv', 'data': {bad_csv_payload!r}}}",
+            f"    response = client.post('/imports/{spec.id}/commit', json=payload)",
+            "    body = response.json()",
+            "    assert body['status'] == 'rejected'",
+            "    assert body['created_count'] == 0",
+            "    assert body['error_count'] >= 1",
+        ]
+
+    return lines
 
 
 def _frontend_package(pack: DomainPack) -> str:
@@ -251,7 +791,11 @@ type Entity = {{ name: string; className: string; labelSingular: string; labelPl
 type Action = {{ name: string; label?: string; type: string; entity: string; field?: string | null; value?: string | number | boolean | null }};
 type Card = {{ type: 'count' | 'enum_breakdown' | 'attention_list'; entity: string; label?: string; field?: string; value?: string | number | boolean | null }};
 type Focus = {{ primary_entity?: string; secondary_entity?: string; group_by?: string; title_field?: string; badge_field?: string; secondary_field?: string }};
-type AppModel = {{ app: {{ name: string; displayName: string; description: string }}; entities: Entity[]; actions: Action[]; pages?: unknown[]; seedData?: unknown; ui: {{ composition: 'standard' | 'board_workspace' | 'register_table'; recipe: 'standard' | 'workspace_board' | 'executive_register' | 'ops_console'; style: {{ accent: string; density: string; layout: string }}; focus: Focus; dashboard: {{ title: string; primary_entity?: string; cards: Card[] }}; entities?: unknown }} }};
+type ImportConfig = {{ id: string; label: string; entity: string; formats: string[]; upsertKey: string; fieldMap: Record<string, string> }};
+type ImportRun = {{ id: number; import_id: string; entity: string; format: string; status: string; total_rows: number; created_count: number; updated_count: number; skipped_count: number; error_count: number; error_summary: string | null }};
+type ImportPreview = {{ import_id: string; entity: string; format: string; total_rows: number; valid_rows: number; invalid_rows: number; errors: {{ row: number; errors: string[] }}[]; mapped_fields: string[]; would_create: number; would_update: number }};
+type ImportCommit = {{ import_id: string; status: string; total_rows: number; valid_rows: number; invalid_rows: number; created_count: number; updated_count: number; skipped_count: number; error_count: number; errors: {{ row: number; errors: string[] }}[]; run_id: number }};
+type AppModel = {{ app: {{ name: string; displayName: string; description: string }}; entities: Entity[]; actions: Action[]; pages?: unknown[]; seedData?: unknown; imports: ImportConfig[]; ui: {{ composition: 'standard' | 'board_workspace' | 'register_table'; recipe: 'standard' | 'workspace_board' | 'executive_register' | 'ops_console'; style: {{ accent: string; density: string; layout: string }}; focus: Focus; dashboard: {{ title: string; primary_entity?: string; cards: Card[] }}; entities?: unknown }} }};
 type Row = Record<string, string | number | boolean | null> & {{ id?: number }};
 type RowMap = Record<string, Row[]>;
 const model: AppModel = {meta_json};
@@ -287,13 +831,14 @@ export default function App() {{
   const shellClass = `shell composition-${{model.ui.composition}} recipe-${{model.ui.recipe}} accent-${{model.ui.style.accent}} density-${{model.ui.style.density}} layout-${{model.ui.style.layout}}`;
   const isPrimaryActive = entity.name === primary.name;
   const context = {{ rowsByEntity, form, setForm, save, runAction, activeEntity: entity, message, setActive, seed, primary, secondary, isPrimaryActive }};
-  return <main className={{shellClass}} data-composition={{model.ui.composition}} data-recipe={{model.ui.recipe}} data-active-entity={{active}} data-primary-active={{isPrimaryActive ? 'true' : 'false'}}>
+  const importsMode = active === '__imports__';
+  return <main className={{shellClass}} data-composition={{model.ui.composition}} data-recipe={{model.ui.recipe}} data-active-entity={{active}} data-primary-active={{isPrimaryActive ? 'true' : 'false'}} data-imports-active={{importsMode ? 'true' : 'false'}}>
     <Sidebar active={{active}} setActive={{setActive}} seed={{seed}} />
-    {{model.ui.composition === 'standard' ? <StandardLayout {{...context}} /> : isPrimaryActive && model.ui.composition === 'board_workspace' ? <BoardWorkspace {{...context}} /> : isPrimaryActive && model.ui.composition === 'register_table' ? <RegisterTable {{...context}} /> : <FocusedSurface {{...context}} />}}
+    {{importsMode ? <ImportPanel reload={{loadAll}} /> : model.ui.composition === 'standard' ? <StandardLayout {{...context}} /> : isPrimaryActive && model.ui.composition === 'board_workspace' ? <BoardWorkspace {{...context}} /> : isPrimaryActive && model.ui.composition === 'register_table' ? <RegisterTable {{...context}} /> : <FocusedSurface {{...context}} />}}
   </main>;
 }}
 
-function Sidebar({{ active, setActive, seed }}: {{ active: string; setActive: (name: string) => void; seed: () => void }}) {{ return <aside><p className="eyebrow">AgentForge model-driven app</p><h1>{pack.display_name}</h1><p>{pack.domain.product_purpose}</p><button onClick={{seed}}>Load seed data</button>{{model.entities.map((item) => <button className={{item.name === active ? 'active' : ''}} key={{item.name}} onClick={{() => setActive(item.name)}}>{{item.labelPlural}}</button>)}}</aside>; }}
+function Sidebar({{ active, setActive, seed }}: {{ active: string; setActive: (name: string) => void; seed: () => void }}) {{ return <aside><p className="eyebrow">AgentForge model-driven app</p><h1>{pack.display_name}</h1><p>{pack.domain.product_purpose}</p><button onClick={{seed}}>Load seed data</button>{{model.entities.map((item) => <button className={{item.name === active ? 'active' : ''}} key={{item.name}} onClick={{() => setActive(item.name)}}>{{item.labelPlural}}</button>)}}{{model.imports.length > 0 && <button className={{active === '__imports__' ? 'active' : ''}} data-ui-control="imports-nav" onClick={{() => setActive('__imports__')}}>Imports</button>}}</aside>; }}
 
 type LayoutContext = {{ rowsByEntity: RowMap; form: Row; setForm: (row: Row) => void; save: (event: React.FormEvent) => void; runAction: (target: Entity, actionName: string, id: number) => void; activeEntity: Entity; message: string; setActive: (name: string) => void; seed: () => void; primary: Entity; secondary?: Entity; isPrimaryActive: boolean }};
 
@@ -314,11 +859,13 @@ function EntityRows({{ entity, rows, rowsByEntity, actions, onAction, forcedLayo
 function EmptyState({{ text, compact = false }}: {{ text: string; compact?: boolean }}) {{ return <div className={{compact ? 'empty-state compact-empty' : 'empty-state'}} data-ui-state="empty">{{text}}</div>; }}
 
 function RecordCard({{ entity, row, rowsByEntity, actions, onAction }}: {{ entity: Entity; row: Row; rowsByEntity: RowMap; actions: Action[]; onAction: (target: Entity, name: string, id: number) => void }}) {{ const view = display(entity); const titleField = view.title_field || (entity.name === model.ui.focus.primary_entity ? model.ui.focus.title_field : '') || ''; const badgeField = view.badge_field || (entity.name === model.ui.focus.primary_entity ? model.ui.focus.badge_field : '') || ''; const secondaryField = view.secondary_field || (entity.name === model.ui.focus.primary_entity ? model.ui.focus.secondary_field : '') || ''; const titleFieldDef = fieldFor(entity, titleField); const subtitleFieldDef = fieldFor(entity, view.subtitle_field); const secondaryFieldDef = fieldFor(entity, secondaryField); const badgeFieldDef = fieldFor(entity, badgeField); const badge = value(row, badgeField); const titleText = cellValue(titleFieldDef, row[titleField], rowsByEntity); return <article className="record-card"><div>{{badge && <span className={{`badge badge-${{badge.toLowerCase().replace(/[^a-z0-9]+/g, '-')}}`}}>{{badgeFieldDef ? cellValue(badgeFieldDef, row[badgeField], rowsByEntity) : humanize(badge)}}</span>}}<h3>{{titleText || `${{entity.labelSingular}} #${{row.id}}`}}</h3><p>{{cellValue(subtitleFieldDef, row[view.subtitle_field || ''], rowsByEntity)}}</p><small>{{cellValue(secondaryFieldDef, row[secondaryField], rowsByEntity)}}</small></div><div>{{actions.map((action) => <button key={{action.name}} onClick={{() => row.id && onAction(entity, action.name, row.id)}}>{{action.label || humanize(action.name)}}</button>)}}</div></article>; }}
+
+function ImportPanel({{ reload }}: {{ reload: () => Promise<void> }}) {{ const [selectedId, setSelectedId] = useState<string>(model.imports[0]?.id || ''); const config = model.imports.find((item) => item.id === selectedId) || model.imports[0]; const [format, setFormat] = useState<string>(config?.formats[0] || 'csv'); const [data, setData] = useState<string>(''); const [preview, setPreview] = useState<ImportPreview | null>(null); const [committed, setCommitted] = useState<ImportCommit | null>(null); const [runs, setRuns] = useState<ImportRun[]>([]); const [error, setError] = useState<string>(''); async function loadRuns() {{ const response = await fetch(`${{API}}/imports/runs`); if (response.ok) setRuns(await response.json()); }} useEffect(() => {{ void loadRuns(); }}, []); useEffect(() => {{ setPreview(null); setCommitted(null); setError(''); setFormat(config?.formats[0] || 'csv'); }}, [selectedId]); useEffect(() => {{ setPreview(null); setCommitted(null); }}, [data, format]); async function callEndpoint(path: string): Promise<unknown> {{ const response = await fetch(`${{API}}/imports/${{config.id}}/${{path}}`, {{ method: 'POST', headers: {{ 'Content-Type': 'application/json' }}, body: JSON.stringify({{ format, data }}) }}); if (!response.ok) {{ const detail = await response.json().catch(() => ({{}})); throw new Error((detail && detail.detail) || `${{path}} failed`); }} return response.json(); }} async function runPreview() {{ try {{ setError(''); const result = (await callEndpoint('preview')) as ImportPreview; setPreview(result); setCommitted(null); }} catch (caught) {{ setError((caught as Error).message); }} }} async function runCommit() {{ try {{ setError(''); const result = (await callEndpoint('commit')) as ImportCommit; setCommitted(result); await loadRuns(); await reload(); }} catch (caught) {{ setError((caught as Error).message); }} }} if (!config) return <section className="content"><h2>No imports configured</h2></section>; const previewValid = !!preview && preview.invalid_rows === 0; return <section className="content import-panel" data-ui-surface="import-panel"><section className="hero"><div><p className="eyebrow">{{model.ui.dashboard.title}}</p><h2>Imports</h2><p>Paste CSV or JSON to preview, validate, and commit records.</p></div><strong>{{runs.length}} {{runs.length === 1 ? 'run' : 'runs'}}</strong></section><div className="card import-controls"><label>Import config<select value={{config.id}} onChange={{(event) => setSelectedId(event.target.value)}} data-ui-control="import-select">{{model.imports.map((item) => <option key={{item.id}} value={{item.id}}>{{item.label}}</option>)}}</select></label><label>Format<select value={{format}} onChange={{(event) => setFormat(event.target.value)}} data-ui-control="import-format">{{config.formats.map((fmt) => <option key={{fmt}} value={{fmt}}>{{fmt.toUpperCase()}}</option>)}}</select></label><label className="import-data-label">Data ({{format.toUpperCase()}})<textarea value={{data}} onChange={{(event) => setData(event.target.value)}} placeholder={{format === 'csv' ? 'paste CSV here (with header row)' : 'paste JSON array or {{ "records": [...] }}'}} data-ui-control="import-data" rows={{8}} /></label><div className="import-buttons"><button type="button" onClick={{runPreview}} data-ui-action="import-preview" disabled={{!data.trim()}}>Preview</button><button type="button" onClick={{runCommit}} data-ui-action="import-commit" disabled={{!previewValid}}>Commit import</button></div>{{error && <p className="import-error" data-ui-state="error">{{error}}</p>}}</div>{{preview && <article className="card import-preview" data-ui-surface="import-preview"><h3>Preview</h3><p><b>{{preview.total_rows}}</b> rows · <b>{{preview.valid_rows}}</b> valid · <b>{{preview.invalid_rows}}</b> invalid · would create <b>{{preview.would_create}}</b>, update <b>{{preview.would_update}}</b></p><p><small>Mapped fields: {{preview.mapped_fields.join(', ') || 'none'}}</small></p>{{preview.errors.length > 0 && <ul className="import-errors">{{preview.errors.slice(0, 10).map((err) => <li key={{err.row}}>Row {{err.row}}: {{err.errors.join(', ')}}</li>)}}</ul>}}</article>}}{{committed && <article className="card import-commit" data-ui-surface="import-commit"><h3>Last commit</h3><p>Status: <b>{{committed.status}}</b> · Created <b>{{committed.created_count}}</b> · Updated <b>{{committed.updated_count}}</b> · Skipped <b>{{committed.skipped_count}}</b> · Errors <b>{{committed.error_count}}</b></p>{{committed.status === 'rejected' && committed.errors.length > 0 && <ul className="import-errors">{{committed.errors.slice(0, 10).map((err) => <li key={{err.row}}>Row {{err.row}}: {{err.errors.join(', ')}}</li>)}}</ul>}}</article>}}<article className="card import-runs" data-ui-surface="import-runs"><h3>Recent import runs</h3>{{runs.length === 0 ? <EmptyState text="No imports yet — preview and commit one to record a run." /> : <ul>{{runs.slice(0, 10).map((run) => <li key={{run.id}}><b>{{run.import_id}}</b> · {{run.format}} · {{run.status}} · created {{run.created_count}} · updated {{run.updated_count}} · errors {{run.error_count}}{{run.error_summary ? ` — ${{run.error_summary}}` : ''}}</li>)}}</ul>}}</article></section>; }}
 '''
 
 
 def _frontend_styles() -> str:
-    return "body{margin:0;font-family:Inter,system-ui,sans-serif;background:#f4f7fb;color:#172033}.shell{--accent:#3157d5;display:grid;grid-template-columns:240px minmax(0,1fr);gap:18px;padding:22px;max-width:1440px;margin:0 auto;box-sizing:border-box}.accent-emerald{--accent:#059669}.accent-blue{--accent:#2563eb}.accent-amber{--accent:#d97706}.accent-red{--accent:#dc2626}.accent-slate{--accent:#475569}.accent-violet{--accent:#7c3aed}.density-compact{gap:12px;padding:16px}.density-spacious{gap:26px;padding:30px}aside,.card,.hero,.stat-card,.record-card,.lane,.secondary-panel,.register-side,.workspace-header,.register-title{background:white;border:1px solid #dbe3f8;border-radius:16px;padding:16px;box-shadow:0 12px 30px #1f2a4420;min-width:0}aside{height:fit-content;display:grid;gap:12px;border-top:5px solid var(--accent)}button{border:0;border-radius:12px;background:var(--accent);color:white;padding:10px 14px;font-weight:700;cursor:pointer}button.active{background:#172033}.content{display:grid;gap:18px}.hero,.workspace-header,.register-top{display:flex;justify-content:space-between;align-items:stretch;gap:18px}.workspace-header{background:linear-gradient(135deg,#fff,#ecfdf5)}.register-title{background:linear-gradient(135deg,#fff,#fffbeb);min-width:260px}.eyebrow{text-transform:uppercase;letter-spacing:.08em;color:var(--accent);font-size:12px;font-weight:800}.dashboard-grid,.entity-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px}.compact-dashboard{grid-template-columns:repeat(auto-fit,minmax(150px,1fr));flex:1;min-width:0}.stat-card strong{display:block;font-size:34px;color:var(--accent)}.breakdown span{display:flex;justify-content:space-between;border-top:1px solid #edf1fb;padding:8px 0}.attention small{display:block;margin-top:8px}.form-card{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px}.compact-form{grid-template-columns:1fr}label{display:grid;gap:6px;font-weight:700;min-width:0}input,select{border:1px solid #cbd5ef;border-radius:10px;padding:9px;max-width:100%;box-sizing:border-box}.table-scroll{overflow-x:auto;max-width:100%}table{width:100%;border-collapse:collapse;table-layout:auto}th,td{text-align:left;border-bottom:1px solid #e7ecfb;padding:9px;vertical-align:top;word-break:break-word}td{max-width:260px}td button{margin-right:6px;background:#5a6f9f}.board-scroll{overflow-x:auto;max-width:100%}.board{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(220px,1fr);gap:12px;align-items:start;min-width:100%}.lane{background:#f8fafc;min-height:240px;min-width:0}.record-card{display:grid;gap:12px;border-left:5px solid var(--accent);margin-bottom:10px}.badge{display:inline-block;border-radius:999px;background:color-mix(in srgb,var(--accent) 14%,white);color:var(--accent);font-weight:800;padding:4px 9px}small{color:#64748b}.workspace-main{display:grid;grid-template-columns:minmax(0,1fr) clamp(240px,26vw,300px);gap:14px;align-items:start;min-width:0}.workspace-board{min-width:0;display:grid;gap:12px}.secondary-panel{min-width:0}.secondary-panel .entity-grid{grid-template-columns:1fr}.compact-create{max-width:100%;min-width:0}.compact-create .form-card{grid-template-columns:repeat(auto-fit,minmax(180px,1fr))}.register-top{align-items:stretch;flex-wrap:wrap}.register-main{display:grid;grid-template-columns:minmax(0,1fr) clamp(260px,28vw,320px);gap:14px;align-items:start;min-width:0}.register-focus{min-width:0}.register-card{border-top:5px solid var(--accent);overflow:hidden;min-width:0}.register-card .table-scroll{max-width:100%;overflow-x:auto}.register-card table{font-size:14px;min-width:520px}.register-card th{background:#f8fafc;position:sticky;top:0}.register-side{display:grid;gap:12px;min-width:0}.register-side .entity-grid{grid-template-columns:1fr}.register-side .form-card{grid-template-columns:1fr}.composition-register_table aside{border-top-color:var(--accent)}.secondary-panel,.register-side{max-height:calc(100vh - 180px);overflow-y:auto;scrollbar-gutter:stable}.secondary-panel .entity-grid,.register-side .entity-grid{grid-template-columns:1fr;gap:10px}.focused-surface{display:grid;gap:14px}.focused-main{display:grid;grid-template-columns:minmax(0,1fr) clamp(260px,28vw,320px);gap:14px;align-items:start;min-width:0}.focused-list,.focused-create{min-width:0}.focused-create .form-card{grid-template-columns:1fr}.focused-create h3{margin-top:0}@media(max-width:1180px){.focused-main{grid-template-columns:1fr}}.empty-state{border:1px dashed #cbd5e1;border-radius:14px;color:#64748b;background:#f8fafc;padding:18px;text-align:center;font-weight:700}.compact-empty{padding:12px;font-size:13px}.recipe-workspace_board{background:linear-gradient(135deg,#ecfdf5,#f8fafc)}.recipe-workspace_board aside{background:#ffffffcc;box-shadow:none;border-color:#bbf7d0}.recipe-workspace_board .lane{background:#f0fdf4;border-color:#bbf7d0;box-shadow:0 8px 18px #16653414}.recipe-workspace_board .record-card{border-radius:16px;box-shadow:0 8px 18px #16653412}.recipe-workspace_board .compact-create .form-card{box-shadow:none;background:#ffffffb8}.recipe-executive_register{background:#0f172a;color:#172033}.recipe-executive_register aside,.recipe-executive_register .register-side{background:#111827;color:#e5e7eb;border-color:#334155;box-shadow:none}.recipe-executive_register aside p,.recipe-executive_register aside h1{color:#e5e7eb}.recipe-executive_register .register-title,.recipe-executive_register .stat-card{border-radius:10px;box-shadow:none}.recipe-executive_register .register-card{border-radius:10px;box-shadow:none}.recipe-executive_register th,.recipe-executive_register td{padding:8px}.recipe-executive_register .badge{border-radius:6px;text-transform:uppercase;font-size:11px;letter-spacing:.06em}.recipe-executive_register .register-side h3{color:#f1f5f9;letter-spacing:.04em}.recipe-executive_register .register-side .record-card{background:#1f2937;color:#f1f5f9;border:1px solid #475569;border-left:5px solid var(--accent);box-shadow:none}.recipe-executive_register .register-side .record-card h3{color:#f8fafc;margin:0}.recipe-executive_register .register-side .record-card p{color:#cbd5e1;margin:0}.recipe-executive_register .register-side .record-card small{color:#94a3b8}.recipe-executive_register .register-side .record-card .badge{background:color-mix(in srgb,var(--accent) 32%,#0f172a);color:#fef3c7;border:1px solid color-mix(in srgb,var(--accent) 55%,#0f172a)}.recipe-executive_register .register-side .empty-state{background:#111827;color:#cbd5e1;border-color:#475569}.recipe-executive_register .register-side .form-card{background:#1f2937;color:#f1f5f9;border-color:#475569}.recipe-executive_register .register-side .form-card h3,.recipe-executive_register .register-side .form-card label{color:#f1f5f9}.recipe-executive_register .register-side .form-card input,.recipe-executive_register .register-side .form-card select{background:#0f172a;color:#f1f5f9;border-color:#475569}.badge-high,.badge-critical,.badge-blocked{background:#fee2e2;color:#b91c1c}.badge-medium,.badge-investigating,.badge-in-progress{background:#fef3c7;color:#92400e}.badge-low,.badge-open,.badge-todo{background:#dbeafe;color:#1d4ed8}.badge-done,.badge-mitigated,.badge-accepted{background:#dcfce7;color:#166534}@media(max-width:1280px){.workspace-main,.register-main{grid-template-columns:minmax(0,1fr)}.workspace-header,.register-top{display:grid}.compact-dashboard{grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}.shell{padding:18px;gap:14px}}@media(max-width:980px){.shell{grid-template-columns:1fr}aside{position:static;border-top-width:3px}}@media(max-width:720px){.dashboard-grid,.entity-grid{grid-template-columns:1fr}.compact-dashboard{grid-template-columns:1fr}.form-card{grid-template-columns:1fr}}"
+    return "body{margin:0;font-family:Inter,system-ui,sans-serif;background:#f4f7fb;color:#172033}.shell{--accent:#3157d5;display:grid;grid-template-columns:240px minmax(0,1fr);gap:18px;padding:22px;max-width:1440px;margin:0 auto;box-sizing:border-box}.accent-emerald{--accent:#059669}.accent-blue{--accent:#2563eb}.accent-amber{--accent:#d97706}.accent-red{--accent:#dc2626}.accent-slate{--accent:#475569}.accent-violet{--accent:#7c3aed}.density-compact{gap:12px;padding:16px}.density-spacious{gap:26px;padding:30px}aside,.card,.hero,.stat-card,.record-card,.lane,.secondary-panel,.register-side,.workspace-header,.register-title{background:white;border:1px solid #dbe3f8;border-radius:16px;padding:16px;box-shadow:0 12px 30px #1f2a4420;min-width:0}aside{height:fit-content;display:grid;gap:12px;border-top:5px solid var(--accent)}button{border:0;border-radius:12px;background:var(--accent);color:white;padding:10px 14px;font-weight:700;cursor:pointer}button.active{background:#172033}.content{display:grid;gap:18px}.hero,.workspace-header,.register-top{display:flex;justify-content:space-between;align-items:stretch;gap:18px}.workspace-header{background:linear-gradient(135deg,#fff,#ecfdf5)}.register-title{background:linear-gradient(135deg,#fff,#fffbeb);min-width:260px}.eyebrow{text-transform:uppercase;letter-spacing:.08em;color:var(--accent);font-size:12px;font-weight:800}.dashboard-grid,.entity-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px}.compact-dashboard{grid-template-columns:repeat(auto-fit,minmax(150px,1fr));flex:1;min-width:0}.stat-card strong{display:block;font-size:34px;color:var(--accent)}.breakdown span{display:flex;justify-content:space-between;border-top:1px solid #edf1fb;padding:8px 0}.attention small{display:block;margin-top:8px}.form-card{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px}.compact-form{grid-template-columns:1fr}label{display:grid;gap:6px;font-weight:700;min-width:0}input,select{border:1px solid #cbd5ef;border-radius:10px;padding:9px;max-width:100%;box-sizing:border-box}.table-scroll{overflow-x:auto;max-width:100%}table{width:100%;border-collapse:collapse;table-layout:auto}th,td{text-align:left;border-bottom:1px solid #e7ecfb;padding:9px;vertical-align:top;word-break:break-word}td{max-width:260px}td button{margin-right:6px;background:#5a6f9f}.board-scroll{overflow-x:auto;max-width:100%}.board{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(220px,1fr);gap:12px;align-items:start;min-width:100%}.lane{background:#f8fafc;min-height:240px;min-width:0}.record-card{display:grid;gap:12px;border-left:5px solid var(--accent);margin-bottom:10px}.badge{display:inline-block;border-radius:999px;background:color-mix(in srgb,var(--accent) 14%,white);color:var(--accent);font-weight:800;padding:4px 9px}small{color:#64748b}.workspace-main{display:grid;grid-template-columns:minmax(0,1fr) clamp(240px,26vw,300px);gap:14px;align-items:start;min-width:0}.workspace-board{min-width:0;display:grid;gap:12px}.secondary-panel{min-width:0}.secondary-panel .entity-grid{grid-template-columns:1fr}.compact-create{max-width:100%;min-width:0}.compact-create .form-card{grid-template-columns:repeat(auto-fit,minmax(180px,1fr))}.register-top{align-items:stretch;flex-wrap:wrap}.register-main{display:grid;grid-template-columns:minmax(0,1fr) clamp(260px,28vw,320px);gap:14px;align-items:start;min-width:0}.register-focus{min-width:0}.register-card{border-top:5px solid var(--accent);overflow:hidden;min-width:0}.register-card .table-scroll{max-width:100%;overflow-x:auto}.register-card table{font-size:14px;min-width:520px}.register-card th{background:#f8fafc;position:sticky;top:0}.register-side{display:grid;gap:12px;min-width:0}.register-side .entity-grid{grid-template-columns:1fr}.register-side .form-card{grid-template-columns:1fr}.composition-register_table aside{border-top-color:var(--accent)}.secondary-panel,.register-side{max-height:calc(100vh - 180px);overflow-y:auto;scrollbar-gutter:stable}.secondary-panel .entity-grid,.register-side .entity-grid{grid-template-columns:1fr;gap:10px}.focused-surface{display:grid;gap:14px}.focused-main{display:grid;grid-template-columns:minmax(0,1fr) clamp(260px,28vw,320px);gap:14px;align-items:start;min-width:0}.focused-list,.focused-create{min-width:0}.focused-create .form-card{grid-template-columns:1fr}.focused-create h3{margin-top:0}@media(max-width:1180px){.focused-main{grid-template-columns:1fr}}.empty-state{border:1px dashed #cbd5e1;border-radius:14px;color:#64748b;background:#f8fafc;padding:18px;text-align:center;font-weight:700}.compact-empty{padding:12px;font-size:13px}.recipe-workspace_board{background:linear-gradient(135deg,#ecfdf5,#f8fafc)}.recipe-workspace_board aside{background:#ffffffcc;box-shadow:none;border-color:#bbf7d0}.recipe-workspace_board .lane{background:#f0fdf4;border-color:#bbf7d0;box-shadow:0 8px 18px #16653414}.recipe-workspace_board .record-card{border-radius:16px;box-shadow:0 8px 18px #16653412}.recipe-workspace_board .compact-create .form-card{box-shadow:none;background:#ffffffb8}.recipe-executive_register{background:#0f172a;color:#172033}.recipe-executive_register aside,.recipe-executive_register .register-side{background:#111827;color:#e5e7eb;border-color:#334155;box-shadow:none}.recipe-executive_register aside p,.recipe-executive_register aside h1{color:#e5e7eb}.recipe-executive_register .register-title,.recipe-executive_register .stat-card{border-radius:10px;box-shadow:none}.recipe-executive_register .register-card{border-radius:10px;box-shadow:none}.recipe-executive_register th,.recipe-executive_register td{padding:8px}.recipe-executive_register .badge{border-radius:6px;text-transform:uppercase;font-size:11px;letter-spacing:.06em}.recipe-executive_register .register-side h3{color:#f1f5f9;letter-spacing:.04em}.recipe-executive_register .register-side .record-card{background:#1f2937;color:#f1f5f9;border:1px solid #475569;border-left:5px solid var(--accent);box-shadow:none}.recipe-executive_register .register-side .record-card h3{color:#f8fafc;margin:0}.recipe-executive_register .register-side .record-card p{color:#cbd5e1;margin:0}.recipe-executive_register .register-side .record-card small{color:#94a3b8}.recipe-executive_register .register-side .record-card .badge{background:color-mix(in srgb,var(--accent) 32%,#0f172a);color:#fef3c7;border:1px solid color-mix(in srgb,var(--accent) 55%,#0f172a)}.recipe-executive_register .register-side .empty-state{background:#111827;color:#cbd5e1;border-color:#475569}.recipe-executive_register .register-side .form-card{background:#1f2937;color:#f1f5f9;border-color:#475569}.recipe-executive_register .register-side .form-card h3,.recipe-executive_register .register-side .form-card label{color:#f1f5f9}.recipe-executive_register .register-side .form-card input,.recipe-executive_register .register-side .form-card select{background:#0f172a;color:#f1f5f9;border-color:#475569}.badge-high,.badge-critical,.badge-blocked{background:#fee2e2;color:#b91c1c}.badge-medium,.badge-investigating,.badge-in-progress{background:#fef3c7;color:#92400e}.badge-low,.badge-open,.badge-todo{background:#dbeafe;color:#1d4ed8}.badge-done,.badge-mitigated,.badge-accepted{background:#dcfce7;color:#166534}@media(max-width:1280px){.workspace-main,.register-main{grid-template-columns:minmax(0,1fr)}.workspace-header,.register-top{display:grid}.compact-dashboard{grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}.shell{padding:18px;gap:14px}}@media(max-width:980px){.shell{grid-template-columns:1fr}aside{position:static;border-top-width:3px}}@media(max-width:720px){.dashboard-grid,.entity-grid{grid-template-columns:1fr}.compact-dashboard{grid-template-columns:1fr}.form-card{grid-template-columns:1fr}}.import-panel{display:grid;gap:14px}.import-controls{display:grid;gap:12px}.import-data-label textarea{width:100%;min-height:180px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px;padding:10px;border:1px solid #cbd5ef;border-radius:10px;box-sizing:border-box;resize:vertical}.import-buttons{display:flex;gap:10px;flex-wrap:wrap}.import-buttons button:disabled{opacity:.45;cursor:not-allowed}.import-preview p,.import-commit p{margin:6px 0}.import-errors{margin:8px 0 0;padding-left:20px;color:#b91c1c;font-size:13px}.import-runs ul{list-style:none;padding:0;margin:0;display:grid;gap:8px}.import-runs li{border-top:1px solid #edf1fb;padding:8px 0;font-size:13px}.import-runs li:first-child{border-top:0}.import-error{color:#b91c1c;font-weight:700;margin:0}"
 
 
 def _makefile() -> str:
@@ -403,6 +950,18 @@ def _readme(pack: DomainPack) -> str:
         Open `http://localhost:5173`.
 
         This app uses local SQLite persistence and deterministic seed data. It does not require live APIs, providers, cloud services, or Docker.
+
+        ## Import panel (CSV/JSON)
+
+        When the Blueprint declares `model.imports`, the sidebar exposes an **Imports** button. The panel lets you paste either CSV or JSON, preview the parsed/validated rows, and commit the import. CSV and JSON flow through the same generic pipeline; after parsing they share mapping, validation, upsert, and run-history logic.
+
+        - **CSV format**: a single header row followed by data rows. Header names are matched against entity fields; if the Blueprint defines a `field_map` it overrides auto-matching.
+        - **JSON format**: either an array of objects (`[{{...}}, {{...}}]`) or an object with a `records`, `items`, or `data` array (`{{"records": [{{...}}]}}`).
+        - **Upsert**: when an import config sets `upsert_key`, commits update an existing record whose `upsert_key` value matches; otherwise they insert.
+        - **Commit semantics**: any invalid row rejects the entire commit and persists a `rejected` import run — fix the data and retry. Valid commits create/update records and persist an `ok` run.
+        - **Relation fields**: in v0 you must supply the integer id of an existing related record (e.g. `client_id: 1`). Relation-by-label resolution is deferred.
+
+        Each commit and rejection is logged via `GET /imports/runs`.
     ''')
 
 

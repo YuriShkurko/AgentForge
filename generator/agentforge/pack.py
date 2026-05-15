@@ -167,6 +167,7 @@ _IDENTIFIER_RE = r"^[a-z][a-z0-9_]*$"
 _VALID_MODEL_FIELD_TYPES = {"string", "text", "integer", "boolean", "date", "enum", "relation"}
 _VALID_MODEL_PAGE_TYPES = {"dashboard", "entity_list", "entity_detail"}
 _VALID_MODEL_ACTION_TYPES = {"update_status", "add_note", "mark_complete"}
+_VALID_IMPORT_FORMATS = {"csv", "json"}
 _VALID_UI_ACCENTS = {"blue", "emerald", "amber", "red", "slate", "violet"}
 _VALID_UI_DENSITIES = {"compact", "comfortable", "spacious"}
 _VALID_UI_LAYOUTS = {"workspace", "register", "operations"}
@@ -388,12 +389,41 @@ class ModelUI(BaseModel):
         return value
 
 
+class ModelImport(BaseModel):
+    id: str = Field(pattern=_IDENTIFIER_RE)
+    label: str = ""
+    entity: str
+    formats: list[str] = Field(default_factory=lambda: ["csv", "json"])
+    upsert_key: str = ""
+    field_map: dict[str, str] = Field(default_factory=dict)
+
+    @field_validator("label")
+    @classmethod
+    def label_is_safe(cls, value: str) -> str:
+        return _clean_custom_text(value, field_name="import label", max_length=120)
+
+    @field_validator("formats")
+    @classmethod
+    def formats_must_be_supported(cls, value: list[str]) -> list[str]:
+        if not value:
+            raise ValueError("import formats must include at least one of csv, json")
+        unknown = [item for item in value if item not in _VALID_IMPORT_FORMATS]
+        if unknown:
+            raise ValueError(f"unsupported import formats {unknown}; valid: {sorted(_VALID_IMPORT_FORMATS)}")
+        deduped: list[str] = []
+        for item in value:
+            if item not in deduped:
+                deduped.append(item)
+        return deduped
+
+
 class ModelDrivenApp(BaseModel):
     entities: list[ModelEntity]
     pages: list[ModelPage] = Field(default_factory=list)
     actions: list[ModelAction] = Field(default_factory=list)
     seed_data: dict[str, list[dict[str, Any]]] = Field(default_factory=dict)
     ui: ModelUI = Field(default_factory=ModelUI)
+    imports: list[ModelImport] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def validate_references(self) -> "ModelDrivenApp":
@@ -475,6 +505,22 @@ class ModelDrivenApp(BaseModel):
                 field = fields[card.field]
                 if field.type == "enum" and card.value not in field.enum_values:
                     raise ValueError(f"dashboard attention_list card '{card.label or card.type}' value must be one of {field.enum_values}")
+        import_ids: set[str] = set()
+        for spec in self.imports:
+            if spec.id in import_ids:
+                raise ValueError(f"import id '{spec.id}' is duplicated")
+            import_ids.add(spec.id)
+            entity = entity_map.get(spec.entity)
+            if not entity:
+                raise ValueError(f"import '{spec.id}' references unknown entity '{spec.entity}'")
+            field_names = {field.name for field in entity.fields}
+            if spec.upsert_key and spec.upsert_key not in field_names:
+                raise ValueError(f"import '{spec.id}' upsert_key references unknown field '{spec.upsert_key}'")
+            for source_key, target_field in spec.field_map.items():
+                if not source_key.strip():
+                    raise ValueError(f"import '{spec.id}' field_map has empty source key")
+                if target_field not in field_names:
+                    raise ValueError(f"import '{spec.id}' field_map target field '{target_field}' is not defined on '{spec.entity}'")
         for entity_name, rows in self.seed_data.items():
             if entity_name not in entity_map:
                 raise ValueError(f"seed_data references unknown entity '{entity_name}'")

@@ -57,6 +57,14 @@ App Blueprints may also include a small `customization` block for supported app 
   - `dashboard.title`, optional `dashboard.primary_entity`, and `dashboard.cards` with `count`, `enum_breakdown`, or `attention_list` card types.
   - `entities.<entity>.display.layout`: `table`, `cards`, or `board_by_status`, plus optional `title_field`, `subtitle_field`, `badge_field`, and `secondary_field` references.
   - optional field `semantic` hints from `status`, `priority`, `severity`, `owner`, `due_date`, `title`, and `description`.
+- `imports` *(optional)*: list of importer configurations the generated app should expose. Each entry has:
+  - `id`: stable snake_case identifier, unique within the pack.
+  - `label`: optional human label for the import.
+  - `entity`: target model entity name.
+  - `formats`: subset of `[csv, json]`; defaults to both.
+  - `upsert_key`: optional field on `entity`. When set, commits update an existing row whose `upsert_key` matches; otherwise they insert. Without `upsert_key` every valid row is inserted.
+  - `field_map`: optional `{source_column: entity_field}` mapping. Source columns can be human-readable headers; entity-side targets must be fields on `entity`. Columns whose normalized name already matches an entity field auto-map and need no explicit entry.
+  - Generated apps expose `GET /imports`, `GET /imports/runs`, `POST /imports/{import_id}/preview`, and `POST /imports/{import_id}/commit`. CSV and JSON are thin parsing adapters; mapping, validation, upsert, and run history are shared. JSON payloads may be either an array of objects or an object with a `records`, `items`, or `data` array. Commit is reject-on-invalid: any invalid row aborts the commit and persists a `rejected` import run; with no invalid rows the import succeeds and persists an `ok` run. Relation fields require an integer id of an existing related record in v0.
 
 The model-driven presentation layer is controlled configuration, not arbitrary UI generation. It can select from supported compositions, presentation recipes, layouts, dashboard cards, safe accent/density values, and existing model fields. It also humanizes enum-like display values and emits generic empty states. It does not generate arbitrary code, providers, integrations, auth, billing, deployment, visual model editing, per-prompt freeform UI design, or visual-builder behavior.
 

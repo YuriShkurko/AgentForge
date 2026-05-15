@@ -1,3 +1,4 @@
+import json
 import sys
 from pathlib import Path
 
@@ -483,5 +484,365 @@ def test_model_driven_generation_is_deterministic(tmp_path):
     second = tmp_path / "second"
     generate(pack, first)
     generate(pack, second)
-    for rel in ["backend/app/main.py", "backend/app/models.py", "frontend/src/App.tsx", "app-model.json"]:
+    for rel in ["backend/app/main.py", "backend/app/models.py", "backend/app/imports.py", "frontend/src/App.tsx", "app-model.json"]:
         assert (first / rel).read_text() == (second / rel).read_text()
+
+
+# --------------------------------------------------------------------------- #
+# Importer v0 — schema validation
+# --------------------------------------------------------------------------- #
+
+
+def _pack_with_imports(extra_import=None, replace_imports=None):
+    data = {
+        "name": "import-test",
+        "display_name": "Import Test",
+        "version": "0.1.0",
+        "domain": {"domain_name": "Import Test", "app_type": "model_driven_app"},
+        "app_archetype": "model_driven_app",
+        "required_shell_modules": ["model_driven", "operations_ui", "persistence", "test"],
+        "optional_shell_modules": [],
+        "model": {
+            "entities": [
+                {
+                    "name": "ticket",
+                    "label_singular": "Ticket",
+                    "label_plural": "Tickets",
+                    "fields": [
+                        {"name": "title", "type": "string", "required": True},
+                        {"name": "status", "type": "enum", "required": True, "enum_values": ["open", "closed"]},
+                    ],
+                }
+            ],
+            "pages": [{"name": "tickets", "type": "entity_list", "entity": "ticket"}],
+            "actions": [],
+            "seed_data": {"ticket": [{"title": "Example", "status": "open"}]},
+            "imports": replace_imports if replace_imports is not None else [
+                {
+                    "id": "tickets_import",
+                    "label": "Import tickets",
+                    "entity": "ticket",
+                    "formats": ["csv", "json"],
+                    "upsert_key": "title",
+                    "field_map": {"Title": "title", "Status": "status"},
+                }
+            ],
+        },
+    }
+    if extra_import is not None:
+        data["model"]["imports"].append(extra_import)
+    return data
+
+
+def test_import_config_loads_for_example_packs():
+    vendor = load_pack(PACKS_DIR / "vendor-risk-tracker" / "domain-pack.yaml")
+    assert vendor.model is not None
+    assert [imp.id for imp in vendor.model.imports] == ["vendors_import", "risk_findings_import"]
+    vendors_import = vendor.model.imports[0]
+    assert vendors_import.entity == "vendor"
+    assert vendors_import.formats == ["csv", "json"]
+    assert vendors_import.upsert_key == "name"
+    assert vendors_import.field_map["Vendor name"] == "name"
+
+    client = load_pack(PACKS_DIR / "client-onboarding-workspace" / "domain-pack.yaml")
+    assert [imp.id for imp in client.model.imports] == ["clients_import", "onboarding_tasks_import"]
+
+
+def test_import_with_unknown_entity_fails():
+    data = _pack_with_imports(replace_imports=[{"id": "bad", "entity": "missing", "formats": ["csv"]}])
+    with pytest.raises(Exception, match="references unknown entity"):
+        DomainPack.model_validate(data)
+
+
+def test_import_with_invalid_format_fails():
+    data = _pack_with_imports(replace_imports=[{"id": "bad", "entity": "ticket", "formats": ["xml"]}])
+    with pytest.raises(Exception, match="unsupported import formats"):
+        DomainPack.model_validate(data)
+
+
+def test_import_with_empty_format_list_fails():
+    data = _pack_with_imports(replace_imports=[{"id": "bad", "entity": "ticket", "formats": []}])
+    with pytest.raises(Exception, match="at least one of csv, json"):
+        DomainPack.model_validate(data)
+
+
+def test_import_with_unknown_upsert_key_fails():
+    data = _pack_with_imports(replace_imports=[{"id": "bad", "entity": "ticket", "formats": ["csv"], "upsert_key": "missing"}])
+    with pytest.raises(Exception, match="upsert_key references unknown field"):
+        DomainPack.model_validate(data)
+
+
+def test_import_with_unknown_field_map_target_fails():
+    data = _pack_with_imports(replace_imports=[{"id": "bad", "entity": "ticket", "formats": ["csv"], "field_map": {"Title": "missing"}}])
+    with pytest.raises(Exception, match="field_map target field 'missing' is not defined"):
+        DomainPack.model_validate(data)
+
+
+def test_duplicate_import_ids_fail():
+    data = _pack_with_imports(
+        extra_import={"id": "tickets_import", "entity": "ticket", "formats": ["csv"]}
+    )
+    with pytest.raises(Exception, match="import id 'tickets_import' is duplicated"):
+        DomainPack.model_validate(data)
+
+
+def test_pack_with_no_imports_still_validates():
+    data = _pack_with_imports(replace_imports=[])
+    pack = DomainPack.model_validate(data)
+    assert pack.model is not None
+    assert pack.model.imports == []
+
+
+# --------------------------------------------------------------------------- #
+# Importer v0 — generated source surface
+# --------------------------------------------------------------------------- #
+
+
+def test_generated_imports_module_emits_pipeline(tmp_path):
+    vendor = load_pack(PACKS_DIR / "vendor-risk-tracker" / "domain-pack.yaml")
+    out = tmp_path / vendor.name
+    generate(vendor, out)
+    imports_module = (out / "backend/app/imports.py").read_text()
+    assert "IMPORTS" in imports_module
+    assert "ENTITY_FIELDS" in imports_module
+    assert "ENTITY_MODELS" in imports_module
+    assert "def parse_csv" in imports_module
+    assert "def parse_json" in imports_module
+    assert "def preview" in imports_module
+    assert "def commit" in imports_module
+    assert "vendors_import" in imports_module
+
+
+def test_generated_main_has_import_endpoints(tmp_path):
+    vendor = load_pack(PACKS_DIR / "vendor-risk-tracker" / "domain-pack.yaml")
+    out = tmp_path / vendor.name
+    generate(vendor, out)
+    main = (out / "backend/app/main.py").read_text()
+    assert "@app.get('/imports')" in main
+    assert "@app.get('/imports/runs')" in main
+    assert "@app.post('/imports/{import_id}/preview')" in main
+    assert "@app.post('/imports/{import_id}/commit')" in main
+    assert "from app import imports as importer" in main
+
+
+def test_generated_models_include_import_run(tmp_path):
+    vendor = load_pack(PACKS_DIR / "vendor-risk-tracker" / "domain-pack.yaml")
+    out = tmp_path / vendor.name
+    generate(vendor, out)
+    models_py = (out / "backend/app/models.py").read_text()
+    assert "class ImportRun(Base):" in models_py
+    assert "import_runs" in models_py
+    assert "error_summary" in models_py
+
+
+def test_generated_app_metadata_includes_imports(tmp_path):
+    vendor = load_pack(PACKS_DIR / "vendor-risk-tracker" / "domain-pack.yaml")
+    out = tmp_path / vendor.name
+    generate(vendor, out)
+    meta = json.loads((out / "app-model.json").read_text())
+    assert len(meta["imports"]) == 2
+    first = meta["imports"][0]
+    assert first["id"] == "vendors_import"
+    assert "csv" in first["formats"] and "json" in first["formats"]
+    assert first["fieldMap"]["Vendor name"] == "name"
+
+
+def test_generated_frontend_renders_import_panel(tmp_path):
+    vendor = load_pack(PACKS_DIR / "vendor-risk-tracker" / "domain-pack.yaml")
+    out = tmp_path / vendor.name
+    generate(vendor, out)
+    app = (out / "frontend/src/App.tsx").read_text()
+    assert "function ImportPanel" in app
+    assert 'data-ui-surface="import-panel"' in app
+    assert 'data-ui-control="imports-nav"' in app
+    assert "'__imports__'" in app
+    assert 'data-ui-control="import-data"' in app
+    assert 'data-ui-action="import-preview"' in app
+    assert 'data-ui-action="import-commit"' in app
+    assert 'data-ui-surface="import-runs"' in app
+
+
+def test_generated_backend_tests_cover_import_flow(tmp_path):
+    vendor = load_pack(PACKS_DIR / "vendor-risk-tracker" / "domain-pack.yaml")
+    out = tmp_path / vendor.name
+    generate(vendor, out)
+    backend_test = (out / "backend/tests/test_model_driven_app.py").read_text()
+    assert "test_imports_endpoint_lists_configured_imports" in backend_test
+    assert "test_import_preview_csv" in backend_test
+    assert "test_import_preview_json" in backend_test
+    assert "test_import_commit_creates_records" in backend_test
+
+
+def test_pack_without_imports_still_generates(tmp_path):
+    # Existing model-driven pack without imports — synthesize via _pack_with_imports
+    data = _pack_with_imports(replace_imports=[])
+    pack = DomainPack.model_validate(data)
+    out = tmp_path / pack.name
+    generate(pack, out)
+    app = (out / "frontend/src/App.tsx").read_text()
+    # Panel code is always generated, but the sidebar entry is gated on imports.length
+    assert "function ImportPanel" in app
+    assert "model.imports.length > 0" in app
+    meta = json.loads((out / "app-model.json").read_text())
+    assert meta["imports"] == []
+
+
+# --------------------------------------------------------------------------- #
+# Importer v0 — in-process generated backend exercise
+# --------------------------------------------------------------------------- #
+
+
+@pytest.fixture
+def generated_vendor_client(tmp_path, monkeypatch):
+    return _make_generated_client(tmp_path, monkeypatch, "vendor-risk-tracker")
+
+
+@pytest.fixture
+def generated_client_client(tmp_path, monkeypatch):
+    return _make_generated_client(tmp_path, monkeypatch, "client-onboarding-workspace")
+
+
+def _make_generated_client(tmp_path, monkeypatch, pack_name):
+    pack = load_pack(PACKS_DIR / pack_name / "domain-pack.yaml")
+    out = tmp_path / pack.name
+    generate(pack, out)
+    backend_dir = out / "backend"
+    monkeypatch.chdir(backend_dir)
+    monkeypatch.syspath_prepend(str(backend_dir))
+    for key in list(sys.modules):
+        if key == "app" or key.startswith("app."):
+            del sys.modules[key]
+    from app.main import app  # noqa: E402
+    from fastapi.testclient import TestClient  # noqa: E402
+    return TestClient(app)
+
+
+def test_imports_endpoint_lists_configured_imports(generated_vendor_client):
+    response = generated_vendor_client.get("/imports")
+    assert response.status_code == 200
+    items = response.json()
+    ids = [item["id"] for item in items]
+    assert "vendors_import" in ids and "risk_findings_import" in ids
+    vendors = next(item for item in items if item["id"] == "vendors_import")
+    assert vendors["upsert_key"] == "name"
+    assert "csv" in vendors["formats"] and "json" in vendors["formats"]
+
+
+def test_imports_runs_endpoint_starts_empty(generated_vendor_client):
+    response = generated_vendor_client.get("/imports/runs")
+    assert response.status_code == 200
+    assert response.json() == []
+
+
+def test_csv_preview_reports_valid_rows(generated_vendor_client):
+    csv_data = "Vendor name,Service area,Inherent risk,Next review date\nAcme,Finance,high,2026-07-10\n"
+    response = generated_vendor_client.post("/imports/vendors_import/preview", json={"format": "csv", "data": csv_data})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["total_rows"] == 1
+    assert body["valid_rows"] == 1
+    assert body["invalid_rows"] == 0
+    assert body["would_create"] == 1
+    assert body["would_update"] == 0
+    assert set(body["mapped_fields"]) == {"name", "service_area", "inherent_risk", "next_review_date"}
+
+
+def test_json_array_preview_uses_shared_pipeline(generated_vendor_client):
+    json_data = json.dumps([{"Vendor name": "Acme", "Service area": "Finance", "Inherent risk": "high", "Next review date": "2026-07-10"}])
+    response = generated_vendor_client.post("/imports/vendors_import/preview", json={"format": "json", "data": json_data})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["total_rows"] == 1
+    assert body["valid_rows"] == 1
+
+
+def test_json_records_envelope_preview(generated_vendor_client):
+    json_data = json.dumps({"records": [{"Vendor name": "Acme", "Service area": "Finance", "Inherent risk": "high", "Next review date": "2026-07-10"}]})
+    response = generated_vendor_client.post("/imports/vendors_import/preview", json={"format": "json", "data": json_data})
+    assert response.status_code == 200
+    assert response.json()["valid_rows"] == 1
+
+
+def test_preview_invalid_enum_value_reports_error(generated_vendor_client):
+    csv_data = "Vendor name,Service area,Inherent risk\nAcme,Finance,extreme\n"
+    response = generated_vendor_client.post("/imports/vendors_import/preview", json={"format": "csv", "data": csv_data})
+    body = response.json()
+    assert body["valid_rows"] == 0
+    assert body["invalid_rows"] == 1
+    assert "inherent_risk" in body["errors"][0]["errors"][0]
+
+
+def test_preview_invalid_date_value_reports_error(generated_vendor_client):
+    csv_data = "Vendor name,Service area,Inherent risk,Next review date\nAcme,Finance,high,not-a-date\n"
+    response = generated_vendor_client.post("/imports/vendors_import/preview", json={"format": "csv", "data": csv_data})
+    body = response.json()
+    assert body["invalid_rows"] == 1
+    assert "next_review_date" in body["errors"][0]["errors"][0]
+
+
+def test_preview_missing_required_column_reports_error(generated_vendor_client):
+    csv_data = "Service area,Inherent risk\nFinance,high\n"
+    response = generated_vendor_client.post("/imports/vendors_import/preview", json={"format": "csv", "data": csv_data})
+    body = response.json()
+    assert body["invalid_rows"] == 1
+    assert any("name is required" in err for err in body["errors"][0]["errors"])
+
+
+def test_commit_creates_records_and_records_a_run(generated_vendor_client):
+    csv_data = "Vendor name,Service area,Inherent risk,Next review date\nAcme,Finance,high,2026-07-10\n"
+    response = generated_vendor_client.post("/imports/vendors_import/commit", json={"format": "csv", "data": csv_data})
+    body = response.json()
+    assert body["status"] == "ok"
+    assert body["created_count"] == 1
+    assert body["error_count"] == 0
+    listing = generated_vendor_client.get("/vendor").json()
+    assert any(row["name"] == "Acme" for row in listing)
+    runs = generated_vendor_client.get("/imports/runs").json()
+    assert runs and runs[0]["import_id"] == "vendors_import"
+    assert runs[0]["status"] == "ok"
+
+
+def test_commit_rejects_invalid_rows_and_creates_no_records(generated_vendor_client):
+    csv_data = "Vendor name,Service area,Inherent risk\nAcme,Finance,extreme\n"
+    response = generated_vendor_client.post("/imports/vendors_import/commit", json={"format": "csv", "data": csv_data})
+    body = response.json()
+    assert body["status"] == "rejected"
+    assert body["created_count"] == 0
+    assert body["error_count"] == 1
+    listing = generated_vendor_client.get("/vendor").json()
+    assert all(row["name"] != "Acme" for row in listing)
+    runs = generated_vendor_client.get("/imports/runs").json()
+    assert runs[0]["status"] == "rejected"
+
+
+def test_commit_upsert_is_idempotent(generated_vendor_client):
+    csv_data = "Vendor name,Service area,Inherent risk,Next review date\nAcme,Finance,high,2026-07-10\n"
+    first = generated_vendor_client.post("/imports/vendors_import/commit", json={"format": "csv", "data": csv_data}).json()
+    second = generated_vendor_client.post("/imports/vendors_import/commit", json={"format": "csv", "data": csv_data}).json()
+    assert first["created_count"] == 1
+    assert second["created_count"] == 0
+    assert second["updated_count"] == 1
+    listing = generated_vendor_client.get("/vendor").json()
+    matches = [row for row in listing if row["name"] == "Acme"]
+    assert len(matches) == 1
+
+
+def test_unknown_import_id_returns_404(generated_vendor_client):
+    response = generated_vendor_client.post("/imports/nonexistent/preview", json={"format": "csv", "data": ""})
+    assert response.status_code == 404
+
+
+def test_unsupported_format_for_import_returns_400(generated_vendor_client):
+    # Hypothetically restrict — risk_findings_import allows both; force mismatch via unknown format
+    response = generated_vendor_client.post("/imports/vendors_import/preview", json={"format": "xml", "data": ""})
+    assert response.status_code == 400
+
+
+def test_client_onboarding_import_creates_clients(generated_client_client):
+    csv_data = "Client name,Tier,Launch date,Kickoff complete\nNorthstar,enterprise,2026-08-01,true\n"
+    response = generated_client_client.post("/imports/clients_import/commit", json={"format": "csv", "data": csv_data})
+    body = response.json()
+    assert body["status"] == "ok"
+    assert body["created_count"] == 1
+    listing = generated_client_client.get("/client").json()
+    assert any(row["name"] == "Northstar" and row["tier"] == "enterprise" for row in listing)
