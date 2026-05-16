@@ -19,8 +19,15 @@ def test_assistant_start_with_vague_idea_asks_clarifying_questions():
     assert result["live_provider"] is False
     assert result["status"] == "needs_clarification"
     assert result["proposal"] is None
-    assert len(result["questions"]) >= 2
+    assert result["questions"], "vague prompts must still surface a clarifying question"
+    assert result["question_details"], "guided questions must carry structured details"
+    seed = result["question_details"][0]
+    assert seed["id"] == "idea_seed"
+    assert seed["chips"]
+    assert seed["examples"]
+    assert seed["template"]
     assert result["state"]["idea"] == "app"
+    assert result["state"]["pending_question_ids"] == ["idea_seed"]
 
 
 def test_assistant_message_advances_from_clarification_to_valid_proposal():
@@ -149,8 +156,21 @@ def test_assistant_message_rejects_empty_answer():
     result = BuilderAssistant().message(first["state"], "")
 
     assert result["status"] == "needs_clarification"
-    assert result["questions"] == ["Please answer the last question so I can propose a safe Blueprint change."]
+    # Empty answers re-emit the pending guided question so the user can keep using its chips.
+    assert result["questions"], "empty answer must still produce a guiding question"
+    assert result["question_details"], "empty answer must keep guided-question details"
+    assert result["question_details"][0]["id"] == first["state"]["pending_question_ids"][0]
     assert result["proposal"] is None
+
+
+def test_assistant_empty_answer_without_pending_question_falls_back_to_needs_answer():
+    state = {"status": "needs_clarification", "idea": "support tickets", "answers": [], "questions": [], "pending_question_ids": []}
+
+    result = BuilderAssistant().message(state, "")
+
+    assert result["status"] == "needs_clarification"
+    assert result["question_details"][0]["id"] == "needs_answer"
+    assert result["questions"][0].startswith("Please answer")
 
 
 def test_assistant_proposes_csv_import_with_real_upsert_key_when_idea_mentions_csv():

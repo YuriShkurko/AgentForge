@@ -16,15 +16,146 @@ from agentforge.planner import validate_blueprint_result
 from agentforge.planner.validation_guidance import summarize_validation_errors
 
 
-_ASSISTANT_QUESTIONS = [
-    "What entities should the app manage?",
-    "What fields matter for each entity?",
-    "What workflow action should users take on those records?",
-]
-
 _STOP_WORDS = {
     "a", "an", "app", "application", "and", "build", "builder", "for", "make", "me", "of", "the", "to", "tool", "with",
 }
+
+_VAGUE_TOKENS = {
+    "app", "apps", "tool", "tools", "build", "builder", "make", "create", "want", "need",
+    "something", "thing", "stuff", "help", "new", "start", "please", "just", "kind",
+    "of", "a", "an", "the", "my", "i", "me", "mine", "for", "with", "to", "and",
+    "would", "like", "love", "could", "you", "yours",
+}
+
+_ENTITY_KEYWORDS = (
+    "ticket", "client", "task", "vendor", "risk", "issue", "lead", "candidate", "project",
+    "finding", "record", "account",
+)
+_FIELD_KEYWORDS = (
+    "status", "priority", "owner", "due", "date", "email", "severity", "notes", "title",
+    "name", "description", "label",
+)
+_WORKFLOW_KEYWORDS = (
+    "track", "review", "triage", "approve", "close", "complete", "onboard", "manage",
+    "resolve", "assign", "ship",
+)
+
+
+QUESTION_CATALOG: dict[str, dict[str, Any]] = {
+    "idea_seed": {
+        "id": "idea_seed",
+        "prompt": "What model-driven app should I draft?",
+        "helper": "One plain-English sentence is enough. Mention the main record, a couple of fields, and the workflow action.",
+        "examples": [
+            "Support ticket triage with title, status, priority, owner, and notes to close tickets.",
+            "Client onboarding for clients and onboarding tasks with status and due dates.",
+            "Vendor risk register to review findings with severity, status, and owner.",
+            "Task tracker with status, owner, and due dates to complete tasks.",
+        ],
+        "chips": [
+            {"label": "Support tickets", "value": "Support ticket triage with title, status, priority, owner, and notes to close tickets."},
+            {"label": "Client onboarding", "value": "Client onboarding for clients and onboarding tasks with status and due dates."},
+            {"label": "Vendor risk", "value": "Vendor risk register to review findings with severity, status, and owner."},
+            {"label": "Task tracker", "value": "Task tracker with status, owner, and due dates to complete tasks."},
+        ],
+        "template": "<record> with <fields> to <workflow action>.",
+    },
+    "entities": {
+        "id": "entities",
+        "prompt": "What records should this app manage?",
+        "helper": "Pick the main 'noun' the user will create, update, or close. One or two related records work great.",
+        "examples": [
+            "support tickets",
+            "clients and onboarding tasks",
+            "vendor risk findings",
+        ],
+        "chips": [
+            {"label": "tickets", "value": "tickets"},
+            {"label": "clients", "value": "clients"},
+            {"label": "vendors", "value": "vendors"},
+            {"label": "risk findings", "value": "risk findings"},
+            {"label": "tasks", "value": "tasks"},
+            {"label": "leads", "value": "leads"},
+            {"label": "projects", "value": "projects"},
+        ],
+        "template": None,
+    },
+    "fields": {
+        "id": "fields",
+        "prompt": "What fields matter for each record?",
+        "helper": "Include a status or priority field if you want a workflow board — every model-driven app needs at least one enum-shaped field.",
+        "examples": [
+            "title, status, priority, owner, notes",
+            "name, owner, due date, status",
+            "title, severity, status, owner",
+        ],
+        "chips": [
+            {"label": "title", "value": "title"},
+            {"label": "status", "value": "status"},
+            {"label": "priority", "value": "priority"},
+            {"label": "owner", "value": "owner"},
+            {"label": "notes", "value": "notes"},
+            {"label": "due date", "value": "due date"},
+            {"label": "severity", "value": "severity"},
+        ],
+        "template": None,
+    },
+    "workflow": {
+        "id": "workflow",
+        "prompt": "What's the main workflow action the user takes?",
+        "helper": "This becomes a one-click action on each record — usually flipping a status field to a final value.",
+        "examples": [
+            "close tickets",
+            "resolve risk findings",
+            "complete onboarding tasks",
+        ],
+        "chips": [
+            {"label": "close", "value": "close tickets"},
+            {"label": "resolve", "value": "resolve findings"},
+            {"label": "complete", "value": "complete tasks"},
+            {"label": "approve", "value": "approve clients"},
+            {"label": "triage", "value": "triage records"},
+            {"label": "review", "value": "review records"},
+        ],
+        "template": None,
+    },
+    "needs_answer": {
+        "id": "needs_answer",
+        "prompt": "Please answer the last question so I can propose a safe Blueprint change.",
+        "helper": "A short phrase is enough — you can also click one of the chips above to fill the input.",
+        "examples": [],
+        "chips": [],
+        "template": None,
+    },
+}
+
+
+def _is_vague(text: str) -> bool:
+    """Treat very short / stopword-only prompts as needing a templated seed question."""
+    if not text or not text.strip():
+        return True
+    tokens = re.findall(r"[a-z0-9]+", text.lower())
+    meaningful = [t for t in tokens if t not in _VAGUE_TOKENS and t not in _STOP_WORDS and len(t) > 2]
+    return len(meaningful) < 2
+
+
+def _build_questions_payload(ids: list[str]) -> tuple[list[str], list[dict[str, Any]]]:
+    prompts: list[str] = []
+    details: list[dict[str, Any]] = []
+    for qid in ids:
+        entry = QUESTION_CATALOG.get(qid)
+        if not entry:
+            continue
+        prompts.append(entry["prompt"])
+        details.append({
+            "id": entry["id"],
+            "prompt": entry["prompt"],
+            "helper": entry["helper"],
+            "examples": list(entry["examples"]),
+            "chips": [dict(chip) for chip in entry["chips"]],
+            "template": entry["template"],
+        })
+    return prompts, details
 
 
 @dataclass
@@ -35,6 +166,7 @@ class AssistantState:
     idea: str = ""
     answers: list[str] = field(default_factory=list)
     questions: list[str] = field(default_factory=list)
+    pending_question_ids: list[str] = field(default_factory=list)
     proposal: dict[str, Any] | None = None
     errors: list[str] = field(default_factory=list)
 
@@ -47,6 +179,7 @@ class AssistantState:
             idea=str(value.get("idea") or ""),
             answers=[str(item) for item in value.get("answers") or [] if str(item).strip()],
             questions=[str(item) for item in value.get("questions") or [] if str(item).strip()],
+            pending_question_ids=[str(item) for item in value.get("pending_question_ids") or [] if str(item).strip()],
             proposal=value.get("proposal") if isinstance(value.get("proposal"), dict) else None,
             errors=[str(item) for item in value.get("errors") or [] if str(item).strip()],
         )
@@ -57,6 +190,7 @@ class AssistantState:
             "idea": self.idea,
             "answers": self.answers,
             "questions": self.questions,
+            "pending_question_ids": self.pending_question_ids,
             "proposal": self.proposal,
             "errors": self.errors,
         }
@@ -72,10 +206,17 @@ class BuilderAssistant:
         """Start a conversation from a plain-English app idea."""
         clean_idea = str(idea or "").strip()
         if not clean_idea:
-            state = AssistantState(status="needs_clarification", idea="", questions=[_ASSISTANT_QUESTIONS[0]])
+            prompts, details = _build_questions_payload(["idea_seed"])
+            state = AssistantState(
+                status="needs_clarification",
+                idea="",
+                questions=prompts,
+                pending_question_ids=["idea_seed"],
+            )
             return self._response(
                 state,
-                messages=["Tell me what kind of model-driven app you want to build."],
+                messages=[QUESTION_CATALOG["idea_seed"]["prompt"]],
+                question_details=details,
             )
         state = AssistantState(status="collecting", idea=clean_idea)
         return self._advance(state, current_blueprint=current_blueprint)
@@ -95,8 +236,14 @@ class BuilderAssistant:
             state.answers.append(text)
         if not text:
             state.status = "needs_clarification"
-            state.questions = ["Please answer the last question so I can propose a safe Blueprint change."]
-            return self._response(state, messages=["I need a little more detail before proposing changes."])
+            ids = state.pending_question_ids or ["needs_answer"]
+            prompts, details = _build_questions_payload(ids)
+            state.questions = prompts
+            return self._response(
+                state,
+                messages=["I need a little more detail before proposing changes."],
+                question_details=details,
+            )
         return self._advance(state, current_blueprint=current_blueprint)
 
     def apply_preview(self, proposal: dict[str, Any] | None) -> dict[str, Any]:
@@ -133,18 +280,22 @@ class BuilderAssistant:
 
     def _advance(self, state: AssistantState, current_blueprint: dict[str, Any] | None) -> dict[str, Any]:
         combined = _combined_text(state.idea, state.answers)
-        missing = _missing_requirements(combined)
-        if missing and len(state.answers) < 2:
+        missing_ids = _missing_requirement_ids(combined)
+        if missing_ids and len(state.answers) < 2:
             state.status = "needs_clarification"
-            state.questions = missing
+            prompts, details = _build_questions_payload(missing_ids)
+            state.questions = prompts
+            state.pending_question_ids = missing_ids
             return self._response(
                 state,
                 messages=[_summary_message(combined), "I can propose a model-driven Blueprint after these details."],
+                question_details=details,
             )
 
         proposal = self._build_proposal(combined, current_blueprint=current_blueprint)
         state.status = proposal["status"]
         state.questions = []
+        state.pending_question_ids = []
         state.proposal = proposal if proposal["status"] == "proposed" else None
         state.errors = proposal.get("errors", [])
         if proposal["status"] != "proposed":
@@ -203,6 +354,7 @@ class BuilderAssistant:
         messages: list[str],
         proposal: dict[str, Any] | None = None,
         guidance: list[dict[str, Any]] | None = None,
+        question_details: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
         return {
             "mode": "scripted",
@@ -210,6 +362,7 @@ class BuilderAssistant:
             "status": state.status,
             "messages": messages,
             "questions": state.questions,
+            "question_details": question_details or [],
             "state": state.to_dict(),
             "proposal": proposal,
             "errors": state.errors,
@@ -221,18 +374,19 @@ def _combined_text(idea: str, answers: list[str]) -> str:
     return " ".join([idea, *answers]).strip()
 
 
-def _missing_requirements(text: str) -> list[str]:
+def _missing_requirement_ids(text: str) -> list[str]:
+    """Return the QUESTION_CATALOG ids that still need answers for *text*."""
     compact = text.lower().strip()
-    if compact in {"", "app", "build app", "build me an app", "make an app", "tool"}:
-        return list(_ASSISTANT_QUESTIONS)
-    questions: list[str] = []
-    if not any(word in compact for word in ["ticket", "client", "task", "vendor", "risk", "issue", "lead", "candidate", "project"]):
-        questions.append(_ASSISTANT_QUESTIONS[0])
-    if not any(word in compact for word in ["status", "priority", "owner", "due", "date", "email", "severity", "notes", "title"]):
-        questions.append(_ASSISTANT_QUESTIONS[1])
-    if not any(word in compact for word in ["track", "review", "triage", "approve", "close", "complete", "onboard", "manage"]):
-        questions.append(_ASSISTANT_QUESTIONS[2])
-    return questions[:3]
+    if _is_vague(compact):
+        return ["idea_seed"]
+    ids: list[str] = []
+    if not any(word in compact for word in _ENTITY_KEYWORDS):
+        ids.append("entities")
+    if not any(word in compact for word in _FIELD_KEYWORDS):
+        ids.append("fields")
+    if not any(word in compact for word in _WORKFLOW_KEYWORDS):
+        ids.append("workflow")
+    return ids[:3]
 
 
 def _model_blueprint_from_text(text: str) -> dict[str, Any]:

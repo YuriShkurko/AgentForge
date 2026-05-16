@@ -652,18 +652,59 @@ function appendAssistantMessage(role, text) {
   assistantLog.scrollTop = assistantLog.scrollHeight;
 }
 
-function renderAssistantQuestions(questions) {
+function renderAssistantQuestions(questions, details) {
   if (!assistantQuestions) return;
-  if (!questions || !questions.length) {
+  const detailList = Array.isArray(details) ? details : [];
+  const promptList = Array.isArray(questions) ? questions : [];
+  if (detailList.length === 0 && promptList.length === 0) {
     assistantQuestions.classList.add("hidden");
     assistantQuestions.innerHTML = "";
     return;
   }
   assistantQuestions.classList.remove("hidden");
+  if (detailList.length > 0) {
+    const items = detailList.map((entry) => {
+      const prompt = escapeHtml(String(entry.prompt || ""));
+      const helper = entry.helper ? `<p class="assistant-question-helper">${escapeHtml(entry.helper)}</p>` : "";
+      const examples = Array.isArray(entry.examples) && entry.examples.length
+        ? `<p class="assistant-question-examples-label">Examples</p><ul class="assistant-question-examples">${entry.examples.map((ex) => `<li>${escapeHtml(ex)}</li>`).join("")}</ul>`
+        : "";
+      const template = entry.template
+        ? `<p class="assistant-question-template"><span>Template:</span> <code>${escapeHtml(entry.template)}</code></p>`
+        : "";
+      const chips = Array.isArray(entry.chips) && entry.chips.length
+        ? `<div class="assistant-question-chips">${entry.chips.map((chip) => {
+            const label = escapeHtml(String(chip.label || chip.value || ""));
+            const value = escapeHtml(String(chip.value || chip.label || ""));
+            return `<button type="button" class="assistant-chip" data-chip-value="${value}">${label}</button>`;
+          }).join("")}</div>`
+        : "";
+      return `<li class="assistant-question" data-question-id="${escapeHtml(String(entry.id || ""))}"><p class="assistant-question-prompt">${prompt}</p>${helper}${examples}${template}${chips}</li>`;
+    }).join("");
+    assistantQuestions.innerHTML = `
+      <p class="assistant-questions-label">Guided questions</p>
+      <ul class="assistant-question-list">${items}</ul>
+      <p class="assistant-questions-hint">Tip: click a chip to fill the input. Nothing is sent until you press Send.</p>
+    `;
+    return;
+  }
   assistantQuestions.innerHTML = `
     <p class="assistant-questions-label">Open questions</p>
-    <ul>${questions.map((question) => `<li>${escapeHtml(question)}</li>`).join("")}</ul>
+    <ul>${promptList.map((question) => `<li>${escapeHtml(String(question))}</li>`).join("")}</ul>
   `;
+}
+
+function fillAssistantInputFromChip(value) {
+  if (!assistantInput || !value) return;
+  const current = assistantInput.value.trim();
+  if (!current) {
+    assistantInput.value = value;
+  } else if (current.endsWith(",") || current.endsWith(":")) {
+    assistantInput.value = `${current} ${value}`;
+  } else {
+    assistantInput.value = `${current}, ${value}`;
+  }
+  assistantInput.focus({ preventScroll: true });
 }
 
 function renderAssistantProposal(proposal) {
@@ -712,7 +753,7 @@ function renderAssistantProposal(proposal) {
 function clearAssistantConversation() {
   assistantSessionState = null;
   if (assistantLog) assistantLog.innerHTML = "";
-  renderAssistantQuestions([]);
+  renderAssistantQuestions([], []);
   renderAssistantProposal(null);
   renderAssistantGuidance(null);
 }
@@ -720,7 +761,7 @@ function clearAssistantConversation() {
 function handleAssistantResponse(result) {
   assistantSessionState = result.state || null;
   (result.messages || []).forEach((message) => appendAssistantMessage("assistant", message));
-  renderAssistantQuestions(result.questions);
+  renderAssistantQuestions(result.questions, result.question_details);
   renderAssistantProposal(result.proposal);
   renderAssistantGuidance(result.guidance);
   if (result.errors && result.errors.length) {
@@ -890,6 +931,14 @@ assistantResetButton?.addEventListener("click", () => {
   clearAssistantConversation();
   if (plannerAvailable) assistantStatus.textContent = "Local assistant connected. Send your app idea to start a scripted conversation.";
   assistantInput.focus({ preventScroll: true });
+});
+assistantQuestions?.addEventListener("click", (event) => {
+  const target = event.target;
+  if (!(target instanceof HTMLElement)) return;
+  const chip = target.closest(".assistant-chip");
+  if (chip instanceof HTMLElement && chip.dataset.chipValue) {
+    fillAssistantInputFromChip(chip.dataset.chipValue);
+  }
 });
 assistantProposal?.addEventListener("click", (event) => {
   const target = event.target;

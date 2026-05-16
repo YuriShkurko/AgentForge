@@ -140,6 +140,55 @@ def test_index_html_documents_apply_reject_workflow():
     assert "Apply" in html and "Reject" in html
 
 
+def test_app_mjs_renders_guided_questions_with_chips_and_examples():
+    script = _read("app.mjs")
+
+    render = _extract_function(script, "renderAssistantQuestions")
+    assert render is not None
+    # Guided rendering uses the question_details payload from the backend.
+    assert "detailList" in render
+    assert "assistant-question-prompt" in render
+    assert "assistant-question-helper" in render
+    assert "assistant-question-examples" in render
+    assert "assistant-question-chips" in render
+    assert "assistant-chip" in render
+    assert "data-chip-value" in render
+    # The chip fill helper exists and never auto-sends — submission stays explicit.
+    fill = _extract_function(script, "fillAssistantInputFromChip")
+    assert fill is not None
+    assert "submitAssistantMessage" not in fill
+    assert "assistantSendButton" not in fill
+
+
+def test_app_mjs_response_handler_passes_question_details_through():
+    script = _read("app.mjs")
+
+    response_handler = _extract_function(script, "handleAssistantResponse")
+    assert response_handler is not None
+    assert "result.question_details" in response_handler
+    # Click delegation on #assistant-questions routes chips into the input.
+    assert "assistantQuestions?.addEventListener" in script
+    assert "data-chip-value" in script
+    assert "fillAssistantInputFromChip" in script
+
+
+def test_styles_css_defines_guided_question_styles():
+    css = _read("styles.css")
+
+    for selector in (
+        ".assistant-question-list",
+        ".assistant-question",
+        ".assistant-question-prompt",
+        ".assistant-question-helper",
+        ".assistant-question-examples",
+        ".assistant-question-template",
+        ".assistant-question-chips",
+        ".assistant-chip",
+        ".assistant-questions-hint",
+    ):
+        assert selector in css
+
+
 def test_app_mjs_renders_import_and_provider_meta_rows():
     script = _read("app.mjs")
 
