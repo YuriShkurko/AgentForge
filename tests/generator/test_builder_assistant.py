@@ -89,9 +89,58 @@ def test_assistant_start_with_current_blueprint_returns_field_level_changes():
     )
 
     assert result["status"] == "proposed"
-    paths = {change["path"] for change in result["proposal"]["changes"]}
-    assert "/model" in paths
+    changes = result["proposal"]["changes"]
+    paths = {change["path"] for change in changes}
+    operations = {change["operation"] for change in changes}
     assert "/name" in paths
+    assert any(path.startswith("/model/entities/") for path in paths)
+    # The new model introduces vendor + risk_finding entities and removes task.
+    assert "add" in operations
+    assert "remove" in operations
+
+
+def test_assistant_diff_lists_per_entity_paths_for_fresh_proposal():
+    result = BuilderAssistant().start(
+        "support ticket triage with title status priority owner notes to close tickets"
+    )
+
+    changes = result["proposal"]["changes"]
+    paths = [change["path"] for change in changes]
+    assert "/" in paths
+    assert "/model" in paths
+    assert "/model/entities/ticket" in paths
+    assert "/model/pages/tickets" in paths
+    # Every change must carry a structured operation token.
+    assert all(change["operation"] in {"add", "remove", "replace"} for change in changes)
+
+
+def test_assistant_apply_preview_returns_yaml_for_in_memory_install():
+    proposal = BuilderAssistant().start(
+        "support ticket triage with title status priority owner notes to close tickets"
+    )["proposal"]
+
+    preview = BuilderAssistant().apply_preview(proposal)
+
+    assert preview["status"] == "apply_ready"
+    assert preview["proposal"]["yaml"]
+    assert preview["proposal"]["yaml"] == preview["validation"]["yaml"]
+    # Re-running apply_preview must remain idempotent for the Builder Apply path.
+    again = BuilderAssistant().apply_preview(preview["proposal"])
+    assert again["status"] == "apply_ready"
+    assert again["proposal"]["blueprint"] == preview["proposal"]["blueprint"]
+
+
+def test_assistant_apply_preview_rejects_tampered_blueprint():
+    proposal = BuilderAssistant().start(
+        "support ticket triage with title status priority owner notes to close tickets"
+    )["proposal"]
+
+    tampered = {**proposal, "blueprint": {**proposal["blueprint"], "app_archetype": "not_a_real_archetype"}}
+    preview = BuilderAssistant().apply_preview(tampered)
+
+    assert preview["status"] == "validation_error"
+    assert preview["apply_ready"] is False
+    assert preview["errors"]
 
 
 def test_assistant_message_rejects_empty_answer():

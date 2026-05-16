@@ -672,20 +672,29 @@ function renderAssistantProposal(proposal) {
     assistantProposal.innerHTML = "";
     return;
   }
-  const changes = (proposal.changes || []).map((change) => `<li><code>${escapeHtml(change.path)}</code> · ${escapeHtml(change.operation)}</li>`).join("");
+  const changesList = proposal.changes || [];
+  const changes = changesList.map((change) => {
+    const op = String(change.operation || "replace");
+    return `<li class="assistant-change assistant-change-${escapeHtml(op)}"><span class="assistant-change-op">${escapeHtml(op)}</span><code>${escapeHtml(change.path)}</code>${change.to && typeof change.to === "string" ? ` <span class="assistant-change-summary">${escapeHtml(change.to)}</span>` : ""}</li>`;
+  }).join("");
   const archetype = proposal.blueprint.app_archetype || "model_driven_app";
   const entities = (proposal.blueprint.model?.entities || []).map((entity) => escapeHtml(entity.name)).join(", ") || "(no entities)";
+  const applyDisabled = assistantBusy || !plannerAvailable ? "disabled" : "";
   assistantProposal.classList.remove("hidden");
   assistantProposal.innerHTML = `
-    <p class="eyebrow">Proposed Blueprint preview</p>
+    <p class="eyebrow">Proposed Blueprint diff</p>
     <p class="assistant-proposal-summary">${escapeHtml(proposal.summary || "Proposed model-driven Blueprint.")}</p>
     <ul class="assistant-proposal-meta">
       <li>App type: <strong>${escapeHtml(archetype)}</strong></li>
       <li>Entities: <strong>${entities}</strong></li>
       <li>Status: <strong>${escapeHtml(proposal.validation?.status || "draft")}</strong></li>
     </ul>
-    ${changes ? `<details class="assistant-proposal-changes"><summary>Changed fields (${(proposal.changes || []).length})</summary><ul>${changes}</ul></details>` : ""}
-    <p class="assistant-proposal-note">Review only. The Builder draft above is unchanged. Apply/Reject controls arrive in a later phase.</p>
+    ${changes ? `<details class="assistant-proposal-changes" open><summary>Changed fields (${changesList.length})</summary><ul class="assistant-change-list">${changes}</ul></details>` : ""}
+    <div class="assistant-proposal-actions actions">
+      <button id="assistant-apply" type="button" class="primary-button" ${applyDisabled}>Apply to Builder draft</button>
+      <button id="assistant-reject" type="button" class="quiet-button" ${applyDisabled}>Reject</button>
+    </div>
+    <p class="assistant-proposal-note">Apply mutates only the in-memory Builder draft and re-runs schema validation. Reject keeps your current draft unchanged.</p>
   `;
 }
 
@@ -704,6 +713,60 @@ function handleAssistantResponse(result) {
   if (result.errors && result.errors.length) {
     appendAssistantMessage("assistant", result.errors.join(" "));
   }
+}
+
+function setAssistantBusy(busy) {
+  assistantBusy = busy;
+  if (assistantSendButton) assistantSendButton.disabled = busy || !plannerAvailable;
+  assistantProposal?.querySelectorAll("button").forEach((button) => {
+    button.disabled = busy || !plannerAvailable;
+  });
+}
+
+async function applyAssistantProposal() {
+  if (!plannerAvailable || assistantBusy) return;
+  const proposal = assistantSessionState?.proposal;
+  if (!proposal || !proposal.blueprint) return;
+  setAssistantBusy(true);
+  try {
+    const result = await assistantRequest("apply-preview", { proposal });
+    if (!result.apply_ready) {
+      const reason = (result.errors && result.errors.length ? result.errors : ["validation failed"]).join("; ");
+      appendAssistantMessage("assistant", `Cannot apply proposal: ${reason}`);
+      return;
+    }
+    const validated = result.proposal || proposal;
+    plannerBlueprint = validated.blueprint;
+    plannerYaml = validated.yaml || "";
+    plannerCommands = [];
+    applyBlueprintToForm(plannerBlueprint);
+    renderDraftResult({
+      status: result.validation?.status || "draft",
+      blueprint: plannerBlueprint,
+      assumptions: result.validation?.assumptions || ["Builder Assistant applied a deterministic model-driven Blueprint."],
+      warnings: result.validation?.warnings || [],
+      suggested_modules: plannerBlueprint.optional_shell_modules || [],
+    });
+    clarificationPanel.classList.add("hidden");
+    draftPanel.classList.remove("hidden");
+    plannerStatus.textContent = "Assistant proposal applied. Review the Builder draft, then continue to commands.";
+    setActiveStep("review");
+    appendAssistantMessage("assistant", "Applied the proposed Blueprint to the Builder draft. Validation passed.");
+    assistantSessionState = { ...assistantSessionState, proposal: null, status: "applied" };
+    renderAssistantProposal(null);
+    updatePreview();
+  } catch (error) {
+    appendAssistantMessage("assistant", `Apply failed: ${error.message}`);
+  } finally {
+    setAssistantBusy(false);
+  }
+}
+
+function rejectAssistantProposal() {
+  if (!assistantSessionState || !assistantSessionState.proposal) return;
+  assistantSessionState = { ...assistantSessionState, proposal: null, status: "rejected" };
+  renderAssistantProposal(null);
+  appendAssistantMessage("assistant", "Rejected the proposed Blueprint. The Builder draft is unchanged.");
 }
 
 async function submitAssistantMessage() {
@@ -787,4 +850,13 @@ assistantResetButton?.addEventListener("click", () => {
   clearAssistantConversation();
   if (plannerAvailable) assistantStatus.textContent = "Local assistant connected. Send your app idea to start a scripted conversation.";
   assistantInput.focus({ preventScroll: true });
+});
+assistantProposal?.addEventListener("click", (event) => {
+  const target = event.target;
+  if (!(target instanceof HTMLElement)) return;
+  if (target.closest("#assistant-apply")) {
+    applyAssistantProposal();
+  } else if (target.closest("#assistant-reject")) {
+    rejectAssistantProposal();
+  }
 });

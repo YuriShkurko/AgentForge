@@ -1221,6 +1221,55 @@ button + button,
   font-size: 0.82rem;
 }
 
+.assistant-change-list {
+  list-style: none;
+  padding-left: 0;
+}
+
+.assistant-change {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+}
+
+.assistant-change-op {
+  display: inline-block;
+  min-width: 56px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 0.66rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  text-align: center;
+}
+
+.assistant-change-add .assistant-change-op {
+  background: rgba(22, 163, 106, 0.18);
+  color: #0d5a3a;
+}
+
+.assistant-change-remove .assistant-change-op {
+  background: rgba(196, 64, 64, 0.18);
+  color: #8a2828;
+}
+
+.assistant-change-replace .assistant-change-op {
+  background: rgba(91, 91, 214, 0.18);
+  color: #2b2b8a;
+}
+
+.assistant-change-summary {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.assistant-proposal-actions {
+  margin-top: 4px;
+}
+
 .assistant-proposal-note {
   color: #2c5340;
   font-size: 0.78rem;

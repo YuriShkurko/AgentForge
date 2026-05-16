@@ -65,9 +65,52 @@ def test_app_mjs_calls_assistant_endpoints_and_handles_fallback():
     assert "plannerAvailable" in script
     # Fallback message wired when planner is offline.
     assert "Static mode" in script
-    # No hidden mutation: the assistant must not call applyBlueprintToForm.
-    assert "applyBlueprintToForm(result.proposal" not in script
-    assert "applyBlueprintToForm(assistant" not in script
+    # No hidden mutation from message handling: response handler must not auto-apply.
+    response_handler = _extract_function(script, "handleAssistantResponse")
+    assert response_handler is not None
+    assert "applyBlueprintToForm" not in response_handler
+
+
+def test_app_mjs_exposes_explicit_apply_and_reject_paths():
+    script = _read("app.mjs")
+
+    assert "applyAssistantProposal" in script
+    assert "rejectAssistantProposal" in script
+    assert "apply-preview" in script
+    # Apply must mutate the in-memory Builder draft via the existing helper.
+    apply_handler = _extract_function(script, "applyAssistantProposal")
+    assert apply_handler is not None
+    assert "applyBlueprintToForm(plannerBlueprint)" in apply_handler
+    assert "plannerYaml" in apply_handler
+    assert "updatePreview()" in apply_handler
+    # Reject must NOT touch the Builder draft.
+    reject_handler = _extract_function(script, "rejectAssistantProposal")
+    assert reject_handler is not None
+    assert "applyBlueprintToForm" not in reject_handler
+    assert "plannerBlueprint =" not in reject_handler
+    assert "plannerYaml =" not in reject_handler
+
+
+def _extract_function(script: str, name: str) -> str | None:
+    """Return the body of a top-level function/async function declaration."""
+    for prefix in (f"async function {name}", f"function {name}"):
+        marker = script.find(prefix)
+        if marker == -1:
+            continue
+        brace = script.find("{", marker)
+        if brace == -1:
+            return None
+        depth = 0
+        for index in range(brace, len(script)):
+            char = script[index]
+            if char == "{":
+                depth += 1
+            elif char == "}":
+                depth -= 1
+                if depth == 0:
+                    return script[brace : index + 1]
+        return None
+    return None
 
 
 def test_styles_css_defines_assistant_panel_styles():
@@ -80,8 +123,21 @@ def test_styles_css_defines_assistant_panel_styles():
         ".assistant-questions",
         ".assistant-proposal",
         ".assistant-footnote",
+        ".assistant-change",
+        ".assistant-change-add",
+        ".assistant-change-remove",
+        ".assistant-change-replace",
+        ".assistant-proposal-actions",
     ):
         assert selector in css
+
+
+def test_index_html_documents_apply_reject_workflow():
+    html = _read("index.html")
+
+    # The phase 2 placeholder copy must not leak into the phase 3 UI.
+    assert "Apply/Reject controls arrive in a later phase" not in html
+    assert "Apply" in html and "Reject" in html
 
 
 def test_readme_documents_assistant_chat_mode():

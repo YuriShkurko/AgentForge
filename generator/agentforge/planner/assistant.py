@@ -99,7 +99,13 @@ class BuilderAssistant:
         return self._advance(state, current_blueprint=current_blueprint)
 
     def apply_preview(self, proposal: dict[str, Any] | None) -> dict[str, Any]:
-        """Validate a proposal before the Builder applies it in memory."""
+        """Validate a proposal before the Builder applies it in memory.
+
+        The frontend re-calls this on Apply so a tampered ``proposal.blueprint``
+        cannot bypass schema validation. The post-validation YAML is returned
+        alongside the proposal so the in-memory Builder draft and the copied
+        YAML stay in sync.
+        """
         if not isinstance(proposal, dict) or not isinstance(proposal.get("blueprint"), dict):
             return {
                 "status": "error",
@@ -107,10 +113,15 @@ class BuilderAssistant:
                 "errors": ["assistant proposal must include a blueprint object"],
             }
         result = validate_blueprint_result(proposal["blueprint"])
+        verified = deepcopy(proposal)
+        if result.yaml is not None:
+            verified["yaml"] = result.yaml
+        verified["validation"] = result.to_dict()
+        verified["apply_ready"] = result.status == "draft"
         return {
             "status": "apply_ready" if result.status == "draft" else "validation_error",
             "apply_ready": result.status == "draft",
-            "proposal": proposal,
+            "proposal": verified,
             "validation": result.to_dict(),
             "errors": result.errors,
         }
@@ -349,14 +360,77 @@ def _summary_message(text: str) -> str:
 
 def _changes(current: dict[str, Any] | None, proposed: dict[str, Any]) -> list[dict[str, Any]]:
     if current is None:
-        return [{"path": "/", "operation": "replace", "from": None, "to": "new validated model_driven_app Blueprint"}]
-    paths = ["name", "display_name", "domain", "app_archetype", "required_shell_modules", "optional_shell_modules", "model"]
+        archetype = proposed.get("app_archetype") or "model_driven_app"
+        changes: list[dict[str, Any]] = [
+            {"path": "/", "operation": "add", "from": None, "to": f"new validated {archetype} Blueprint"},
+        ]
+        changes.extend(_model_changes(None, proposed.get("model") or {}))
+        return changes
+
     changes: list[dict[str, Any]] = []
-    for path in paths:
+    for path in ("name", "display_name", "app_archetype"):
         before = current.get(path)
         after = proposed.get(path)
         if before != after:
             changes.append({"path": f"/{path}", "operation": "replace", "from": before, "to": after})
+    if current.get("domain") != proposed.get("domain"):
+        changes.append({"path": "/domain", "operation": "replace", "from": current.get("domain"), "to": proposed.get("domain")})
+    for path in ("required_shell_modules", "optional_shell_modules"):
+        before_list = list(current.get(path) or [])
+        after_list = list(proposed.get(path) or [])
+        if before_list != after_list:
+            changes.append({"path": f"/{path}", "operation": "replace", "from": before_list, "to": after_list})
+    before_model = current.get("model") if isinstance(current.get("model"), dict) else None
+    after_model = proposed.get("model") or {}
+    changes.extend(_model_changes(before_model, after_model))
+    return changes
+
+
+def _model_changes(before: dict[str, Any] | None, after: dict[str, Any]) -> list[dict[str, Any]]:
+    if not after:
+        return []
+    if before is None:
+        return [
+            {
+                "path": "/model",
+                "operation": "add",
+                "from": None,
+                "to": _model_summary(after),
+            },
+            *_named_list_diff([], after.get("entities") or [], "/model/entities"),
+            *_named_list_diff([], after.get("pages") or [], "/model/pages"),
+            *_named_list_diff([], after.get("actions") or [], "/model/actions"),
+        ]
+    changes: list[dict[str, Any]] = []
+    changes.extend(_named_list_diff(before.get("entities") or [], after.get("entities") or [], "/model/entities"))
+    changes.extend(_named_list_diff(before.get("pages") or [], after.get("pages") or [], "/model/pages"))
+    changes.extend(_named_list_diff(before.get("actions") or [], after.get("actions") or [], "/model/actions"))
+    if (before.get("ui") or {}) != (after.get("ui") or {}):
+        changes.append({"path": "/model/ui", "operation": "replace", "from": before.get("ui"), "to": after.get("ui")})
+    return changes
+
+
+def _model_summary(model: dict[str, Any]) -> str:
+    entities = [str(entity.get("name") or "") for entity in model.get("entities") or [] if entity.get("name")]
+    return f"model with entities: {', '.join(entities) if entities else '(none)'}"
+
+
+def _named_list_diff(
+    before: list[dict[str, Any]],
+    after: list[dict[str, Any]],
+    prefix: str,
+) -> list[dict[str, Any]]:
+    before_index = {str(item.get("name")): item for item in before if isinstance(item, dict) and item.get("name")}
+    after_index = {str(item.get("name")): item for item in after if isinstance(item, dict) and item.get("name")}
+    changes: list[dict[str, Any]] = []
+    for name, item in after_index.items():
+        if name not in before_index:
+            changes.append({"path": f"{prefix}/{name}", "operation": "add", "from": None, "to": item})
+        elif before_index[name] != item:
+            changes.append({"path": f"{prefix}/{name}", "operation": "replace", "from": before_index[name], "to": item})
+    for name, item in before_index.items():
+        if name not in after_index:
+            changes.append({"path": f"{prefix}/{name}", "operation": "remove", "from": item, "to": None})
     return changes
 
 
