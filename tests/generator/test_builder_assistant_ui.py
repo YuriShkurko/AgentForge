@@ -140,6 +140,18 @@ def test_index_html_documents_apply_reject_workflow():
     assert "Apply" in html and "Reject" in html
 
 
+def test_app_mjs_renders_import_and_provider_meta_rows():
+    script = _read("app.mjs")
+
+    render = _extract_function(script, "renderAssistantProposal")
+    assert render is not None
+    # Phase 4: proposal meta block surfaces imports + providers before Apply.
+    assert "Imports:" in render
+    assert "Providers:" in render
+    assert "model?.imports" in render
+    assert "model?.providers" in render
+
+
 def test_readme_documents_assistant_chat_mode():
     readme = _read("README.md")
     assert "Builder Assistant chat" in readme

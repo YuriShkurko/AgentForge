@@ -160,9 +160,18 @@ class BuilderAssistant:
         if validation.status != "draft":
             return {"status": "validation_error", "errors": validation.errors, "validation": validation.to_dict()}
         changes = _changes(current_blueprint if isinstance(current_blueprint, dict) else None, blueprint)
+        model = blueprint.get("model") or {}
+        extras: list[str] = []
+        if model.get("imports"):
+            extras.append(f"{len(model['imports'])} import(s)")
+        if model.get("providers"):
+            extras.append(f"{len(model['providers'])} read-only provider(s)")
+        summary = f"Create a model-driven app with {len(model.get('entities') or [])} entity/relationship model."
+        if extras:
+            summary += f" Includes {', '.join(extras)}."
         return {
             "status": "proposed",
-            "summary": f"Create a model-driven app with {len(blueprint['model']['entities'])} entity/relationship model.",
+            "summary": summary,
             "changes": changes,
             "blueprint": blueprint,
             "yaml": validation.yaml,
@@ -209,6 +218,7 @@ def _missing_requirements(text: str) -> list[str]:
 
 def _model_blueprint_from_text(text: str) -> dict[str, Any]:
     spec = _infer_model_spec(text)
+    _attach_imports_and_providers(spec, text)
     name = sanitize_pack_name(" ".join(_keywords(text)[:4]) or f"{spec['primary']}-workspace")
     display = name.replace("-", " ").title()
     blueprint = create_starter_blueprint(
@@ -225,6 +235,121 @@ def _model_blueprint_from_text(text: str) -> dict[str, Any]:
     blueprint["compatibility_gaps"] = []
     blueprint["future_extensions"] = {"features": ["assistant_refinement", "provider_imports"]}
     return blueprint
+
+
+_GITHUB_KEYWORDS = ("github", "gh issues")
+_HTTP_JSON_KEYWORDS = (
+    "http json",
+    "json feed",
+    "json api",
+    "rest feed",
+    "external feed",
+    "external api",
+    "api feed",
+    "http feed",
+    "webhook feed",
+)
+_IMPORT_KEYWORDS = ("import", "csv", "spreadsheet", "upload", "bulk load", "seed from file")
+_UPSERT_PREFERENCE = ("external_id", "title", "name")
+
+
+def _wants_github_provider(text: str) -> bool:
+    compact = text.lower()
+    return any(keyword in compact for keyword in _GITHUB_KEYWORDS)
+
+
+def _wants_http_json_provider(text: str) -> bool:
+    compact = text.lower()
+    return any(keyword in compact for keyword in _HTTP_JSON_KEYWORDS)
+
+
+def _wants_csv_import(text: str) -> bool:
+    compact = text.lower()
+    return any(keyword in compact for keyword in _IMPORT_KEYWORDS)
+
+
+def _pick_upsert_key(fields: list[dict[str, Any]]) -> str:
+    field_names = {str(field.get("name") or ""): field for field in fields if field.get("name")}
+    for candidate in _UPSERT_PREFERENCE:
+        if candidate in field_names:
+            return candidate
+    for field in fields:
+        if field.get("required") and field.get("type") in {"string", "integer"}:
+            return str(field["name"])
+    for field in fields:
+        if field.get("type") in {"string", "integer"}:
+            return str(field["name"])
+    return ""
+
+
+def _label_to_field_map(fields: list[dict[str, Any]]) -> dict[str, str]:
+    mapping: dict[str, str] = {}
+    for field in fields:
+        name = str(field.get("name") or "")
+        label = str(field.get("label") or name).strip()
+        if name and label:
+            mapping[label] = name
+    return mapping
+
+
+def _env_prefix(identifier: str) -> str:
+    cleaned = re.sub(r"[^A-Z0-9]+", "_", identifier.upper()).strip("_")
+    return cleaned or "EXTERNAL"
+
+
+def _attach_imports_and_providers(spec: dict[str, Any], text: str) -> None:
+    """Suggest imports/providers when the user idea implies them.
+
+    The helper is conservative: a provider is only proposed when an import
+    that targets the same entity is also proposed, so ``target_import``
+    always resolves and the resulting blueprint stays schema-valid.
+    """
+    needs_github = _wants_github_provider(text)
+    needs_http = _wants_http_json_provider(text)
+    needs_csv = _wants_csv_import(text)
+    if not (needs_github or needs_http or needs_csv):
+        return
+    entities = spec["model"]["entities"]
+    primary = next((entity for entity in entities if entity.get("name") == spec["primary"]), entities[0])
+    primary_name = str(primary["name"])
+    upsert_key = _pick_upsert_key(primary["fields"])
+    if not upsert_key:
+        return
+    import_id = f"{primary_name}_import"
+    formats = ["csv", "json"] if (needs_github or needs_http or "json" in text.lower()) else ["csv"]
+    import_entry: dict[str, Any] = {
+        "id": import_id,
+        "label": f"Import {primary['label_plural']}",
+        "entity": primary_name,
+        "formats": formats,
+        "upsert_key": upsert_key,
+        "field_map": _label_to_field_map(primary["fields"]),
+    }
+    spec["model"]["imports"] = [import_entry]
+    providers: list[dict[str, Any]] = []
+    if needs_github:
+        providers.append({
+            "id": "github_issues",
+            "label": "GitHub Issues",
+            "type": "github_issues",
+            "mode": "read_only",
+            "target_import": import_id,
+            "env": {"token": "GITHUB_TOKEN", "repo": "GITHUB_REPO"},
+            "source": {"state": "open", "labels": []},
+        })
+    if needs_http:
+        prefix = _env_prefix(primary_name)
+        providers.append({
+            "id": f"{primary_name}_feed",
+            "label": f"{primary['label_singular']} Feed",
+            "type": "http_json",
+            "mode": "read_only",
+            "target_import": import_id,
+            "env": {"url": f"{prefix}_FEED_URL", "token": f"{prefix}_FEED_TOKEN"},
+            "source": {"records_path": "data", "auth": "bearer"},
+        })
+    if providers:
+        spec["model"]["providers"] = providers
 
 
 def _infer_model_spec(text: str) -> dict[str, Any]:
@@ -400,11 +525,15 @@ def _model_changes(before: dict[str, Any] | None, after: dict[str, Any]) -> list
             *_named_list_diff([], after.get("entities") or [], "/model/entities"),
             *_named_list_diff([], after.get("pages") or [], "/model/pages"),
             *_named_list_diff([], after.get("actions") or [], "/model/actions"),
+            *_id_list_diff([], after.get("imports") or [], "/model/imports"),
+            *_id_list_diff([], after.get("providers") or [], "/model/providers"),
         ]
     changes: list[dict[str, Any]] = []
     changes.extend(_named_list_diff(before.get("entities") or [], after.get("entities") or [], "/model/entities"))
     changes.extend(_named_list_diff(before.get("pages") or [], after.get("pages") or [], "/model/pages"))
     changes.extend(_named_list_diff(before.get("actions") or [], after.get("actions") or [], "/model/actions"))
+    changes.extend(_id_list_diff(before.get("imports") or [], after.get("imports") or [], "/model/imports"))
+    changes.extend(_id_list_diff(before.get("providers") or [], after.get("providers") or [], "/model/providers"))
     if (before.get("ui") or {}) != (after.get("ui") or {}):
         changes.append({"path": "/model/ui", "operation": "replace", "from": before.get("ui"), "to": after.get("ui")})
     return changes
@@ -412,7 +541,12 @@ def _model_changes(before: dict[str, Any] | None, after: dict[str, Any]) -> list
 
 def _model_summary(model: dict[str, Any]) -> str:
     entities = [str(entity.get("name") or "") for entity in model.get("entities") or [] if entity.get("name")]
-    return f"model with entities: {', '.join(entities) if entities else '(none)'}"
+    parts = [f"entities: {', '.join(entities) if entities else '(none)'}"]
+    if model.get("imports"):
+        parts.append(f"imports: {len(model['imports'])}")
+    if model.get("providers"):
+        parts.append(f"providers: {len(model['providers'])}")
+    return "model with " + "; ".join(parts)
 
 
 def _named_list_diff(
@@ -420,8 +554,26 @@ def _named_list_diff(
     after: list[dict[str, Any]],
     prefix: str,
 ) -> list[dict[str, Any]]:
-    before_index = {str(item.get("name")): item for item in before if isinstance(item, dict) and item.get("name")}
-    after_index = {str(item.get("name")): item for item in after if isinstance(item, dict) and item.get("name")}
+    return _keyed_list_diff(before, after, prefix, key="name")
+
+
+def _id_list_diff(
+    before: list[dict[str, Any]],
+    after: list[dict[str, Any]],
+    prefix: str,
+) -> list[dict[str, Any]]:
+    return _keyed_list_diff(before, after, prefix, key="id")
+
+
+def _keyed_list_diff(
+    before: list[dict[str, Any]],
+    after: list[dict[str, Any]],
+    prefix: str,
+    *,
+    key: str,
+) -> list[dict[str, Any]]:
+    before_index = {str(item.get(key)): item for item in before if isinstance(item, dict) and item.get(key)}
+    after_index = {str(item.get(key)): item for item in after if isinstance(item, dict) and item.get(key)}
     changes: list[dict[str, Any]] = []
     for name, item in after_index.items():
         if name not in before_index:

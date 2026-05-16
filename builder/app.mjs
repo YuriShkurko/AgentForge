@@ -679,6 +679,14 @@ function renderAssistantProposal(proposal) {
   }).join("");
   const archetype = proposal.blueprint.app_archetype || "model_driven_app";
   const entities = (proposal.blueprint.model?.entities || []).map((entity) => escapeHtml(entity.name)).join(", ") || "(no entities)";
+  const importEntries = proposal.blueprint.model?.imports || [];
+  const providerEntries = proposal.blueprint.model?.providers || [];
+  const importLabel = importEntries.length
+    ? importEntries.map((entry) => escapeHtml(entry.id || entry.entity || "import")).join(", ")
+    : "(none)";
+  const providerLabel = providerEntries.length
+    ? providerEntries.map((entry) => `${escapeHtml(entry.id || entry.type || "provider")} (${escapeHtml(entry.type || "")})`).join(", ")
+    : "(none)";
   const applyDisabled = assistantBusy || !plannerAvailable ? "disabled" : "";
   assistantProposal.classList.remove("hidden");
   assistantProposal.innerHTML = `
@@ -687,6 +695,8 @@ function renderAssistantProposal(proposal) {
     <ul class="assistant-proposal-meta">
       <li>App type: <strong>${escapeHtml(archetype)}</strong></li>
       <li>Entities: <strong>${entities}</strong></li>
+      <li>Imports: <strong>${importLabel}</strong></li>
+      <li>Providers: <strong>${providerLabel}</strong></li>
       <li>Status: <strong>${escapeHtml(proposal.validation?.status || "draft")}</strong></li>
     </ul>
     ${changes ? `<details class="assistant-proposal-changes" open><summary>Changed fields (${changesList.length})</summary><ul class="assistant-change-list">${changes}</ul></details>` : ""}
