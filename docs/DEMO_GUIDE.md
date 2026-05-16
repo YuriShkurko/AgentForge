@@ -55,6 +55,27 @@ agentforge draft-blueprint \
   --out domain-packs/demo-v1/domain-pack.yaml
 ```
 
+### Optional: Builder Assistant chat path
+
+With `agentforge serve-builder` running, the Describe step exposes an inline chat panel backed by the deterministic local assistant (`/api/planner/assistant/*`). Use this path when you want to show the conversational front door for a model-driven app.
+
+Suggested flow:
+
+1. Send a deliberately vague idea such as `app` and show that the assistant asks bounded clarifying questions instead of guessing.
+2. Send a specific idea such as `support ticket triage with title, status, priority, owner, and notes to close tickets, sync from github issues` and point out:
+   - the **Proposed Blueprint diff** summary with per-entity / per-page / per-action / per-import / per-provider rows;
+   - the **Imports** and **Providers** meta rows listing `ticket_import` and a read-only `github_issues` provider with `target_import=ticket_import` and env-var *names* `GITHUB_TOKEN` / `GITHUB_REPO` (no secret values are stored);
+   - the assistant message confirming the proposal validated through the same Python schema path the CLI uses.
+3. Click **Reject** to show the draft is untouched, then re-send the same idea and click **Apply** to install the proposal into the Builder draft. Apply re-runs `DomainPack.model_validate` through `apply-preview` before any state changes.
+4. (Optional) Edit the YAML preview to break it — e.g. set a provider `target_import` to a missing id — and click Apply again. The assistant surfaces a structured **Validation guidance** block with a category tag (`missing_target_import`), a plain-language message, a suggested manual fix, an optional follow-up question, and a collapsible raw error. Nothing is repaired automatically; the user has to edit and re-Apply.
+
+Trust points to call out:
+
+- scripted, deterministic, offline — no live LLM in the default path;
+- no GitHub, deployment, OAuth, or secret handling;
+- Apply mutates only the in-memory Builder draft; Reject leaves it alone;
+- raw schema errors stay visible alongside the assistant's guidance.
+
 ## 3. Validate and generate
 
 For the committed demo Blueprint:

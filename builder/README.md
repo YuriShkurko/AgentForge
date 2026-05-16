@@ -14,7 +14,7 @@ Start → describe idea → review plan → generate locally with CLI
 
 - Static/manual mode: open `index.html` directly, edit the advanced fields if needed, review the generation preview, and copy or download the Blueprint Source YAML.
 - Scripted planner mode: run `agentforge serve-builder`, open the printed URL, then draft/refine/validate through the local Python planner.
-- Builder Assistant chat (optional, scripted): once the planner server is running, the Describe step shows an inline chat panel that talks to the deterministic local assistant (`/api/planner/assistant/*`). The chat is read-only with respect to the Builder draft — proposals are shown for review only, and Apply/Reject controls arrive in a later phase. The panel degrades gracefully when the planner is offline.
+- Builder Assistant chat (optional, scripted): once the planner server is running, the Describe step shows an inline chat panel that talks to the deterministic local assistant (`/api/planner/assistant/*`). The assistant asks clarifying questions for vague ideas, proposes a `model_driven_app` Blueprint with a per-field/per-entity/per-import/per-provider diff, and exposes explicit **Apply** / **Reject** controls. Apply mutates only the in-memory Builder draft after re-running `DomainPack` validation through the planner; Reject leaves the draft unchanged. If a tampered or otherwise invalid proposal fails validation, a dedicated guidance panel explains the error category (e.g. missing relation target, bad provider env, missing import target) with a suggested manual fix and, when ambiguous, a targeted follow-up question — never an auto-applied repair. The panel degrades gracefully when the planner is offline.
 
 ## Primary path: start from an app idea
 

@@ -205,4 +205,8 @@ Later implementation phases should update:
 
 ## 10. Recommended next prompt
 
-“Implement Phase 1 from docs/BUILDER_ASSISTANT_ROADMAP.md.”
+Phases 1–5 are shipped (deterministic state machine, chat UI, Apply/Reject diff, imports/providers/relations helpers, validation explanation loop). The next un-shipped phase is the optional live-LLM adapter behind an env flag:
+
+“Implement Phase 6 from docs/BUILDER_ASSISTANT_ROADMAP.md.”
+
+Phase 6 must remain opt-in, mocked in tests by default, and every model output must still flow through `DomainPack.model_validate` and the user Apply path. The scripted path stays the default.
