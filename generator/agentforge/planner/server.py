@@ -15,10 +15,16 @@ from agentforge.planner.scripted import ScriptedPlanner
 class PlannerServer(ThreadingHTTPServer):
     """HTTP server that serves the static builder and planner endpoints."""
 
-    def __init__(self, server_address: tuple[str, int], builder_dir: Path):
+    def __init__(
+        self,
+        server_address: tuple[str, int],
+        builder_dir: Path,
+        *,
+        assistant: BuilderAssistant | None = None,
+    ):
         self.builder_dir = builder_dir
         self.planner = ScriptedPlanner()
-        self.assistant = BuilderAssistant()
+        self.assistant = assistant if assistant is not None else BuilderAssistant.from_env()
         super().__init__(server_address, PlannerRequestHandler)
 
 
@@ -43,10 +49,11 @@ class PlannerRequestHandler(SimpleHTTPRequestHandler):
 
     def do_GET(self) -> None:  # noqa: N802
         if self.path == "/api/planner/status":
+            assistant = self.server.assistant
             self._write_json({
-                "mode": "scripted",
+                "mode": assistant.mode,
                 "planner_available": True,
-                "live_provider": False,
+                "live_provider": assistant.live_provider_enabled,
             })
             return
         super().do_GET()
@@ -135,6 +142,7 @@ def serve_builder(host: str = "127.0.0.1", port: int = 8765, builder_dir: Path |
     print(f"Serving AgentForge builder at http://{host}:{port}/")
     print(f"Builder assets: {resolved_builder_dir}")
     print("Planner mode: scripted")
+    print(f"Builder Assistant mode: {server.assistant.mode}")
     server.serve_forever()
 
 

@@ -14,7 +14,7 @@ Start → describe idea → review plan → generate locally with CLI
 
 - Static/manual mode: open `index.html` directly, edit the advanced fields if needed, review the generation preview, and copy or download the Blueprint Source YAML.
 - Scripted planner mode: run `agentforge serve-builder`, open the printed URL, then draft/refine/validate through the local Python planner.
-- Builder Assistant chat (optional, scripted): once the planner server is running, the Describe step shows an inline chat panel that talks to the deterministic local assistant (`/api/planner/assistant/*`). The assistant asks clarifying questions for vague ideas, proposes a `model_driven_app` Blueprint with a per-field/per-entity/per-import/per-provider diff, and exposes explicit **Apply** / **Reject** controls. Apply mutates only the in-memory Builder draft after re-running `DomainPack` validation through the planner; Reject leaves the draft unchanged. If a tampered or otherwise invalid proposal fails validation, a dedicated guidance panel explains the error category (e.g. missing relation target, bad provider env, missing import target) with a suggested manual fix and, when ambiguous, a targeted follow-up question — never an auto-applied repair. The panel degrades gracefully when the planner is offline.
+- Builder Assistant chat (default scripted): once the planner server is running, the Describe step shows an inline chat panel that talks to the deterministic local assistant (`/api/planner/assistant/*`). The assistant asks clarifying questions for vague ideas, proposes a `model_driven_app` Blueprint with a per-field/per-entity/per-import/per-provider diff, and exposes explicit **Apply** / **Reject** controls. Apply mutates only the in-memory Builder draft after re-running `DomainPack` validation through the planner; Reject leaves the draft unchanged. If a tampered or otherwise invalid proposal fails validation, a dedicated guidance panel explains the error category (e.g. missing relation target, bad provider env, missing import target) with a suggested manual fix and, when ambiguous, a targeted follow-up question — never an auto-applied repair. The panel degrades gracefully when the planner is offline.
 
 ## Primary path: start from an app idea
 
@@ -36,6 +36,29 @@ agentforge serve-builder
 ```
 
 Then open the local URL and describe the app you want to build.
+
+## Optional live Builder Assistant mode
+
+The Builder Assistant is scripted by default and does not require an API key, network access, GitHub access, deployment credentials, or OAuth. Live LLM assistance is strictly opt-in for local development:
+
+```bash
+export AGENTFORGE_ASSISTANT_PROVIDER=openai
+export OPENAI_API_KEY=...
+# optional: export AGENTFORGE_ASSISTANT_LLM_MODEL=gpt-4o-mini
+agentforge serve-builder
+```
+
+In live mode, `/api/planner/status` reports `live_provider: true`, and assistant responses include `turn_mode` (`live` or `scripted`) plus `fallback_reason` when the live path could not be used.
+
+Live mode is intentionally bounded:
+
+- the LLM may propose only a model spec: entities and fields;
+- deterministic Builder code still creates the Blueprint, imports/providers, dashboard, UI composition, and YAML;
+- every proposal is validated through `DomainPack` before it is shown as apply-ready;
+- Apply revalidates the proposal and still changes only the in-memory Builder draft;
+- tests use mocks/dummy keys and must not require live network calls.
+
+If the provider is missing, unavailable, returns non-JSON, returns an unusable model spec, or produces a Blueprint that fails schema validation, the assistant falls back to scripted mode and reports why. Do not paste real provider tokens into the Builder; generated provider examples use environment-variable names only.
 
 ## Fastest test path
 
@@ -104,7 +127,7 @@ Builder YAML may include a `customization` block. It is a bounded set of text/li
 
 ## Boundaries
 
-The Builder does not call a live LLM, inspect local repositories from the browser, run extension/deployment planning in the browser, convert existing apps, deploy infrastructure, apply patches from the browser, modify files automatically, or replace CLI validation. Patch bundle/apply and deployment planning remain CLI-only and explicit.
+By default, the Builder does not call a live LLM, inspect local repositories from the browser, run extension/deployment planning in the browser, convert existing apps, deploy infrastructure, apply patches from the browser, modify files automatically, or replace CLI validation. Optional live Builder Assistant mode must be explicitly enabled with `AGENTFORGE_ASSISTANT_PROVIDER=openai`; even then, it proposes only bounded model specs and has no GitHub automation, deployment, OAuth, file-write, hidden-apply, or repo-mutation behavior. Patch bundle/apply and deployment planning remain CLI-only and explicit.
 
 For a CLI-only starter file:
 

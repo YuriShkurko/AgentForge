@@ -13,6 +13,7 @@ from typing import Any
 
 from agentforge.blueprints import create_starter_blueprint, sanitize_pack_name
 from agentforge.planner import validate_blueprint_result
+from agentforge.planner.live_llm import LiveAssistantProvider
 from agentforge.planner.validation_guidance import summarize_validation_errors
 
 
@@ -197,10 +198,36 @@ class AssistantState:
 
 
 class BuilderAssistant:
-    """Local scripted assistant for model-driven Blueprint proposals."""
+    """Local scripted assistant for model-driven Blueprint proposals.
 
-    mode = "scripted"
-    live_provider = False
+    A live-LLM provider can be opted in via ``BuilderAssistant.from_env()``
+    (or by passing one directly). When configured, the provider is consulted
+    first; if it returns no spec, raises, or produces a Blueprint that fails
+    ``DomainPack.model_validate``, the assistant falls back to the scripted
+    heuristics and reports the fallback in the per-turn response.
+    """
+
+    def __init__(self, *, live_provider: LiveAssistantProvider | None = None):
+        self._live_provider = live_provider
+
+    @property
+    def live_provider_enabled(self) -> bool:
+        return self._live_provider is not None
+
+    @property
+    def mode(self) -> str:
+        return "live" if self.live_provider_enabled else "scripted"
+
+    @property
+    def live_provider(self) -> bool:
+        return self.live_provider_enabled
+
+    @classmethod
+    def from_env(cls) -> "BuilderAssistant":
+        """Construct an assistant honoring ``AGENTFORGE_ASSISTANT_PROVIDER``."""
+        from agentforge.planner.live_llm import live_assistant_provider_from_env
+
+        return cls(live_provider=live_assistant_provider_from_env())
 
     def start(self, idea: str, current_blueprint: dict[str, Any] | None = None) -> dict[str, Any]:
         """Start a conversation from a plain-English app idea."""
@@ -281,7 +308,12 @@ class BuilderAssistant:
     def _advance(self, state: AssistantState, current_blueprint: dict[str, Any] | None) -> dict[str, Any]:
         combined = _combined_text(state.idea, state.answers)
         missing_ids = _missing_requirement_ids(combined)
-        if missing_ids and len(state.answers) < 2:
+        # Live mode can interpret prompts that don't match scripted keywords, so
+        # only the truly-vague gate ("idea_seed") still blocks live attempts.
+        scripted_gate = bool(missing_ids) and len(state.answers) < 2
+        live_gate = "idea_seed" in missing_ids and len(state.answers) < 2
+        gate = live_gate if self._live_provider is not None else scripted_gate
+        if gate:
             state.status = "needs_clarification"
             prompts, details = _build_questions_payload(missing_ids)
             state.questions = prompts
@@ -298,6 +330,8 @@ class BuilderAssistant:
         state.pending_question_ids = []
         state.proposal = proposal if proposal["status"] == "proposed" else None
         state.errors = proposal.get("errors", [])
+        turn_mode = proposal.get("turn_mode", "scripted")
+        fallback_reason = proposal.get("fallback_reason")
         if proposal["status"] != "proposed":
             guidance = proposal.get("guidance", [])
             messages = ["I could not produce a valid Blueprint proposal yet."]
@@ -306,19 +340,68 @@ class BuilderAssistant:
                 follow_up = guidance[0].get("follow_up_question")
                 if follow_up:
                     state.questions = [follow_up]
-            return self._response(state, messages=messages, proposal=None, guidance=guidance)
+            return self._response(
+                state,
+                messages=messages,
+                proposal=None,
+                guidance=guidance,
+                turn_mode=turn_mode,
+                fallback_reason=fallback_reason,
+            )
+        messages = [_summary_message(combined)]
+        if turn_mode == "live":
+            messages.append("I drafted a validated model-driven Blueprint proposal for review using the live LLM adapter.")
+        else:
+            messages.append("I drafted a validated model-driven Blueprint proposal for review.")
+            if fallback_reason:
+                messages.append(f"Live-LLM mode is enabled but I fell back to the scripted path: {fallback_reason}.")
         return self._response(
             state,
-            messages=[_summary_message(combined), "I drafted a validated model-driven Blueprint proposal for review."],
+            messages=messages,
             proposal=proposal,
+            turn_mode=turn_mode,
+            fallback_reason=fallback_reason,
         )
 
     def _build_proposal(self, text: str, current_blueprint: dict[str, Any] | None) -> dict[str, Any]:
-        blueprint = _model_blueprint_from_text(text)
+        turn_mode = "scripted"
+        fallback_reason: str | None = None
+        blueprint: dict[str, Any] | None = None
+        if self._live_provider is not None:
+            live_spec: dict[str, Any] | None = None
+            try:
+                live_spec = self._live_provider.propose_model_spec(text)
+            except Exception as exc:
+                fallback_reason = f"live provider raised: {exc.__class__.__name__}"
+            if live_spec:
+                try:
+                    candidate = _model_blueprint_from_spec(text, live_spec)
+                except Exception as exc:
+                    fallback_reason = f"live spec was unusable: {exc.__class__.__name__}"
+                else:
+                    check = validate_blueprint_result(candidate)
+                    if check.status == "draft":
+                        blueprint = candidate
+                        turn_mode = "live"
+                    else:
+                        fallback_reason = "live blueprint failed schema validation"
+            elif fallback_reason is None:
+                fallback_reason = "live provider returned no spec"
+        if blueprint is None:
+            blueprint = _model_blueprint_from_text(text)
+
+        assumptions = (
+            ["Builder Assistant live-LLM mode produced this draft; verify it before Apply."]
+            if turn_mode == "live"
+            else ["Builder Assistant scripted mode produced this draft."]
+        )
+        warnings = ["Review the proposed Blueprint diff before applying it to the in-memory Builder draft."]
+        if turn_mode == "scripted" and fallback_reason:
+            warnings.append(f"Live-LLM mode was enabled but fell back to scripted: {fallback_reason}.")
         validation = validate_blueprint_result(
             blueprint,
-            assumptions=["Builder Assistant phase 1 uses deterministic local heuristics only."],
-            warnings=["Review the proposed Blueprint diff before applying it to the in-memory Builder draft."],
+            assumptions=assumptions,
+            warnings=warnings,
         )
         if validation.status != "draft":
             return {
@@ -326,6 +409,8 @@ class BuilderAssistant:
                 "errors": validation.errors,
                 "validation": validation.to_dict(),
                 "guidance": summarize_validation_errors(validation.errors),
+                "turn_mode": turn_mode,
+                "fallback_reason": fallback_reason,
             }
         changes = _changes(current_blueprint if isinstance(current_blueprint, dict) else None, blueprint)
         model = blueprint.get("model") or {}
@@ -345,20 +430,27 @@ class BuilderAssistant:
             "yaml": validation.yaml,
             "validation": validation.to_dict(),
             "apply_ready": True,
+            "turn_mode": turn_mode,
+            "fallback_reason": fallback_reason,
         }
 
-    @staticmethod
     def _response(
+        self,
         state: AssistantState,
         *,
         messages: list[str],
         proposal: dict[str, Any] | None = None,
         guidance: list[dict[str, Any]] | None = None,
         question_details: list[dict[str, Any]] | None = None,
+        turn_mode: str | None = None,
+        fallback_reason: str | None = None,
     ) -> dict[str, Any]:
+        capability_mode = self.mode
         return {
-            "mode": "scripted",
-            "live_provider": False,
+            "mode": capability_mode,
+            "live_provider": self.live_provider_enabled,
+            "turn_mode": turn_mode or ("scripted" if not self.live_provider_enabled else capability_mode),
+            "fallback_reason": fallback_reason,
             "status": state.status,
             "messages": messages,
             "questions": state.questions,
@@ -390,14 +482,18 @@ def _missing_requirement_ids(text: str) -> list[str]:
 
 
 def _model_blueprint_from_text(text: str) -> dict[str, Any]:
-    spec = _infer_model_spec(text)
+    return _model_blueprint_from_spec(text, _infer_model_spec(text))
+
+
+def _model_blueprint_from_spec(text: str, spec: dict[str, Any]) -> dict[str, Any]:
+    spec = deepcopy(spec)
     _attach_imports_and_providers(spec, text)
     name = sanitize_pack_name(" ".join(_keywords(text)[:4]) or f"{spec['primary']}-workspace")
     display = name.replace("-", " ").title()
     blueprint = create_starter_blueprint(
         name,
         display_name=display,
-        description=f"{text.strip().rstrip('.')}. Drafted by the deterministic Builder Assistant.",
+        description=f"{text.strip().rstrip('.')}. Drafted by the Builder Assistant.",
         target_user=_target_user(text),
         archetype="model_driven_app",
         optional_modules=[],

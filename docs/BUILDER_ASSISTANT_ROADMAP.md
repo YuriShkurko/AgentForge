@@ -102,14 +102,14 @@ Builder Assistant should reuse the current Builder/planner shape instead of intr
 - **Risks**: hiding raw validation details, producing misleading fixes, applying fixes without confirmation.
 - **Done criteria**: errors remain visible, assistant guidance is clear, fixes still require Apply.
 
-### Phase 6 — optional live LLM adapter behind env flag
+### Phase 6 — optional live LLM adapter behind env flag (shipped)
 
 - **Goal**: optionally route assistant planning through a live LLM adapter only when explicitly enabled.
-- **User-visible behavior**: default remains scripted. If enabled by env/config, Builder can show live-assist mode with clear labeling.
-- **Files likely touched**: planner assistant abstraction, server config, docs, tests with mocked LLM provider.
-- **Tests needed**: env flag disabled by default, mock adapter tests, schema validation of model output, no secrets in UI/logs.
-- **Risks**: accidental live network calls in tests/default mode, prompt injection into schema changes, secret leakage, nondeterministic output.
-- **Done criteria**: default validation remains offline; live mode is opt-in, mocked in tests, and every output is still validated and user-applied.
+- **User-visible behavior**: default remains scripted. When `AGENTFORGE_ASSISTANT_PROVIDER=openai` is set, the assistant runs in live mode and the `/api/planner/status` endpoint reports `live_provider: true`. Each proposal carries `turn_mode` (`live` or `scripted`) and a `fallback_reason` when live failed.
+- **Files touched**: `generator/agentforge/planner/live_llm.py` (new), `generator/agentforge/planner/assistant.py`, `generator/agentforge/planner/server.py`, `tests/generator/test_builder_assistant_live.py` (new).
+- **Tests**: env flag disabled by default, opt-in env builds the OpenAI client, mock adapter happy path produces a live spec, multiple fallback scenarios (raise, non-JSON, sanitized to nothing, schema rejection), no network calls in default mode, and `/api/planner/status` reflects live capability.
+- **Risks mitigated**: spec is bounded (entities + fields only — scaffolding stays scripted); every blueprint flows through `DomainPack.model_validate`; secrets are read from env only and never logged or echoed; fallback path keeps Builder usable when the live call misbehaves.
+- **Done**: default offline, live mode opt-in, mocked in tests, every output validated and user-applied.
 
 ### Phase 7 — export/publish planning
 
@@ -205,8 +205,20 @@ Later implementation phases should update:
 
 ## 10. Recommended next prompt
 
-Phases 1–5 are shipped (deterministic state machine, chat UI, Apply/Reject diff, imports/providers/relations helpers, validation explanation loop). The next un-shipped phase is the optional live-LLM adapter behind an env flag:
+Phases 1–6 are shipped (deterministic state machine, chat UI, Apply/Reject diff, imports/providers/relations helpers, validation explanation loop, optional live-LLM adapter behind an env flag).
 
-“Implement Phase 6 from docs/BUILDER_ASSISTANT_ROADMAP.md.”
+Phase 6 is opt-in. Default Builder Assistant mode stays scripted with zero network calls. To enable the live adapter:
 
-Phase 6 must remain opt-in, mocked in tests by default, and every model output must still flow through `DomainPack.model_validate` and the user Apply path. The scripted path stays the default.
+```bash
+export AGENTFORGE_ASSISTANT_PROVIDER=openai
+export OPENAI_API_KEY=...
+# optional: export AGENTFORGE_ASSISTANT_LLM_MODEL=gpt-4o-mini
+agentforge serve-builder
+```
+
+In live mode the LLM only proposes a bounded model spec (entities + fields). The deterministic scaffolding (starter Blueprint, imports/providers, dashboard, UI composition) is still applied, the result is still validated by `DomainPack.model_validate`, and the user still has to click **Apply**. If the live call fails or the spec is invalid, the assistant falls back to scripted and reports the fallback in the response (`turn_mode` and `fallback_reason`).
+
+Remaining un-shipped phases:
+
+- Phase 7 (export/publish planning) — copy and command-generation helpers; no side effects.
+- Phase 8 (GitHub repo creation) — deferred indefinitely; out of scope for Builder Assistant v0.
