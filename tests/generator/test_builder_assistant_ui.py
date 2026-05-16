@@ -152,6 +152,54 @@ def test_app_mjs_renders_import_and_provider_meta_rows():
     assert "model?.providers" in render
 
 
+def test_index_html_contains_assistant_guidance_container():
+    html = _read("index.html")
+
+    # Phase 5: validation guidance lives in a dedicated live region next to the proposal.
+    assert 'id="assistant-guidance"' in html
+    assert 'role="status"' in html
+    assert 'aria-live="polite"' in html
+
+
+def test_app_mjs_defines_render_assistant_guidance_and_wires_apply_failure():
+    script = _read("app.mjs")
+
+    assert "renderAssistantGuidance" in script
+    render = _extract_function(script, "renderAssistantGuidance")
+    assert render is not None
+    # Guidance entries surface message, suggested fix, follow-up question, and the raw error.
+    assert "suggested_fix" in render
+    assert "follow_up_question" in render
+    assert "Raw validation error" in render
+    # Apply path must surface guidance on failure (no destructive auto-fix).
+    apply_handler = _extract_function(script, "applyAssistantProposal")
+    assert apply_handler is not None
+    assert "renderAssistantGuidance(result.guidance)" in apply_handler
+    # Response handler also surfaces guidance for needs_clarification / message turns.
+    response_handler = _extract_function(script, "handleAssistantResponse")
+    assert response_handler is not None
+    assert "renderAssistantGuidance(result.guidance)" in response_handler
+    # Reset/reject clear the guidance.
+    reject_handler = _extract_function(script, "rejectAssistantProposal")
+    assert reject_handler is not None
+    assert "renderAssistantGuidance(null)" in reject_handler
+
+
+def test_styles_css_defines_assistant_guidance_styles():
+    css = _read("styles.css")
+
+    for selector in (
+        ".assistant-guidance",
+        ".assistant-guidance-item",
+        ".assistant-guidance-message",
+        ".assistant-guidance-fix",
+        ".assistant-guidance-question",
+        ".assistant-guidance-raw",
+        ".assistant-guidance-tag",
+    ):
+        assert selector in css
+
+
 def test_readme_documents_assistant_chat_mode():
     readme = _read("README.md")
     assert "Builder Assistant chat" in readme

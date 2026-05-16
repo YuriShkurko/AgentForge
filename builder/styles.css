@@ -1275,6 +1275,79 @@ button + button,
   font-size: 0.78rem;
 }
 
+.assistant-guidance {
+  display: grid;
+  gap: 10px;
+  padding: 12px 14px;
+  background: rgba(255, 244, 215, 0.6);
+  border: 1px solid rgba(196, 144, 0, 0.5);
+  border-radius: 10px;
+  color: #5c3d00;
+}
+
+.assistant-guidance-summary {
+  font-size: 0.82rem;
+  margin: 0;
+}
+
+.assistant-guidance-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.assistant-guidance-item {
+  padding: 8px 10px;
+  background: rgba(255, 255, 255, 0.65);
+  border-radius: 8px;
+  border: 1px solid rgba(196, 144, 0, 0.3);
+}
+
+.assistant-guidance-tag {
+  display: inline-block;
+  padding: 1px 6px;
+  margin-right: 6px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  background: rgba(196, 144, 0, 0.18);
+  color: #4d3300;
+  border-radius: 4px;
+}
+
+.assistant-guidance-message {
+  margin: 0 0 4px 0;
+  font-size: 0.84rem;
+}
+
+.assistant-guidance-fix {
+  margin: 4px 0 0 0;
+  font-size: 0.78rem;
+}
+
+.assistant-guidance-question {
+  margin: 4px 0 0 0;
+  font-size: 0.78rem;
+  color: #3a2a00;
+}
+
+.assistant-guidance-raw {
+  margin-top: 6px;
+  font-size: 0.74rem;
+}
+
+.assistant-guidance-raw pre {
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin: 4px 0 0 0;
+  padding: 6px 8px;
+  background: rgba(0, 0, 0, 0.04);
+  border-radius: 4px;
+}
+
 .assistant-form {
   display: grid;
   gap: 8px;

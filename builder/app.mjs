@@ -63,6 +63,7 @@ const assistantStatus = document.querySelector("#assistant-status");
 const assistantLog = document.querySelector("#assistant-log");
 const assistantQuestions = document.querySelector("#assistant-questions");
 const assistantProposal = document.querySelector("#assistant-proposal");
+const assistantGuidance = document.querySelector("#assistant-guidance");
 const assistantForm = document.querySelector("#assistant-form");
 const assistantInput = document.querySelector("#assistant-input");
 const assistantSendButton = document.querySelector("#assistant-send");
@@ -713,6 +714,7 @@ function clearAssistantConversation() {
   if (assistantLog) assistantLog.innerHTML = "";
   renderAssistantQuestions([]);
   renderAssistantProposal(null);
+  renderAssistantGuidance(null);
 }
 
 function handleAssistantResponse(result) {
@@ -720,9 +722,34 @@ function handleAssistantResponse(result) {
   (result.messages || []).forEach((message) => appendAssistantMessage("assistant", message));
   renderAssistantQuestions(result.questions);
   renderAssistantProposal(result.proposal);
+  renderAssistantGuidance(result.guidance);
   if (result.errors && result.errors.length) {
     appendAssistantMessage("assistant", result.errors.join(" "));
   }
+}
+
+function renderAssistantGuidance(guidance) {
+  if (!assistantGuidance) return;
+  const entries = Array.isArray(guidance) ? guidance : [];
+  if (entries.length === 0) {
+    assistantGuidance.classList.add("hidden");
+    assistantGuidance.innerHTML = "";
+    return;
+  }
+  const items = entries.map((entry) => {
+    const category = escapeHtml(String(entry.category || "unknown"));
+    const message = escapeHtml(String(entry.message || "Validation failed."));
+    const fix = entry.suggested_fix ? `<p class="assistant-guidance-fix"><strong>Try:</strong> ${escapeHtml(entry.suggested_fix)}</p>` : "";
+    const question = entry.follow_up_question ? `<p class="assistant-guidance-question"><strong>Follow-up:</strong> ${escapeHtml(entry.follow_up_question)}</p>` : "";
+    const raw = entry.error ? `<details class="assistant-guidance-raw"><summary>Raw validation error</summary><pre>${escapeHtml(entry.error)}</pre></details>` : "";
+    return `<li class="assistant-guidance-item assistant-guidance-${category}"><p class="assistant-guidance-message"><span class="assistant-guidance-tag">${category}</span> ${message}</p>${fix}${question}${raw}</li>`;
+  }).join("");
+  assistantGuidance.classList.remove("hidden");
+  assistantGuidance.innerHTML = `
+    <p class="eyebrow">Validation guidance</p>
+    <p class="assistant-guidance-summary">The proposal did not pass schema validation. Edit the Blueprint or answer the follow-up, then click Apply again. Nothing is changed automatically.</p>
+    <ul class="assistant-guidance-list">${items}</ul>
+  `;
 }
 
 function setAssistantBusy(busy) {
@@ -743,8 +770,10 @@ async function applyAssistantProposal() {
     if (!result.apply_ready) {
       const reason = (result.errors && result.errors.length ? result.errors : ["validation failed"]).join("; ");
       appendAssistantMessage("assistant", `Cannot apply proposal: ${reason}`);
+      renderAssistantGuidance(result.guidance);
       return;
     }
+    renderAssistantGuidance(null);
     const validated = result.proposal || proposal;
     plannerBlueprint = validated.blueprint;
     plannerYaml = validated.yaml || "";
@@ -776,6 +805,7 @@ function rejectAssistantProposal() {
   if (!assistantSessionState || !assistantSessionState.proposal) return;
   assistantSessionState = { ...assistantSessionState, proposal: null, status: "rejected" };
   renderAssistantProposal(null);
+  renderAssistantGuidance(null);
   appendAssistantMessage("assistant", "Rejected the proposed Blueprint. The Builder draft is unchanged.");
 }
 

@@ -13,6 +13,7 @@ from typing import Any
 
 from agentforge.blueprints import create_starter_blueprint, sanitize_pack_name
 from agentforge.planner import validate_blueprint_result
+from agentforge.planner.validation_guidance import summarize_validation_errors
 
 
 _ASSISTANT_QUESTIONS = [
@@ -107,10 +108,12 @@ class BuilderAssistant:
         YAML stay in sync.
         """
         if not isinstance(proposal, dict) or not isinstance(proposal.get("blueprint"), dict):
+            errors = ["assistant proposal must include a blueprint object"]
             return {
                 "status": "error",
                 "apply_ready": False,
-                "errors": ["assistant proposal must include a blueprint object"],
+                "errors": errors,
+                "guidance": summarize_validation_errors(errors),
             }
         result = validate_blueprint_result(proposal["blueprint"])
         verified = deepcopy(proposal)
@@ -118,12 +121,14 @@ class BuilderAssistant:
             verified["yaml"] = result.yaml
         verified["validation"] = result.to_dict()
         verified["apply_ready"] = result.status == "draft"
+        guidance = summarize_validation_errors(result.errors) if result.status != "draft" else []
         return {
             "status": "apply_ready" if result.status == "draft" else "validation_error",
             "apply_ready": result.status == "draft",
             "proposal": verified,
             "validation": result.to_dict(),
             "errors": result.errors,
+            "guidance": guidance,
         }
 
     def _advance(self, state: AssistantState, current_blueprint: dict[str, Any] | None) -> dict[str, Any]:
@@ -143,7 +148,14 @@ class BuilderAssistant:
         state.proposal = proposal if proposal["status"] == "proposed" else None
         state.errors = proposal.get("errors", [])
         if proposal["status"] != "proposed":
-            return self._response(state, messages=["I could not produce a valid Blueprint proposal yet."], proposal=None)
+            guidance = proposal.get("guidance", [])
+            messages = ["I could not produce a valid Blueprint proposal yet."]
+            if guidance:
+                messages.append(guidance[0]["message"])
+                follow_up = guidance[0].get("follow_up_question")
+                if follow_up:
+                    state.questions = [follow_up]
+            return self._response(state, messages=messages, proposal=None, guidance=guidance)
         return self._response(
             state,
             messages=[_summary_message(combined), "I drafted a validated model-driven Blueprint proposal for review."],
@@ -158,7 +170,12 @@ class BuilderAssistant:
             warnings=["Review the proposed Blueprint diff before applying it to the in-memory Builder draft."],
         )
         if validation.status != "draft":
-            return {"status": "validation_error", "errors": validation.errors, "validation": validation.to_dict()}
+            return {
+                "status": "validation_error",
+                "errors": validation.errors,
+                "validation": validation.to_dict(),
+                "guidance": summarize_validation_errors(validation.errors),
+            }
         changes = _changes(current_blueprint if isinstance(current_blueprint, dict) else None, blueprint)
         model = blueprint.get("model") or {}
         extras: list[str] = []
@@ -185,6 +202,7 @@ class BuilderAssistant:
         *,
         messages: list[str],
         proposal: dict[str, Any] | None = None,
+        guidance: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
         return {
             "mode": "scripted",
@@ -195,6 +213,7 @@ class BuilderAssistant:
             "state": state.to_dict(),
             "proposal": proposal,
             "errors": state.errors,
+            "guidance": guidance or [],
         }
 
 
