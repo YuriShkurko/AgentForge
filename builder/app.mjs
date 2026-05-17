@@ -23,6 +23,8 @@ const statusPill = document.querySelector("#status-pill");
 const validationSummary = document.querySelector("#validation-summary");
 const copyButton = document.querySelector("#copy-yaml");
 const downloadButton = document.querySelector("#download-yaml");
+const copyYamlExportButton = document.querySelector("#copy-yaml-export");
+const downloadYamlExportButton = document.querySelector("#download-yaml-export");
 const plannerStatus = document.querySelector("#planner-status");
 const plannerIdea = document.querySelector("#planner-idea");
 const draftButton = document.querySelector("#draft-blueprint");
@@ -75,6 +77,7 @@ const localRunGenerateButton = document.querySelector("#local-run-generate");
 const localRunValidateAppButton = document.querySelector("#local-run-validate-app");
 const localRunResults = document.querySelector("#local-run-results");
 const localRunLog = document.querySelector("#local-run-log");
+const exportSummary = document.querySelector("#export-summary");
 
 const plannerApi = window.location.protocol.startsWith("http") ? `${window.location.origin}/api/planner` : "http://127.0.0.1:8765/api/planner";
 let plannerAvailable = false;
@@ -251,6 +254,7 @@ function updatePreview() {
   statusPill.classList.toggle("warning", issues.length > 0);
   validationSummary.textContent = issues.length ? issues.join(" ") : "Blueprint source is ready for `agentforge plan`.";
   renderGenerationPreview(preview, plannerBlueprint);
+  renderExportSummary(preview);
   renderBuildSummary(current, preview, issues, plannerBlueprint);
   renderCustomizationPanel(current, plannerBlueprint);
   updateLocalRunAvailability();
@@ -375,6 +379,41 @@ function setActiveStep(step) {
   });
   const activePanel = document.querySelector(`[data-step="${step}"]`);
   if (activePanel) activePanel.focus?.({ preventScroll: true });
+}
+
+function renderExportSummary(preview) {
+  if (!exportSummary) return;
+  const stepsByName = new Map((localRunState.steps || []).map((step) => [step.step, step]));
+  const generated = stepsByName.get("generate");
+  const validated = stepsByName.get("validate-app");
+  const generatedPath = localRunState.generatedPath || generated?.generated_path;
+  if (generatedPath) {
+    const validationStatus = validated
+      ? (validated.ok ? "make validate passed" : "make validate failed")
+      : "make validate not run yet";
+    const nextCommands = [`cd ${generatedPath}`, "make validate", "make backend", "make frontend"];
+    exportSummary.innerHTML = `
+      <article class="export-card local-run-summary">
+        <p class="eyebrow">Local run summary</p>
+        <h3>Generated app is ready for next steps</h3>
+        <p><strong>Generated path:</strong> <code>${escapeHtml(generatedPath)}</code></p>
+        <p><strong>Validation status:</strong> ${escapeHtml(validationStatus)}</p>
+        <h4>Copyable next commands</h4>
+        <pre class="mini-pre">${escapeHtml(nextCommands.join("\n"))}</pre>
+        <p class="helper-copy">You can continue from this sandboxed app, or export the Blueprint and rerun the source-of-truth CLI commands below.</p>
+      </article>
+    `;
+    return;
+  }
+  exportSummary.innerHTML = `
+    <article class="export-card manual-cli-summary">
+      <p class="eyebrow">Manual export path</p>
+      <h3>No local Builder run yet</h3>
+      <p>Static browser mode and offline sharing still work: copy or download the Blueprint YAML, then run the CLI commands below from your AgentForge workspace.</p>
+      <h4>Copyable CLI commands</h4>
+      <pre class="mini-pre">${escapeHtml((plannerCommands.length ? plannerCommands : preview.commands).join("\n"))}</pre>
+    </article>
+  `;
 }
 
 function renderGenerationPreview(preview, activeBlueprint = plannerBlueprint) {
@@ -550,6 +589,7 @@ function renderLocalRunResult(result) {
     result.stderr || "",
   ];
   localRunLog.textContent = logs.join("\n");
+  renderExportSummary(getGenerationPreview(state()));
 }
 
 function localRunStepLabel(step) {
@@ -810,6 +850,7 @@ function resetLocalRunState() {
   localRunState = { runId: null, generatedPath: null, steps: [] };
   if (localRunResults) localRunResults.innerHTML = "";
   if (localRunLog) localRunLog.textContent = "Local run logs will appear here after you click a control room action.";
+  renderExportSummary(getGenerationPreview(state()));
   updateLocalRunAvailability();
 }
 
@@ -1148,6 +1189,8 @@ document.addEventListener("click", (event) => {
 });
 copyButton.addEventListener("click", copyYaml);
 downloadButton.addEventListener("click", downloadYaml);
+copyYamlExportButton?.addEventListener("click", copyYaml);
+downloadYamlExportButton?.addEventListener("click", downloadYaml);
 draftButton.addEventListener("click", draftBlueprint);
 clarifyButton.addEventListener("click", clarifyIdea);
 submitAnswersButton.addEventListener("click", draftBlueprint);

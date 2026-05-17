@@ -24,8 +24,8 @@
             <nav class="flow-rail" aria-label="Builder steps">
               <button type="button" data-step-target="start"><span>1</span>Start</button>
               <button type="button" data-step-target="new-app"><span>2</span>Describe</button>
-              <button type="button" data-step-target="review"><span>3</span>Review</button>
-              <button type="button" data-step-target="generate"><span>4</span>Generate</button>
+              <button type="button" data-step-target="review"><span>3</span>Review &amp; Build</button>
+              <button type="button" data-step-target="generate"><span>4</span>Export / Next Steps</button>
             </nav>
 
             <section class="panel wizard-step entry-step" data-step="start" aria-labelledby="start-heading">
@@ -105,8 +105,8 @@
             <section id="review-flow" class="panel review-panel wizard-step" data-step="review" aria-labelledby="review-heading">
               <div class="section-head roomy">
                 <p class="step-label">Step 3</p>
-                <h2 id="review-heading">Review the app plan</h2>
-                <p>Start with the plain-language summary. Technical details stay available, but they are not the main experience.</p>
+                <h2 id="review-heading">Review &amp; build the app plan</h2>
+                <p>Start with the plain-language summary, then optionally validate and generate a sandboxed local app when the Builder server is running.</p>
               </div>
               <div id="draft-panel" class="planner-output draft-review plan-summary-card">
                 <h3>Plan summary</h3>
@@ -215,19 +215,24 @@
               </details>
               <div class="wizard-actions">
                 <button type="button" class="quiet-button" data-step-target="new-app">Back</button>
-                <button type="button" class="primary-button" data-step-target="generate">Continue to commands</button>
+                <button type="button" class="primary-button" data-step-target="generate">Continue to export / next steps</button>
               </div>
             </section>
 
             <section id="generate-flow" class="panel generation-panel wizard-step" data-step="generate" aria-labelledby="generate-heading">
               <div class="section-head roomy">
                 <p class="step-label">Step 4</p>
-                <h2 id="generate-heading">Generate and run locally</h2>
-                <p>Save the plan, then run the CLI commands. The CLI remains the source of truth for validation and generation.</p>
+                <h2 id="generate-heading">Export / next steps</h2>
+                <p>Use the local run summary if you generated in Step 3, or keep the manual YAML + CLI path. The CLI remains the source of truth.</p>
+              </div>
+              <section id="export-summary" class="export-summary" aria-live="polite"></section>
+              <div class="actions">
+                <button id="copy-yaml-export" type="button">Copy YAML</button>
+                <button id="download-yaml-export" type="button">Download YAML</button>
               </div>
               <div id="generation-preview" class="generation-preview"></div>
-              <details class="inline-advanced command-card">
-                <summary>Exact CLI commands</summary>
+              <details class="inline-advanced command-card" open>
+                <summary>Manual CLI commands</summary>
                 <pre id="plan-preview"></pre>
               </details>
               <div class="test-path">

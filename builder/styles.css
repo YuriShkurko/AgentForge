@@ -680,6 +680,7 @@ textarea {
 .command-card,
 .test-path,
 .preview-block,
+.export-card,
 .customize-panel {
   display: grid;
   gap: 10px;
@@ -715,6 +716,20 @@ textarea {
   font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
   font-size: 0.66rem;
   font-weight: 900;
+}
+
+.export-summary {
+  display: grid;
+  gap: 12px;
+}
+
+.local-run-summary {
+  border-color: rgba(78, 166, 113, 0.28);
+  background: rgba(239, 251, 245, 0.78);
+}
+
+.manual-cli-summary {
+  border-color: rgba(91, 91, 214, 0.16);
 }
 
 .command-card,
