@@ -5,8 +5,11 @@ import threading
 import urllib.request
 from pathlib import Path
 
+import pytest
+
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "generator"))
 
+from agentforge.generator import generate
 from agentforge.pack import DomainPack
 from agentforge.planner.assistant import BuilderAssistant
 from agentforge.planner.server import PlannerServer
@@ -64,6 +67,91 @@ def test_assistant_start_can_propose_model_driven_client_blueprint():
     assert [entity.name for entity in pack.model.entities] == ["client", "onboarding_task"]
     assert pack.model.ui.focus.primary_entity == "onboarding_task"
     assert pack.model.ui.focus.secondary_entity == "client"
+
+
+def _entity_names(result):
+    pack = DomainPack.model_validate(result["proposal"]["blueprint"])
+    assert pack.model is not None
+    return {entity.name for entity in pack.model.entities}
+
+
+@pytest.mark.parametrize(
+    ("prompt", "expected"),
+    [
+        ("i am a basketball coach, want to track clients and court vendors", {"client", "court_vendor", "lesson_session"}),
+        ("i am a tennis coach i need to track my clients / earnings / court vendors", {"client", "court_vendor", "lesson_session", "payment"}),
+        ("freelance designer tracking clients projects invoices", {"client", "project", "invoice"}),
+        ("small gym tracking members classes trainers payments", {"member", "class_session", "trainer", "payment"}),
+        ("i am a music teacher need to track clients, earnings and vendors for equipments", {"client", "equipment_vendor", "lesson_session", "earning"}),
+    ],
+)
+
+def test_assistant_domain_prompts_do_not_collapse_to_generic_item(prompt, expected):
+    result = BuilderAssistant().start(prompt)
+
+    assert result["status"] == "proposed"
+    names = _entity_names(result)
+    assert expected.issubset(names)
+    assert names != {"item"}
+    labels = json.dumps(result["proposal"]["blueprint"]["model"], sort_keys=True).lower()
+    assert "example item" not in labels
+    assert "replace this model in blueprint source" not in labels
+
+
+def test_assistant_quality_gate_guides_when_scripted_model_misses_detected_terms():
+    result = BuilderAssistant().start("tracking clients vendors payments")
+
+    assert result["status"] == "quality_error"
+    assert result["proposal"] is None
+    guidance = result["guidance"][0]
+    assert guidance["category"] == "model_quality"
+    assert "client" in guidance["message"] and "vendor" in guidance["message"] and "payment" in guidance["message"]
+    assert "Add domain-specific entities" in guidance["suggested_fix"]
+    assert "clients" in guidance["follow_up_question"] or "records" in guidance["follow_up_question"]
+    assert result["questions"], "quality rejection must surface a follow-up question"
+
+
+def test_assistant_scripted_domain_prompt_replaces_generic_current_blueprint():
+    generic = BuilderAssistant().start("task tracker with status owner due date to complete tasks")["proposal"]
+    blueprint = generic["blueprint"]
+    blueprint["model"]["entities"] = [{
+        "name": "item",
+        "label_singular": "Item",
+        "label_plural": "Items",
+        "fields": [
+            {"name": "title", "label": "Title", "type": "string", "required": True, "semantic": "title"},
+            {"name": "status", "label": "Status", "type": "enum", "required": True, "enum_values": ["open", "closed"], "semantic": "status"},
+        ],
+    }]
+    blueprint["model"]["pages"] = [{"name": "items", "type": "entity_list", "entity": "item", "title": "Items"}]
+    blueprint["model"]["actions"] = [{"name": "close_item", "label": "Close item", "type": "update_status", "entity": "item", "field": "status", "value": "closed"}]
+    blueprint["model"]["seed_data"] = {"item": [{"title": "Example item", "status": "open"}]}
+
+    result = BuilderAssistant().start(
+        "i am a basketball coach, want to track clients and court vendors",
+        current_blueprint=blueprint,
+    )
+
+    # The assistant should build a domain model instead of preserving an item-only draft.
+    assert result["status"] == "proposed"
+    assert {"client", "court_vendor", "lesson_session"}.issubset(_entity_names(result))
+
+
+def test_prompt_derived_blueprint_generates_domain_specific_app(tmp_path):
+    result = BuilderAssistant().start("i am a basketball coach, want to track clients and court vendors")
+    pack = DomainPack.model_validate(result["proposal"]["blueprint"])
+    out = tmp_path / "coach-app"
+
+    generate(pack, out)
+
+    app_model = json.loads((out / "app-model.json").read_text())
+    generated_text = (out / "frontend/src/App.tsx").read_text() + json.dumps(app_model)
+    assert {"client", "court_vendor", "lesson_session"}.issubset({entity["name"] for entity in app_model["entities"]})
+    assert "Clients" in generated_text and "Court Vendors" in generated_text and "Lesson Sessions" in generated_text
+    assert "Example item" not in generated_text
+    assert "Replace this model in Blueprint source" not in generated_text
+    plural_labels = [entity.get("label_plural") or entity.get("labelPlural") for entity in app_model["entities"]]
+    assert "Items" not in plural_labels
 
 
 def test_assistant_apply_preview_validates_proposal_without_mutating_files(tmp_path, monkeypatch):

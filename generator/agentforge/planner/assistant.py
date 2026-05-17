@@ -13,7 +13,7 @@ from typing import Any
 
 from agentforge.blueprints import create_starter_blueprint, sanitize_pack_name
 from agentforge.planner import validate_blueprint_result
-from agentforge.planner.live_llm import LiveAssistantProvider
+from agentforge.planner.live_llm import LiveAssistantProvider, LiveLLMResponseError
 from agentforge.planner.validation_guidance import summarize_validation_errors
 
 
@@ -29,8 +29,8 @@ _VAGUE_TOKENS = {
 }
 
 _ENTITY_KEYWORDS = (
-    "ticket", "client", "task", "vendor", "risk", "issue", "lead", "candidate", "project",
-    "finding", "record", "account",
+    "ticket", "client", "member", "class", "trainer", "task", "vendor", "court", "risk", "issue", "lead", "candidate", "project",
+    "invoice", "payment", "earning", "session", "lesson", "booking", "finding", "record", "account",
 )
 _FIELD_KEYWORDS = (
     "status", "priority", "owner", "due", "date", "email", "severity", "notes", "title",
@@ -371,6 +371,8 @@ class BuilderAssistant:
             live_spec: dict[str, Any] | None = None
             try:
                 live_spec = self._live_provider.propose_model_spec(text)
+            except LiveLLMResponseError as exc:
+                fallback_reason = f"live provider {exc}"
             except Exception as exc:
                 fallback_reason = f"live provider raised: {exc.__class__.__name__}"
             if live_spec:
@@ -381,8 +383,11 @@ class BuilderAssistant:
                 else:
                     check = validate_blueprint_result(candidate)
                     if check.status == "draft":
-                        blueprint = candidate
-                        turn_mode = "live"
+                        if _model_quality_guidance(text, candidate):
+                            fallback_reason = "live blueprint failed model quality checks"
+                        else:
+                            blueprint = candidate
+                            turn_mode = "live"
                     else:
                         fallback_reason = "live blueprint failed schema validation"
             elif fallback_reason is None:
@@ -409,6 +414,16 @@ class BuilderAssistant:
                 "errors": validation.errors,
                 "validation": validation.to_dict(),
                 "guidance": summarize_validation_errors(validation.errors),
+                "turn_mode": turn_mode,
+                "fallback_reason": fallback_reason,
+            }
+        quality_guidance = _model_quality_guidance(text, blueprint)
+        if quality_guidance:
+            return {
+                "status": "quality_error",
+                "errors": [quality_guidance[0]["message"]],
+                "validation": validation.to_dict(),
+                "guidance": quality_guidance,
                 "turn_mode": turn_mode,
                 "fallback_reason": fallback_reason,
             }
@@ -471,12 +486,16 @@ def _missing_requirement_ids(text: str) -> list[str]:
     compact = text.lower().strip()
     if _is_vague(compact):
         return ["idea_seed"]
+    detected_terms = _detected_domain_terms(compact)
+    has_workflow = any(word in compact for word in _WORKFLOW_KEYWORDS)
+    if len(detected_terms) >= 2 and has_workflow:
+        return []
     ids: list[str] = []
     if not any(word in compact for word in _ENTITY_KEYWORDS):
         ids.append("entities")
-    if not any(word in compact for word in _FIELD_KEYWORDS):
+    if not any(word in compact for word in _FIELD_KEYWORDS) and len(detected_terms) < 2:
         ids.append("fields")
-    if not any(word in compact for word in _WORKFLOW_KEYWORDS):
+    if not has_workflow:
         ids.append("workflow")
     return ids[:3]
 
@@ -623,6 +642,14 @@ def _attach_imports_and_providers(spec: dict[str, Any], text: str) -> None:
 
 def _infer_model_spec(text: str) -> dict[str, Any]:
     compact = text.lower()
+    if any(word in compact for word in ["basketball", "tennis", "coach", "court"]):
+        return _coach_booking_model()
+    if "music teacher" in compact or ("teacher" in compact and ("earning" in compact or "vendor" in compact or "equipment" in compact)):
+        return _teacher_lesson_model()
+    if "gym" in compact or "members" in compact or "trainers" in compact or "classes" in compact:
+        return _gym_model()
+    if "designer" in compact or "invoice" in compact or ("client" in compact and "project" in compact):
+        return _designer_model()
     if any(word in compact for word in ["client", "onboarding", "onboard"]):
         return _client_onboarding_model()
     if any(word in compact for word in ["vendor", "risk", "finding"]):
@@ -630,6 +657,170 @@ def _infer_model_spec(text: str) -> dict[str, Any]:
     if any(word in compact for word in ["issue", "ticket", "support"]):
         return _ticket_model()
     return _task_model()
+
+
+_GENERIC_ENTITY_NAMES = {"item", "record", "data", "entry", "object"}
+_DOMAIN_TERM_EQUIVALENTS: dict[str, set[str]] = {
+    "client": {"client", "customer"},
+    "vendor": {"vendor", "court_vendor", "court"},
+    "court": {"court", "court_vendor", "vendor"},
+    "session": {"session", "lesson", "booking", "appointment"},
+    "lesson": {"lesson", "session", "booking", "appointment"},
+    "booking": {"booking", "session", "lesson", "appointment"},
+    "earning": {"earning", "payment", "invoice", "revenue"},
+    "payment": {"payment", "earning", "invoice", "revenue"},
+    "project": {"project", "job"},
+    "invoice": {"invoice", "payment", "earning"},
+    "member": {"member", "client"},
+    "class": {"class", "session", "lesson"},
+    "trainer": {"trainer", "coach", "instructor"},
+    "ticket": {"ticket", "issue"},
+    "issue": {"issue", "ticket"},
+}
+_DOMAIN_TERM_PATTERNS: dict[str, tuple[str, ...]] = {
+    "client": ("client", "clients", "customer", "customers"),
+    "vendor": ("vendor", "vendors", "court vendor", "court vendors"),
+    "court": ("court", "courts"),
+    "session": ("session", "sessions"),
+    "lesson": ("lesson", "lessons"),
+    "booking": ("booking", "bookings"),
+    "earning": ("earning", "earnings", "revenue"),
+    "payment": ("payment", "payments"),
+    "project": ("project", "projects"),
+    "invoice": ("invoice", "invoices"),
+    "member": ("member", "members"),
+    "class": ("class", "classes"),
+    "trainer": ("trainer", "trainers"),
+    "ticket": ("ticket", "tickets"),
+    "issue": ("issue", "issues"),
+}
+
+
+def _detected_domain_terms(text: str) -> list[str]:
+    compact = re.sub(r"[^a-z0-9]+", " ", text.lower())
+    padded = f" {compact} "
+    terms: list[str] = []
+    for canonical, variants in _DOMAIN_TERM_PATTERNS.items():
+        if any(f" {variant} " in padded for variant in variants):
+            terms.append(canonical)
+    return terms
+
+
+def _model_entity_terms(blueprint: dict[str, Any]) -> set[str]:
+    terms: set[str] = set()
+    for entity in ((blueprint.get("model") or {}).get("entities") or []):
+        for value in (entity.get("name"), entity.get("label_singular"), entity.get("label_plural")):
+            if value:
+                terms.update(re.findall(r"[a-z0-9]+", str(value).lower()))
+                terms.add(str(value).lower().replace(" ", "_"))
+    return {term for term in terms if term}
+
+
+def _model_quality_guidance(text: str, blueprint: dict[str, Any]) -> list[dict[str, Any]]:
+    detected = _detected_domain_terms(text)
+    if not detected:
+        return []
+    entities = (blueprint.get("model") or {}).get("entities") or []
+    entity_terms = _model_entity_terms(blueprint)
+    generic_single = len(entities) == 1 and str(entities[0].get("name") or "").lower() in _GENERIC_ENTITY_NAMES
+    missing = []
+    for term in detected:
+        equivalents = _DOMAIN_TERM_EQUIVALENTS.get(term, {term})
+        if not (equivalents & entity_terms):
+            missing.append(term)
+    if not generic_single and not missing:
+        return []
+    detected_label = ", ".join(dict.fromkeys(detected))
+    missing_label = ", ".join(dict.fromkeys(missing)) or "domain-specific records"
+    follow_up = _quality_follow_up(detected)
+    return [{
+        "category": "model_quality",
+        "message": f"The proposal was too generic for the detected domain terms: {detected_label}.",
+        "suggested_fix": f"Add domain-specific entities for {missing_label} instead of a generic Item/Record model.",
+        "follow_up_question": follow_up,
+    }]
+
+
+def _quality_follow_up(terms: list[str]) -> str:
+    term_set = set(terms)
+    if {"client", "vendor"} & term_set and ({"court", "vendor"} & term_set):
+        return "I found clients and court vendors. Should this app also track lessons/sessions between them?"
+    if {"client", "project", "invoice"} & term_set:
+        return "Should invoices belong to projects, clients, or both?"
+    if {"member", "class", "trainer", "payment"} & term_set:
+        return "Should payments belong to members, classes, or memberships?"
+    return f"Which workflow connects these records: {', '.join(dict.fromkeys(terms))}?"
+
+
+def _coach_booking_model() -> dict[str, Any]:
+    return {
+        "primary": "lesson_session",
+        "model": {
+            "entities": [
+                {"name": "client", "label_singular": "Client", "label_plural": "Clients", "fields": [{"name": "name", "label": "Name", "type": "string", "required": True, "semantic": "title"}, {"name": "email", "label": "Email", "type": "string"}]},
+                {"name": "court_vendor", "label_singular": "Court Vendor", "label_plural": "Court Vendors", "fields": [{"name": "name", "label": "Name", "type": "string", "required": True, "semantic": "title"}, {"name": "location", "label": "Location", "type": "string"}]},
+                {"name": "lesson_session", "label_singular": "Lesson Session", "label_plural": "Lesson Sessions", "fields": [{"name": "title", "label": "Title", "type": "string", "required": True, "semantic": "title"}, {"name": "status", "label": "Status", "type": "enum", "required": True, "enum_values": ["scheduled", "completed", "paid"], "semantic": "status"}, {"name": "session_date", "label": "Session Date", "type": "date", "semantic": "due_date"}, {"name": "client_id", "label": "Client", "type": "relation", "target_entity": "client"}, {"name": "court_vendor_id", "label": "Court Vendor", "type": "relation", "target_entity": "court_vendor"}]},
+                {"name": "payment", "label_singular": "Payment", "label_plural": "Payments", "fields": [{"name": "description", "label": "Description", "type": "string", "required": True, "semantic": "title"}, {"name": "amount", "label": "Amount", "type": "integer"}, {"name": "status", "label": "Status", "type": "enum", "required": True, "enum_values": ["expected", "received"], "semantic": "status"}, {"name": "client_id", "label": "Client", "type": "relation", "target_entity": "client"}, {"name": "lesson_session_id", "label": "Lesson Session", "type": "relation", "target_entity": "lesson_session"}]},
+            ],
+            "pages": [{"name": "dashboard", "type": "dashboard", "title": "Dashboard"}, {"name": "clients", "type": "entity_list", "entity": "client", "title": "Clients"}, {"name": "court_vendors", "type": "entity_list", "entity": "court_vendor", "title": "Court Vendors"}, {"name": "sessions", "type": "entity_list", "entity": "lesson_session", "title": "Lesson Sessions"}, {"name": "payments", "type": "entity_list", "entity": "payment", "title": "Payments"}],
+            "actions": [{"name": "complete_session", "label": "Complete session", "type": "update_status", "entity": "lesson_session", "field": "status", "value": "completed"}],
+            "seed_data": {"client": [{"name": "Jordan Lee", "email": "jordan@example.com"}], "court_vendor": [{"name": "Downtown Courts", "location": "Court 2"}], "lesson_session": [{"title": "Shooting lesson with Jordan", "status": "scheduled", "session_date": "2026-06-01"}], "payment": [{"description": "Jordan lesson payment", "amount": 75, "status": "expected"}]},
+            "ui": _board_ui("lesson_session", secondary_entity="client", group_by="status", title_field="title", badge_field="session_date"),
+        },
+    }
+
+
+def _teacher_lesson_model() -> dict[str, Any]:
+    return {
+        "primary": "lesson_session",
+        "model": {
+            "entities": [
+                {"name": "client", "label_singular": "Client", "label_plural": "Clients", "fields": [{"name": "name", "label": "Name", "type": "string", "required": True, "semantic": "title"}, {"name": "email", "label": "Email", "type": "string"}]},
+                {"name": "equipment_vendor", "label_singular": "Equipment Vendor", "label_plural": "Equipment Vendors", "fields": [{"name": "name", "label": "Name", "type": "string", "required": True, "semantic": "title"}, {"name": "equipment_type", "label": "Equipment Type", "type": "string"}]},
+                {"name": "lesson_session", "label_singular": "Lesson Session", "label_plural": "Lesson Sessions", "fields": [{"name": "title", "label": "Title", "type": "string", "required": True, "semantic": "title"}, {"name": "status", "label": "Status", "type": "enum", "required": True, "enum_values": ["scheduled", "completed", "paid"], "semantic": "status"}, {"name": "lesson_date", "label": "Lesson Date", "type": "date", "semantic": "due_date"}, {"name": "client_id", "label": "Client", "type": "relation", "target_entity": "client"}]},
+                {"name": "earning", "label_singular": "Earning", "label_plural": "Earnings", "fields": [{"name": "description", "label": "Description", "type": "string", "required": True, "semantic": "title"}, {"name": "amount", "label": "Amount", "type": "integer"}, {"name": "status", "label": "Status", "type": "enum", "required": True, "enum_values": ["expected", "received"], "semantic": "status"}, {"name": "client_id", "label": "Client", "type": "relation", "target_entity": "client"}, {"name": "lesson_session_id", "label": "Lesson Session", "type": "relation", "target_entity": "lesson_session"}]},
+            ],
+            "pages": [{"name": "dashboard", "type": "dashboard", "title": "Dashboard"}, {"name": "clients", "type": "entity_list", "entity": "client", "title": "Clients"}, {"name": "vendors", "type": "entity_list", "entity": "equipment_vendor", "title": "Equipment Vendors"}, {"name": "sessions", "type": "entity_list", "entity": "lesson_session", "title": "Lesson Sessions"}, {"name": "earnings", "type": "entity_list", "entity": "earning", "title": "Earnings"}],
+            "actions": [{"name": "complete_lesson", "label": "Complete lesson", "type": "update_status", "entity": "lesson_session", "field": "status", "value": "completed"}],
+            "seed_data": {"client": [{"name": "Maya Chen", "email": "maya@example.com"}], "equipment_vendor": [{"name": "Main Street Music", "equipment_type": "Guitar strings"}], "lesson_session": [{"title": "Piano lesson with Maya", "status": "scheduled", "lesson_date": "2026-06-01"}], "earning": [{"description": "Maya piano lesson", "amount": 60, "status": "expected"}]},
+            "ui": _board_ui("lesson_session", secondary_entity="client", group_by="status", title_field="title", badge_field="lesson_date"),
+        },
+    }
+
+
+def _designer_model() -> dict[str, Any]:
+    return {
+        "primary": "project",
+        "model": {
+            "entities": [
+                {"name": "client", "label_singular": "Client", "label_plural": "Clients", "fields": [{"name": "name", "label": "Name", "type": "string", "required": True, "semantic": "title"}, {"name": "email", "label": "Email", "type": "string"}]},
+                {"name": "project", "label_singular": "Project", "label_plural": "Projects", "fields": [{"name": "title", "label": "Title", "type": "string", "required": True, "semantic": "title"}, {"name": "status", "label": "Status", "type": "enum", "required": True, "enum_values": ["lead", "active", "delivered"], "semantic": "status"}, {"name": "client_id", "label": "Client", "type": "relation", "target_entity": "client"}]},
+                {"name": "invoice", "label_singular": "Invoice", "label_plural": "Invoices", "fields": [{"name": "number", "label": "Number", "type": "string", "required": True, "semantic": "title"}, {"name": "status", "label": "Status", "type": "enum", "required": True, "enum_values": ["draft", "sent", "paid"], "semantic": "status"}, {"name": "amount", "label": "Amount", "type": "integer"}, {"name": "project_id", "label": "Project", "type": "relation", "target_entity": "project"}, {"name": "client_id", "label": "Client", "type": "relation", "target_entity": "client"}]},
+            ],
+            "pages": [{"name": "dashboard", "type": "dashboard", "title": "Dashboard"}, {"name": "clients", "type": "entity_list", "entity": "client", "title": "Clients"}, {"name": "projects", "type": "entity_list", "entity": "project", "title": "Projects"}, {"name": "invoices", "type": "entity_list", "entity": "invoice", "title": "Invoices"}],
+            "actions": [{"name": "deliver_project", "label": "Deliver project", "type": "update_status", "entity": "project", "field": "status", "value": "delivered"}],
+            "seed_data": {"client": [{"name": "Acme Studio", "email": "hello@acme.example"}], "project": [{"title": "Brand refresh", "status": "active"}], "invoice": [{"number": "INV-1001", "status": "sent", "amount": 1200}]},
+            "ui": _board_ui("project", secondary_entity="client", group_by="status", title_field="title", badge_field="status"),
+        },
+    }
+
+
+def _gym_model() -> dict[str, Any]:
+    return {
+        "primary": "class_session",
+        "model": {
+            "entities": [
+                {"name": "member", "label_singular": "Member", "label_plural": "Members", "fields": [{"name": "name", "label": "Name", "type": "string", "required": True, "semantic": "title"}]},
+                {"name": "trainer", "label_singular": "Trainer", "label_plural": "Trainers", "fields": [{"name": "name", "label": "Name", "type": "string", "required": True, "semantic": "title"}]},
+                {"name": "class_session", "label_singular": "Class", "label_plural": "Classes", "fields": [{"name": "title", "label": "Title", "type": "string", "required": True, "semantic": "title"}, {"name": "status", "label": "Status", "type": "enum", "required": True, "enum_values": ["scheduled", "completed"], "semantic": "status"}, {"name": "trainer_id", "label": "Trainer", "type": "relation", "target_entity": "trainer"}]},
+                {"name": "payment", "label_singular": "Payment", "label_plural": "Payments", "fields": [{"name": "description", "label": "Description", "type": "string", "required": True, "semantic": "title"}, {"name": "status", "label": "Status", "type": "enum", "required": True, "enum_values": ["due", "paid"], "semantic": "status"}, {"name": "member_id", "label": "Member", "type": "relation", "target_entity": "member"}]},
+            ],
+            "pages": [{"name": "dashboard", "type": "dashboard", "title": "Dashboard"}, {"name": "members", "type": "entity_list", "entity": "member", "title": "Members"}, {"name": "classes", "type": "entity_list", "entity": "class_session", "title": "Classes"}, {"name": "trainers", "type": "entity_list", "entity": "trainer", "title": "Trainers"}, {"name": "payments", "type": "entity_list", "entity": "payment", "title": "Payments"}],
+            "actions": [{"name": "complete_class", "label": "Complete class", "type": "update_status", "entity": "class_session", "field": "status", "value": "completed"}],
+            "seed_data": {"member": [{"name": "Sam Rivera"}], "trainer": [{"name": "Coach Kim"}], "class_session": [{"title": "Morning strength", "status": "scheduled"}], "payment": [{"description": "Monthly membership", "status": "due"}]},
+            "ui": _board_ui("class_session", secondary_entity="trainer", group_by="status", title_field="title", badge_field="status"),
+        },
+    }
 
 
 def _ticket_model() -> dict[str, Any]:

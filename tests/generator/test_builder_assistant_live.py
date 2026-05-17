@@ -21,6 +21,7 @@ from agentforge.planner.assistant import BuilderAssistant
 from agentforge.planner.live_llm import (
     LiveAssistantProvider,
     LiveLLMConfigurationError,
+    LiveLLMResponseError,
     OpenAIChatLiveClient,
     live_assistant_provider_from_env,
 )
@@ -41,6 +42,25 @@ class MockLiveLLMClient:
         if isinstance(self.response, Exception):
             raise self.response
         return self.response
+
+
+def _generic_item_spec_json() -> str:
+    return json.dumps({
+        "primary": "item",
+        "entities": [
+            {
+                "name": "item",
+                "label_singular": "Item",
+                "label_plural": "Items",
+                "fields": [
+                    {"name": "title", "label": "Title", "type": "string", "required": True, "semantic": "title"},
+                    {"name": "status", "label": "Status", "type": "enum", "required": True,
+                     "enum_values": ["open", "closed"], "semantic": "status"},
+                    {"name": "notes", "label": "Notes", "type": "text", "semantic": "description"},
+                ],
+            }
+        ],
+    })
 
 
 def _valid_live_spec_json() -> str:
@@ -162,11 +182,38 @@ def test_live_provider_falls_back_to_scripted_when_client_raises():
     assert result["status"] == "proposed"
     assert result["mode"] == "live"  # capability mode persists
     assert result["turn_mode"] == "scripted"
-    assert result["fallback_reason"]
+    assert result["fallback_reason"] == "live provider completion failed: RuntimeError"
     assert any("fell back to the scripted path" in message for message in result["messages"])
     # Scripted heuristics built a ticket entity.
     pack = DomainPack.model_validate(result["proposal"]["blueprint"])
     assert [entity.name for entity in pack.model.entities] == ["ticket"]
+
+
+def test_live_prompt_tells_provider_to_prefer_domain_specific_entities():
+    client = MockLiveLLMClient(_valid_live_spec_json())
+    assistant = BuilderAssistant(live_provider=LiveAssistantProvider(client))
+
+    assistant.start("track bug reports through triage and fix workflow")
+
+    system, _user = client.calls[0]
+    assert "Prefer domain-specific entities" in system
+    assert "Generic item/record/data entities are allowed only" in system
+    assert "session belongs to client" in system
+    assert "payment or earning belongs to client/session" in system
+
+
+def test_live_generic_item_for_domain_prompt_falls_back_to_scripted_domain_model():
+    client = MockLiveLLMClient(_generic_item_spec_json())
+    assistant = BuilderAssistant(live_provider=LiveAssistantProvider(client))
+
+    result = assistant.start("i am a basketball coach, want to track clients and court vendors")
+
+    assert result["status"] == "proposed"
+    assert result["turn_mode"] == "scripted"
+    assert result["fallback_reason"] == "live blueprint failed model quality checks"
+    pack = DomainPack.model_validate(result["proposal"]["blueprint"])
+    assert pack.model is not None
+    assert {"client", "court_vendor", "lesson_session"}.issubset({entity.name for entity in pack.model.entities})
 
 
 def test_live_provider_falls_back_when_response_is_not_json():
@@ -179,7 +226,31 @@ def test_live_provider_falls_back_when_response_is_not_json():
 
     assert result["status"] == "proposed"
     assert result["turn_mode"] == "scripted"
-    assert result["fallback_reason"]
+    assert result["fallback_reason"] == "live provider response was not a JSON object"
+
+
+def test_live_provider_reports_sanitized_openai_status_failure():
+    client = MockLiveLLMClient(RuntimeError("OpenAI request failed with status 401"))
+    assistant = BuilderAssistant(live_provider=LiveAssistantProvider(client))
+
+    result = assistant.start(
+        "support ticket triage with title status priority owner notes to close tickets"
+    )
+
+    assert result["turn_mode"] == "scripted"
+    assert result["fallback_reason"] == "live provider OpenAI request failed with status 401"
+    assert "OPENAI_API_KEY" not in json.dumps(result)
+
+
+def test_live_provider_direct_error_does_not_include_exception_message():
+    client = MockLiveLLMClient(RuntimeError("contains-secret-value"))
+    provider = LiveAssistantProvider(client)
+
+    with pytest.raises(LiveLLMResponseError) as raised:
+        provider.propose_model_spec("support tickets")
+
+    assert "contains-secret-value" not in str(raised.value)
+    assert str(raised.value) == "completion failed: RuntimeError"
 
 
 def test_live_provider_falls_back_when_spec_is_missing_fields():

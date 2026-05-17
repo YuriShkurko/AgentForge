@@ -26,7 +26,11 @@ _SYSTEM_PROMPT = (
     "You are AgentForge Builder Assistant in live-LLM mode. "
     "Emit a model-driven application spec as STRICT JSON only. "
     "No prose. No markdown. No code fences.\n"
-    "Use snake_case entity and field names. "
+    "Use snake_case entity and field names. Prefer domain-specific entities named in the user request. "
+    "Generic item/record/data entities are allowed only when the user prompt is genuinely vague. "
+    "For business or workflow prompts that name multiple concepts, produce 2-4 entities and obvious relation fields. "
+    "Examples: session belongs to client; session uses court_vendor; payment or earning belongs to client/session; issue belongs to repo/project. "
+    "If you cannot confidently model concrete nouns from the request, emit an empty entities array so deterministic validation can ask a clarifying question. "
     "Every required enum field must list at least two values and one terminal state.\n"
     "Allowed field types: string, text, integer, boolean, date, enum, relation.\n"
     "Field semantic must be one of: title, status, priority, owner, severity, "
@@ -54,6 +58,10 @@ class LiveLLMConfigurationError(RuntimeError):
     """Raised when live mode is requested but not configured correctly."""
 
 
+class LiveLLMResponseError(RuntimeError):
+    """Raised for sanitized live-provider failures safe to show in Builder UI."""
+
+
 class LiveAssistantProvider:
     """Bounded live-LLM adapter that returns a model spec or ``None``.
 
@@ -75,21 +83,26 @@ class LiveAssistantProvider:
             return None
         try:
             raw = self.client.complete(_SYSTEM_PROMPT, prompt)
-        except Exception:
-            return None
+        except RuntimeError as exc:
+            detail = str(exc).strip()
+            if detail.startswith("OpenAI request failed with status"):
+                raise LiveLLMResponseError(detail) from exc
+            raise LiveLLMResponseError(f"completion failed: {exc.__class__.__name__}") from exc
+        except Exception as exc:
+            raise LiveLLMResponseError(f"completion failed: {exc.__class__.__name__}") from exc
         parsed = _safe_parse_json(raw)
         if not isinstance(parsed, dict):
-            return None
+            raise LiveLLMResponseError("response was not a JSON object")
         entities = parsed.get("entities")
         primary = parsed.get("primary")
         if not isinstance(entities, list) or not entities:
-            return None
+            raise LiveLLMResponseError("response missing entities")
         if not isinstance(primary, str) or not primary.strip():
-            return None
+            raise LiveLLMResponseError("response missing primary entity")
         capped = entities[: self.max_entities]
         model = _spec_to_model(capped, primary.strip())
         if not model:
-            return None
+            raise LiveLLMResponseError("response had no usable bounded model fields")
         return {"primary": primary.strip(), "model": model}
 
 
@@ -387,6 +400,7 @@ __all__ = [
     "LiveAssistantProvider",
     "LiveLLMClient",
     "LiveLLMConfigurationError",
+    "LiveLLMResponseError",
     "OpenAIChatLiveClient",
     "live_assistant_provider_from_env",
 ]
