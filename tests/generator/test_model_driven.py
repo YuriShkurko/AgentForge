@@ -267,6 +267,33 @@ def test_model_driven_generation_writes_entity_specific_files(tmp_path):
     assert "make validate" in (output / "README.md").read_text()
 
 
+def test_model_driven_schema_date_field_named_date_does_not_shadow_type(tmp_path):
+    data = _base_pack()
+    data["name"] = "date-shadow-test"
+    data["display_name"] = "Date Shadow Test"
+    data["model"]["entities"] = [{
+        "name": "session",
+        "label_singular": "Session",
+        "label_plural": "Sessions",
+        "fields": [
+            {"name": "date", "type": "date", "required": True},
+            {"name": "status", "type": "enum", "required": True, "enum_values": ["scheduled", "completed"]},
+        ],
+    }]
+    data["model"]["pages"] = [{"name": "sessions", "type": "entity_list", "entity": "session"}]
+    data["model"]["actions"] = [{"name": "complete_session", "type": "update_status", "entity": "session", "field": "status", "value": "completed"}]
+    data["model"]["seed_data"] = {"session": [{"date": "2026-06-01", "status": "scheduled"}]}
+    pack = DomainPack.model_validate(data)
+    output = tmp_path / pack.name
+
+    generate(pack, output)
+    schemas = (output / "backend/app/schemas.py").read_text()
+
+    assert "from __future__ import annotations" in schemas
+    assert "from datetime import date as date_type" in schemas
+    exec(compile(schemas, str(output / "backend/app/schemas.py"), "exec"), {})
+
+
 def test_two_model_driven_packs_share_path_but_generate_different_outputs(tmp_path):
     client = load_pack(PACKS_DIR / "client-onboarding-workspace" / "domain-pack.yaml")
     vendor = load_pack(PACKS_DIR / "vendor-risk-tracker" / "domain-pack.yaml")

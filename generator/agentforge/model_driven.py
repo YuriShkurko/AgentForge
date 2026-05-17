@@ -69,6 +69,10 @@ def _py_type(field: ModelField) -> str:
     return {"integer": "int", "boolean": "bool", "date": "date", "relation": "int"}.get(field.type, "str")
 
 
+def _schema_py_type(field: ModelField) -> str:
+    return {"integer": "int", "boolean": "bool", "date": "date_type", "relation": "int"}.get(field.type, "str")
+
+
 def _column(field: ModelField) -> str:
     if field.type in {"integer", "relation"}:
         return "Integer"
@@ -214,20 +218,20 @@ def _import_run_model() -> str:
 
 
 def _backend_schemas(model: ModelDrivenApp) -> str:
-    chunks = ["from datetime import date\nfrom pydantic import BaseModel, ConfigDict, field_validator\n"]
+    chunks = ["from __future__ import annotations\nfrom datetime import date as date_type\nfrom pydantic import BaseModel, ConfigDict, field_validator\n"]
     for entity in model.entities:
         cls = _class_name(entity.name)
         create = [f"class {cls}Create(BaseModel):"]
         if not entity.fields:
             create.append("    pass")
         for field in entity.fields:
-            typ = _py_type(field)
+            typ = _schema_py_type(field)
             create.append(f"    {field.name}: {typ}{' | None = None' if not field.required else ''}")
         for field in entity.fields:
             if field.type == "enum":
                 values = repr(field.enum_values)
                 create += ["", f"    @field_validator(\"{field.name}\")", "    @classmethod", f"    def validate_{field.name}(cls, value):", "        if value is None:", "            return value", f"        if value not in {values}:", f"            raise ValueError(\"{field.name} must be one of {field.enum_values}\")", "        return value"]
-        update = [f"class {cls}Update(BaseModel):"] + [f"    {f.name}: {_py_type(f)} | None = None" for f in entity.fields]
+        update = [f"class {cls}Update(BaseModel):"] + [f"    {f.name}: {_schema_py_type(f)} | None = None" for f in entity.fields]
         read = [f"class {cls}Read({cls}Create):", "    id: int", "    model_config = ConfigDict(from_attributes=True)"]
         chunks.append("\n".join(create + [""] + update + [""] + read))
     chunks.append("class ImportPayload(BaseModel):\n    format: str\n    data: str")
