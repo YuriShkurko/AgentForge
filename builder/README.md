@@ -48,7 +48,18 @@ export OPENAI_API_KEY=...
 agentforge serve-builder
 ```
 
-In live mode, `/api/planner/status` reports `live_provider: true`, and assistant responses include `turn_mode` (`live` or `scripted`) plus `fallback_reason` when the live path could not be used.
+For local Builder development only, `agentforge serve-builder` also reads a `.env` file from the current working directory if one exists:
+
+```dotenv
+AGENTFORGE_ASSISTANT_PROVIDER=openai
+OPENAI_API_KEY=...
+# optional
+AGENTFORGE_ASSISTANT_LLM_MODEL=gpt-4o-mini
+```
+
+The loader supports `KEY=value`, single-quoted values, double-quoted values, blank lines, and full-line comments starting with `#`. It ignores malformed lines, never prints values, and never overrides variables already set in your shell. Keep real `.env` files out of git; if the Builder sees a `.env` that is not git-ignored, it prints a warning without showing contents.
+
+In live mode, `/api/planner/status` reports only `mode` and `live_provider: true`; it does not expose API keys or loaded values. Assistant responses include `turn_mode` (`live` or `scripted`) plus `fallback_reason` when the live path could not be used.
 
 Live mode is intentionally bounded:
 

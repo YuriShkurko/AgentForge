@@ -76,6 +76,8 @@ Trust points to call out:
 - Apply mutates only the in-memory Builder draft; Reject leaves it alone;
 - raw schema errors stay visible alongside the assistant's guidance.
 
+For local-only live Assistant demos, you may put `AGENTFORGE_ASSISTANT_PROVIDER=openai`, `OPENAI_API_KEY=...`, and optional `AGENTFORGE_ASSISTANT_LLM_MODEL=...` in a `.env` file before running `agentforge serve-builder`. The Builder server loads that file only for local Builder development, does not override exported shell variables, and never prints secret values or exposes them through `/api/planner/status`. Do not commit real `.env` files.
+
 ## 3. Validate and generate
 
 For the committed demo Blueprint:
