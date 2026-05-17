@@ -42,11 +42,22 @@ scribe-local.cmd
 .claude/
 .mcp.json
 
+# Agent-local workflow files and extensions
+.pi/extensions/
+AGENTS.md
+agent_notes.md
+audit-*.md
+
 # Temporary scratch directories
 .tmp*/
+nul
 
 # Task files (working notes, not project artifacts)
 temp.txt
+
+# Local generated demo/scratch outputs
+domain-packs/basketball/
+examples/i-am-basketball-coach/
 
 # Generated output — regenerate with: agentforge generate <pack>
 # examples/ is committed as a snapshot but is fully disposable.
