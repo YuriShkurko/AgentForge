@@ -145,12 +145,19 @@
                   <button id="local-run-generate" type="button">Generate local app</button>
                   <button id="local-run-validate-app" type="button">Run make validate</button>
                 </div>
+                <div class="local-run-actions actions app-process-actions" aria-label="Generated app server controls">
+                  <button id="local-run-start-backend" type="button">Start backend</button>
+                  <button id="local-run-stop-backend" type="button">Stop backend</button>
+                  <button id="local-run-start-frontend" type="button">Start frontend</button>
+                  <button id="local-run-stop-frontend" type="button">Stop frontend</button>
+                </div>
+                <div id="local-run-process-status" class="local-run-process-status" aria-live="polite"></div>
                 <div id="local-run-results" class="local-run-results" aria-live="polite"></div>
                 <details class="inline-advanced local-run-commands">
                   <summary>Equivalent CLI commands and logs</summary>
                   <pre id="local-run-log">Local run logs will appear here after you click a control room action.</pre>
                 </details>
-                <p class="helper-copy">Runs are sandboxed under `.tmp/builder-runs/&lt;safe-run-id&gt;/`. No GitHub, deployment, arbitrary shell commands, or app server process management is available here.</p>
+                <p class="helper-copy">Runs are sandboxed under `.tmp/builder-runs/&lt;safe-run-id&gt;/`. Start/Stop uses only the generated app's fixed Makefile targets. No GitHub, deployment, arbitrary shell commands, or output path selection is available here.</p>
               </section>
               <details class="inline-advanced refine-row">
                 <summary>Refine or validate this plan</summary>

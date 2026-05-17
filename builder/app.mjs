@@ -75,6 +75,11 @@ const localRunStatus = document.querySelector("#local-run-status");
 const localRunValidateBlueprintButton = document.querySelector("#local-run-validate-blueprint");
 const localRunGenerateButton = document.querySelector("#local-run-generate");
 const localRunValidateAppButton = document.querySelector("#local-run-validate-app");
+const localRunStartBackendButton = document.querySelector("#local-run-start-backend");
+const localRunStopBackendButton = document.querySelector("#local-run-stop-backend");
+const localRunStartFrontendButton = document.querySelector("#local-run-start-frontend");
+const localRunStopFrontendButton = document.querySelector("#local-run-stop-frontend");
+const localRunProcessStatus = document.querySelector("#local-run-process-status");
 const localRunResults = document.querySelector("#local-run-results");
 const localRunLog = document.querySelector("#local-run-log");
 const exportSummary = document.querySelector("#export-summary");
@@ -95,7 +100,8 @@ let assistantBusy = false;
 let assistantMode = "static";
 let assistantLiveProvider = false;
 let localRunBusy = false;
-let localRunState = { runId: null, generatedPath: null, steps: [] };
+let localRunServicePollTimer = null;
+let localRunState = { runId: null, generatedPath: null, steps: [], services: { backend: null, frontend: null } };
 
 function state() {
   return {
@@ -391,7 +397,7 @@ function renderExportSummary(preview) {
     const validationStatus = validated
       ? (validated.ok ? "make validate passed" : "make validate failed")
       : "make validate not run yet";
-    const nextCommands = [`cd ${generatedPath}`, "make validate", "make backend", "make frontend"];
+    const nextCommands = [`cd ${generatedPath}`, "make validate", "make run-backend", "make run-frontend"];
     exportSummary.innerHTML = `
       <article class="export-card local-run-summary">
         <p class="eyebrow">Local run summary</p>
@@ -527,6 +533,8 @@ function updateLocalRunAvailability() {
   localRunValidateBlueprintButton.disabled = !canUseServer;
   localRunGenerateButton.disabled = !canUseServer;
   localRunValidateAppButton.disabled = !canUseServer || !localRunState.runId;
+  updateServiceButtons(canUseServer);
+  renderServiceStatus();
   if (localRunBusy) return;
   if (!plannerAvailable) {
     localRunStatus.textContent = "Static browser mode. Start `agentforge serve-builder` to enable local validate/generate controls.";
@@ -558,21 +566,28 @@ function finishLocalRun(result) {
   localRunBusy = false;
   if (result.run_id) localRunState.runId = result.run_id;
   if (result.generated_path) localRunState.generatedPath = result.generated_path;
-  localRunState.steps = [...localRunState.steps.filter((step) => step.step !== result.step), result];
+  if (result.service) localRunState.services[result.service] = result;
+  if (result.step && !["start-service", "stop-service", "service-status"].includes(result.step)) {
+    localRunState.steps = [...localRunState.steps.filter((step) => step.step !== result.step), result];
+  }
   renderLocalRunResult(result);
   updateLocalRunAvailability();
+  if (result.step === "start-service" || result.step === "service-status") scheduleServiceStatusPoll();
 }
 
 function renderLocalRunResult(result) {
   const statusLabel = result.ok ? "success" : "failed";
   const pathLine = result.generated_path ? `<p><strong>Generated path:</strong> <code>${escapeHtml(result.generated_path)}</code></p>` : "";
   const commandItems = (result.commands || []).map((command) => `<li><code>${escapeHtml(command)}</code></li>`).join("");
-  localRunStatus.textContent = `${localRunStepLabel(result.step)} ${statusLabel}. Exit code ${result.exit_code ?? "n/a"}.`;
+  const label = localRunStepLabel(result.step, result.service);
+  const urlLine = result.url ? `<p><strong>URL:</strong> <a href="${escapeHtml(result.url)}" target="_blank" rel="noreferrer">${escapeHtml(result.url)}</a></p>` : "";
+  localRunStatus.textContent = `${label} ${statusLabel}. Exit code ${result.exit_code ?? "n/a"}.`;
   localRunResults.innerHTML = `
     <article class="local-run-result ${result.ok ? "success" : "error"}">
-      <h3>${escapeHtml(localRunStepLabel(result.step))}: ${escapeHtml(statusLabel)}</h3>
+      <h3>${escapeHtml(label)}: ${escapeHtml(result.status || statusLabel)}</h3>
       <p><strong>Exit code:</strong> ${escapeHtml(result.exit_code ?? "n/a")}</p>
       ${pathLine}
+      ${urlLine}
       ${result.timed_out ? '<p class="error-text">Command timed out.</p>' : ""}
       ${result.truncated ? '<p class="helper-copy">Long logs were truncated for display.</p>' : ""}
       <h4>Equivalent command${(result.commands || []).length === 1 ? "" : "s"}</h4>
@@ -580,7 +595,7 @@ function renderLocalRunResult(result) {
     </article>
   `;
   const logs = [
-    `# ${localRunStepLabel(result.step)} (${statusLabel})`,
+    `# ${label} (${result.status || statusLabel})`,
     ...(result.commands || []).map((command) => `$ ${command}`),
     `# exit_code=${result.exit_code ?? "n/a"}`,
     "\n[stdout]",
@@ -592,10 +607,13 @@ function renderLocalRunResult(result) {
   renderExportSummary(getGenerationPreview(state()));
 }
 
-function localRunStepLabel(step) {
+function localRunStepLabel(step, service = "") {
   if (step === "validate-blueprint") return "Validate Blueprint";
   if (step === "generate") return "Generate app";
   if (step === "validate-app") return "Run make validate";
+  if (step === "start-service") return `Start ${service || "service"}`;
+  if (step === "stop-service") return `Stop ${service || "service"}`;
+  if (step === "service-status") return `${service || "Service"} status`;
   return "Local run";
 }
 
@@ -627,6 +645,63 @@ async function validateLocalRunApp() {
   } catch (error) {
     finishLocalRun({ step: "validate-app", ok: false, status: "error", exit_code: 1, run_id: localRunState.runId, generated_path: localRunState.generatedPath, errors: [error.message], stderr: error.message, stdout: "", commands: [] });
   }
+}
+
+function updateServiceButtons(canUseServer) {
+  const hasRun = Boolean(localRunState.runId);
+  const backendActive = ["starting", "running"].includes(localRunState.services.backend?.status);
+  const frontendActive = ["starting", "running"].includes(localRunState.services.frontend?.status);
+  localRunStartBackendButton.disabled = !canUseServer || !hasRun || backendActive;
+  localRunStopBackendButton.disabled = !canUseServer || !hasRun || !backendActive;
+  localRunStartFrontendButton.disabled = !canUseServer || !hasRun || frontendActive;
+  localRunStopFrontendButton.disabled = !canUseServer || !hasRun || !frontendActive;
+}
+
+function renderServiceStatus() {
+  if (!localRunProcessStatus) return;
+  const serviceRows = ["backend", "frontend"].map((service) => {
+    const result = localRunState.services[service];
+    const status = result?.status || "stopped";
+    const url = result?.url ? `<a href="${escapeHtml(result.url)}" target="_blank" rel="noreferrer">${escapeHtml(result.url)}</a>` : "URL appears after Start";
+    return `<div class="service-status ${escapeHtml(status)}"><strong>${escapeHtml(service)}</strong><span>${escapeHtml(status)}</span><span>${url}</span></div>`;
+  }).join("");
+  localRunProcessStatus.innerHTML = `<h3>Generated app servers</h3>${serviceRows}`;
+}
+
+async function controlLocalRunService(service, action) {
+  if (!plannerAvailable || !plannerBlueprint || !localRunState.runId || localRunBusy) return;
+  const verb = action === "start-service" ? "Starting" : "Stopping";
+  setLocalRunBusy(`${verb} ${service}...`);
+  try {
+    finishLocalRun(await localRunRequest(action, { run_id: localRunState.runId, service }));
+  } catch (error) {
+    finishLocalRun({ step: action, service, ok: false, status: "error", exit_code: 1, run_id: localRunState.runId, generated_path: localRunState.generatedPath, errors: [error.message], stderr: error.message, stdout: "", commands: [] });
+  }
+}
+
+function scheduleServiceStatusPoll() {
+  if (localRunServicePollTimer || !localRunState.runId) return;
+  const hasActive = ["backend", "frontend"].some((service) => ["starting", "running"].includes(localRunState.services[service]?.status));
+  if (!hasActive) return;
+  localRunServicePollTimer = window.setTimeout(pollLocalRunServices, 2000);
+}
+
+async function pollLocalRunServices() {
+  localRunServicePollTimer = null;
+  if (!plannerAvailable || !localRunState.runId) return;
+  const active = ["backend", "frontend"].filter((service) => ["starting", "running"].includes(localRunState.services[service]?.status));
+  if (active.length === 0) return;
+  for (const service of active) {
+    try {
+      const result = await localRunRequest("service-status", { run_id: localRunState.runId, service });
+      localRunState.services[service] = result;
+    } catch {
+      // Keep the last visible status; explicit Start/Stop actions still surface errors.
+    }
+  }
+  renderServiceStatus();
+  updateLocalRunAvailability();
+  scheduleServiceStatusPoll();
 }
 
 async function draftBlueprint() {
@@ -847,9 +922,12 @@ function clearPlannerDraft() {
 }
 
 function resetLocalRunState() {
-  localRunState = { runId: null, generatedPath: null, steps: [] };
+  if (localRunServicePollTimer) window.clearTimeout(localRunServicePollTimer);
+  localRunServicePollTimer = null;
+  localRunState = { runId: null, generatedPath: null, steps: [], services: { backend: null, frontend: null } };
   if (localRunResults) localRunResults.innerHTML = "";
   if (localRunLog) localRunLog.textContent = "Local run logs will appear here after you click a control room action.";
+  renderServiceStatus();
   renderExportSummary(getGenerationPreview(state()));
   updateLocalRunAvailability();
 }
@@ -1199,6 +1277,10 @@ validateButton.addEventListener("click", validateBlueprint);
 localRunValidateBlueprintButton?.addEventListener("click", validateLocalRunBlueprint);
 localRunGenerateButton?.addEventListener("click", generateLocalRunApp);
 localRunValidateAppButton?.addEventListener("click", validateLocalRunApp);
+localRunStartBackendButton?.addEventListener("click", () => controlLocalRunService("backend", "start-service"));
+localRunStopBackendButton?.addEventListener("click", () => controlLocalRunService("backend", "stop-service"));
+localRunStartFrontendButton?.addEventListener("click", () => controlLocalRunService("frontend", "start-service"));
+localRunStopFrontendButton?.addEventListener("click", () => controlLocalRunService("frontend", "stop-service"));
 parseAnalyzerButton.addEventListener("click", previewAnalyzerReport);
 parseExtensionPlanButton.addEventListener("click", previewExtensionPlan);
 copyBlueprintSeedButton.addEventListener("click", copyBlueprintSeed);

@@ -1175,6 +1175,39 @@ button + button,
   padding-left: 18px;
 }
 
+.local-run-process-status {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid rgba(15, 23, 42, 0.10);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.service-status {
+  display: grid;
+  grid-template-columns: minmax(90px, 0.7fr) minmax(80px, 0.6fr) 1.7fr;
+  gap: 10px;
+  align-items: center;
+  font-size: 0.9rem;
+}
+
+.service-status.running span:nth-child(2) {
+  color: #137333;
+  font-weight: 800;
+}
+
+.service-status.starting span:nth-child(2) {
+  color: #9a5b00;
+  font-weight: 800;
+}
+
+.service-status.failed span:nth-child(2),
+.service-status.error span:nth-child(2) {
+  color: #b42318;
+  font-weight: 800;
+}
+
 .local-run-log,
 #local-run-log {
   max-height: 420px;

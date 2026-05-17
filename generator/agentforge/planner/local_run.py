@@ -8,9 +8,14 @@ from __future__ import annotations
 
 import os
 import re
+import signal
 import subprocess
+import threading
+import time
+import urllib.error
+import urllib.request
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -23,6 +28,12 @@ from agentforge.planner import validate_blueprint_result
 _RUN_ID_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{7,63}$")
 _MAX_LOG_CHARS = 12000
 _DEFAULT_TIMEOUT_SECONDS = 120
+_SERVICE_SPECS = {
+    "backend": {"target": "run-backend", "url": "http://127.0.0.1:8000/docs", "health_url": "http://127.0.0.1:8000/health"},
+    "frontend": {"target": "run-frontend", "url": "http://localhost:5173", "health_url": "http://localhost:5173"},
+}
+_PROCESS_LOCK = threading.Lock()
+_PROCESS_REGISTRY: dict[tuple[Path, str, str], "ManagedProcess"] = {}
 
 
 @dataclass(frozen=True)
@@ -34,6 +45,23 @@ class LocalRunPaths:
     run_dir: Path
     blueprint_path: Path
     app_dir: Path
+
+
+@dataclass
+class ManagedProcess:
+    """One generated app process started by the Builder."""
+
+    run_id: str
+    service: str
+    command: list[str]
+    cwd: Path
+    url: str
+    proc: subprocess.Popen[str]
+    started_at: float = field(default_factory=time.time)
+    stdout: str = ""
+    stderr: str = ""
+    stdout_truncated: bool = False
+    stderr_truncated: bool = False
 
 
 def builder_runs_root(repo_root: Path | None = None) -> Path:
@@ -152,6 +180,57 @@ def validate_generated_app(run_id: str, *, repo_root: Path | None = None, timeou
     }
 
 
+def start_generated_app_service(run_id: str, service: str, *, repo_root: Path | None = None) -> dict[str, Any]:
+    """Start one allowlisted generated-app service for a local run."""
+    paths = safe_run_paths(run_id, repo_root=repo_root)
+    spec = _service_spec(service)
+    error = _service_preflight_error(paths, spec["target"], repo_root)
+    if error:
+        return _service_error(paths, service, spec, "start-service", error, repo_root)
+    key = _process_key(paths, service)
+    with _PROCESS_LOCK:
+        existing = _PROCESS_REGISTRY.get(key)
+        if existing and _process_running(existing.proc):
+            return _service_status(paths, service, spec, "start-service", existing, repo_root, duplicate=True)
+        if existing:
+            _PROCESS_REGISTRY.pop(key, None)
+        command = ["make", spec["target"]]
+        try:
+            proc = _popen_allowlisted_service(command, cwd=paths.app_dir)
+        except Exception as exc:
+            return _service_error(paths, service, spec, "start-service", f"failed to start {service}: {exc}", repo_root)
+        managed = ManagedProcess(run_id=paths.run_id, service=service, command=command, cwd=paths.app_dir, url=spec["url"], proc=proc)
+        _PROCESS_REGISTRY[key] = managed
+        _capture_stream(managed, "stdout", proc.stdout)
+        _capture_stream(managed, "stderr", proc.stderr)
+        _wait_for_service_ready(managed, spec)
+        return _service_status(paths, service, spec, "start-service", managed, repo_root)
+
+
+def stop_generated_app_service(run_id: str, service: str, *, repo_root: Path | None = None) -> dict[str, Any]:
+    """Stop one generated-app service previously started by the Builder."""
+    paths = safe_run_paths(run_id, repo_root=repo_root)
+    spec = _service_spec(service)
+    key = _process_key(paths, service)
+    with _PROCESS_LOCK:
+        managed = _PROCESS_REGISTRY.get(key)
+        if not managed:
+            return _service_not_running(paths, service, spec, "stop-service", repo_root)
+        _terminate_process_tree(managed.proc)
+        _PROCESS_REGISTRY.pop(key, None)
+        return _service_status(paths, service, spec, "stop-service", managed, repo_root, stopped=True)
+
+
+def get_generated_app_service_status(run_id: str, service: str, *, repo_root: Path | None = None) -> dict[str, Any]:
+    """Return current status for a Builder-started generated-app service."""
+    paths = safe_run_paths(run_id, repo_root=repo_root)
+    spec = _service_spec(service)
+    managed = _PROCESS_REGISTRY.get(_process_key(paths, service))
+    if not managed:
+        return _service_not_running(paths, service, spec, "service-status", repo_root)
+    return _service_status(paths, service, spec, "service-status", managed, repo_root)
+
+
 def _validate_app_error(paths: LocalRunPaths, repo_root: Path | None, message: str) -> dict[str, Any]:
     return {
         "step": "validate-app",
@@ -204,6 +283,185 @@ def _run_allowlisted_command(command: list[str], *, cwd: Path, timeout_seconds: 
         return {"exit_code": 127, "stdout": "", "stderr": "make executable was not found", "truncated": False}
 
 
+def _popen_allowlisted_service(command: list[str], *, cwd: Path) -> subprocess.Popen[str]:
+    allowed = [["make", spec["target"]] for spec in _SERVICE_SPECS.values()]
+    if command not in allowed:
+        raise ValueError("service command is not allowlisted")
+    kwargs: dict[str, Any] = {}
+    if os.name == "nt":
+        kwargs["creationflags"] = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+    else:
+        kwargs["start_new_session"] = True
+    env = _safe_subprocess_env()
+    if command == ["make", "run-backend"]:
+        # serve-builder may load a repo-level .env for the Builder itself. Generated
+        # demos must still start with their local SQLite default unless the user
+        # runs them manually and chooses a different environment.
+        env["DATABASE_URL"] = "sqlite:///./app.db"
+    return subprocess.Popen(
+        command,
+        cwd=cwd,
+        shell=False,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        env=env,
+        **kwargs,
+    )
+
+
+def _service_spec(service: str) -> dict[str, str]:
+    if service not in _SERVICE_SPECS:
+        raise ValueError("invalid local run service")
+    return _SERVICE_SPECS[service]
+
+
+def _service_preflight_error(paths: LocalRunPaths, target: str, repo_root: Path | None) -> str | None:
+    if not paths.app_dir.exists():
+        return "generated app path does not exist"
+    makefile = paths.app_dir / "Makefile"
+    if not makefile.exists():
+        return "generated app has no Makefile"
+    if not _makefile_has_target(makefile, target):
+        return f"generated app Makefile has no {target} target"
+    return None
+
+
+def _makefile_has_target(makefile: Path, target: str) -> bool:
+    pattern = re.compile(rf"^{re.escape(target)}\s*:")
+    return any(pattern.match(line) for line in makefile.read_text(encoding="utf-8", errors="replace").splitlines())
+
+
+def _process_key(paths: LocalRunPaths, service: str) -> tuple[Path, str, str]:
+    return (paths.root, paths.run_id, service)
+
+
+def _process_running(proc: subprocess.Popen[str]) -> bool:
+    return proc.poll() is None
+
+
+def _service_status(paths: LocalRunPaths, service: str, spec: dict[str, str], step: str, managed: ManagedProcess, repo_root: Path | None, *, duplicate: bool = False, stopped: bool = False) -> dict[str, Any]:
+    running = _process_running(managed.proc) and not stopped
+    exit_code = managed.proc.poll()
+    ready = running and _url_available(spec["health_url"], timeout=0.5)
+    status = "running" if ready else ("starting" if running else ("stopped" if stopped or exit_code is None else "failed"))
+    stdout, stdout_truncated = _truncate_log_with_flag(managed.stdout)
+    stderr, stderr_truncated = _truncate_log_with_flag(managed.stderr)
+    return {
+        "step": step,
+        "ok": status in {"running", "starting", "stopped"},
+        "status": status,
+        "service": service,
+        "run_id": paths.run_id,
+        "run_dir": _display_path(paths.run_dir, repo_root),
+        "generated_path": _display_path(paths.app_dir, repo_root),
+        "url": spec["url"],
+        "health_url": spec["health_url"],
+        "commands": ["cd " + _display_path(paths.app_dir, repo_root), "make " + spec["target"]],
+        "pid": managed.proc.pid,
+        "exit_code": exit_code,
+        "stdout": stdout,
+        "stderr": stderr,
+        "truncated": stdout_truncated or stderr_truncated or managed.stdout_truncated or managed.stderr_truncated,
+        "duplicate": duplicate,
+        "errors": [] if status in {"running", "starting", "stopped"} else [f"{service} process exited"],
+    }
+
+
+def _service_error(paths: LocalRunPaths, service: str, spec: dict[str, str], step: str, message: str, repo_root: Path | None) -> dict[str, Any]:
+    return {
+        "step": step,
+        "ok": False,
+        "status": "error",
+        "service": service,
+        "run_id": paths.run_id,
+        "run_dir": _display_path(paths.run_dir, repo_root),
+        "generated_path": _display_path(paths.app_dir, repo_root),
+        "url": spec["url"],
+        "commands": ["cd " + _display_path(paths.app_dir, repo_root), "make " + spec["target"]],
+        "exit_code": 1,
+        "stdout": "",
+        "stderr": message,
+        "errors": [message],
+    }
+
+
+def _service_not_running(paths: LocalRunPaths, service: str, spec: dict[str, str], step: str, repo_root: Path | None) -> dict[str, Any]:
+    return {
+        "step": step,
+        "ok": True,
+        "status": "stopped",
+        "service": service,
+        "run_id": paths.run_id,
+        "run_dir": _display_path(paths.run_dir, repo_root),
+        "generated_path": _display_path(paths.app_dir, repo_root),
+        "url": spec["url"],
+        "commands": ["cd " + _display_path(paths.app_dir, repo_root), "make " + spec["target"]],
+        "exit_code": None,
+        "stdout": "",
+        "stderr": "",
+        "errors": [],
+    }
+
+
+def _wait_for_service_ready(managed: ManagedProcess, spec: dict[str, str], timeout_seconds: float = 15.0) -> bool:
+    deadline = time.time() + timeout_seconds
+    while time.time() < deadline:
+        if not _process_running(managed.proc):
+            return False
+        if _url_available(spec["health_url"], timeout=0.5):
+            return True
+        time.sleep(0.25)
+    return False
+
+
+def _url_available(url: str, *, timeout: float) -> bool:
+    try:
+        with urllib.request.urlopen(url, timeout=timeout) as response:
+            return 200 <= response.status < 500
+    except (urllib.error.URLError, TimeoutError, OSError):
+        return False
+
+
+def _capture_stream(managed: ManagedProcess, stream_name: str, stream: Any) -> None:
+    if stream is None:
+        return
+
+    def reader() -> None:
+        for chunk in iter(stream.readline, ""):
+            with _PROCESS_LOCK:
+                current = getattr(managed, stream_name)
+                next_value, truncated = _truncate_log_with_flag(current + chunk)
+                setattr(managed, stream_name, next_value)
+                if truncated:
+                    setattr(managed, f"{stream_name}_truncated", True)
+        try:
+            stream.close()
+        except Exception:
+            pass
+
+    threading.Thread(target=reader, daemon=True).start()
+
+
+def _terminate_process_tree(proc: subprocess.Popen[str]) -> None:
+    if proc.poll() is not None:
+        return
+    try:
+        if os.name == "nt":
+            subprocess.run(["taskkill", "/PID", str(proc.pid), "/T", "/F"], capture_output=True, text=True, timeout=10, check=False)
+        else:
+            os.killpg(proc.pid, signal.SIGTERM)
+        proc.wait(timeout=10)
+    except Exception:
+        try:
+            if os.name == "nt":
+                proc.kill()
+            else:
+                os.killpg(proc.pid, signal.SIGKILL)
+        except Exception:
+            pass
+
+
 def _safe_subprocess_env() -> dict[str, str]:
     # Keep secrets out, but preserve ordinary OS/toolchain variables needed by
     # Python, GNU Make, npm, shells, and Windows runtime DLL/socket discovery.
@@ -252,9 +510,12 @@ def _display_path(path: Path, repo_root: Path | None) -> str:
 
 __all__ = [
     "builder_runs_root",
+    "get_generated_app_service_status",
     "generate_local_app",
     "make_run_id",
     "safe_run_paths",
+    "start_generated_app_service",
+    "stop_generated_app_service",
     "validate_blueprint_for_local_run",
     "validate_generated_app",
 ]
