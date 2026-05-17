@@ -53,6 +53,18 @@ def test_assistant_panel_is_inside_describe_step():
     )
 
 
+def test_describe_step_makes_assistant_primary_and_keeps_classic_draft():
+    html = _read("index.html")
+    describe_block = html[html.index('id="new-app-flow"'):html.index('id="review-flow"')]
+
+    assert "assistant-primary-path" in describe_block
+    assert describe_block.index('id="assistant-panel"') < describe_block.index("classic-draft-panel")
+    assert "Plan with the Builder Assistant" in describe_block
+    assert "Use classic text-only draft" in describe_block
+    assert "Draft from text only" in describe_block
+    assert "Draft app plan" not in describe_block
+
+
 def test_app_mjs_calls_assistant_endpoints_and_handles_fallback():
     script = _read("app.mjs")
 
@@ -63,6 +75,7 @@ def test_app_mjs_calls_assistant_endpoints_and_handles_fallback():
     assert "clearAssistantConversation" in script
     assert "updateAssistantAvailability" in script
     assert "plannerAvailable" in script
+    assert "Fallback to scripted" in script
     # Fallback message wired when planner is offline.
     assert "Static mode" in script
     # No hidden mutation from message handling: response handler must not auto-apply.
@@ -80,9 +93,13 @@ def test_app_mjs_exposes_explicit_apply_and_reject_paths():
     # Apply must mutate the in-memory Builder draft via the existing helper.
     apply_handler = _extract_function(script, "applyAssistantProposal")
     assert apply_handler is not None
+    assert "plannerBlueprint = validated.blueprint" in apply_handler
     assert "applyBlueprintToForm(plannerBlueprint)" in apply_handler
     assert "plannerYaml" in apply_handler
     assert "updatePreview()" in apply_handler
+    assert "setActiveStep(\"review\")" in apply_handler
+    assert "Apply and review plan" in script
+    assert "you do not need to click Draft app plan again" in apply_handler
     # Reject must NOT touch the Builder draft.
     reject_handler = _extract_function(script, "rejectAssistantProposal")
     assert reject_handler is not None
@@ -117,6 +134,8 @@ def test_styles_css_defines_assistant_panel_styles():
     css = _read("styles.css")
 
     for selector in (
+        ".assistant-primary-path",
+        ".classic-draft-panel",
         ".assistant-panel",
         ".assistant-log",
         ".assistant-message",
@@ -134,10 +153,27 @@ def test_styles_css_defines_assistant_panel_styles():
 
 def test_index_html_documents_apply_reject_workflow():
     html = _read("index.html")
+    script = _read("app.mjs")
 
     # The phase 2 placeholder copy must not leak into the phase 3 UI.
     assert "Apply/Reject controls arrive in a later phase" not in html
-    assert "Apply" in html and "Reject" in html
+    assert "Apply and review plan" in script
+    assert "Reject" in html
+
+
+def test_app_mjs_renders_static_scripted_live_status_labels_safely():
+    script = _read("app.mjs")
+
+    mode_text = _extract_function(script, "assistantModeText")
+    assert mode_text is not None
+    assert "Static mode" in mode_text
+    assert "Local scripted" in mode_text
+    assert "Live OpenAI" in mode_text
+    assert "Fallback to scripted" in mode_text
+    status = _extract_function(script, "checkPlannerStatus")
+    assert status is not None
+    assert "status.mode" in status
+    assert "status.live_provider" in status
 
 
 def test_app_mjs_renders_guided_questions_with_chips_and_examples():
@@ -247,6 +283,41 @@ def test_styles_css_defines_assistant_guidance_styles():
         ".assistant-guidance-tag",
     ):
         assert selector in css
+
+
+def test_app_mjs_model_driven_apply_updates_review_and_live_plan():
+    script = _read("app.mjs")
+
+    assert "modelDrivenSummary" in script
+    assert "modelDrivenCapabilityGroups" in script
+    assert "renderModelDrivenReviewSummary" in script
+    preview = _extract_function(script, "renderGenerationPreview")
+    assert preview is not None
+    assert "model-driven-review-summary" in preview
+    assert "you do not need to click Draft app plan again" in preview
+    build_summary = _extract_function(script, "renderBuildSummary")
+    assert build_summary is not None
+    assert "modelDrivenCapabilityGroups(modelSummary)" in build_summary
+    assert "activeBlueprint?.display_name" in build_summary
+
+
+def test_app_mjs_model_driven_review_replaces_scoring_customization():
+    script = _read("app.mjs")
+
+    render_customization = _extract_function(script, "renderCustomizationPanel")
+    assert render_customization is not None
+    assert "isModelDrivenBlueprint" in render_customization
+    assert "renderModelDrivenReviewSummary" in render_customization
+    model_summary = _extract_function(script, "renderModelDrivenReviewSummary")
+    assert model_summary is not None
+    assert "Model-driven app summary" in model_summary
+    assert "UI recipe/composition" in model_summary
+    assert "Scoring / triage labels" not in model_summary
+
+
+def test_styles_css_defines_model_driven_summary_styles():
+    css = _read("styles.css")
+    assert ".model-driven-summary-card" in css
 
 
 def test_readme_documents_assistant_chat_mode():

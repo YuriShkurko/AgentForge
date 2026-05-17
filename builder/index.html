@@ -60,26 +60,10 @@
                 <h2 id="describe-heading">Describe the app idea</h2>
                 <p id="planner-status">Static mode. Start `agentforge serve-builder` to enable scripted drafting.</p>
               </div>
-              <label class="idea-label">
-                What should the app help someone do?
-                <textarea id="planner-idea">Score incoming support tickets and help an operator triage the most urgent requests.</textarea>
-              </label>
-              <div id="idea-examples" class="example-row" aria-label="Example app ideas"></div>
-              <div class="actions primary-actions">
-                <button id="draft-blueprint" class="primary-button" type="button">Draft app plan</button>
-                <button id="clarify-idea" class="quiet-button" type="button">Ask clarifying questions</button>
-              </div>
-              <div id="clarification-panel" class="planner-output hidden">
-                <h3>Questions</h3>
-                <div id="clarification-questions" class="question-list"></div>
-                <div class="actions">
-                  <button id="submit-answers" type="button">Submit answers</button>
-                </div>
-              </div>
-              <section class="assistant-panel" id="assistant-panel" aria-labelledby="assistant-heading" data-state="static">
+              <section class="assistant-panel assistant-primary-path" id="assistant-panel" aria-labelledby="assistant-heading" data-state="static">
                 <div class="section-head">
-                  <p class="eyebrow">Optional · scripted · local</p>
-                  <h3 id="assistant-heading">Chat with the Builder Assistant</h3>
+                  <p class="eyebrow" id="assistant-mode-label">Assistant-first path · local scripted by default</p>
+                  <h3 id="assistant-heading">Plan with the Builder Assistant</h3>
                   <p id="assistant-status" class="assistant-status">Static mode. Start `agentforge serve-builder` to enable the local scripted assistant.</p>
                 </div>
                 <div id="assistant-log" class="assistant-log" role="log" aria-live="polite" aria-label="Assistant conversation"></div>
@@ -94,8 +78,28 @@
                     <button id="assistant-reset" class="quiet-button" type="button">Reset chat</button>
                   </div>
                 </form>
-                <p class="assistant-footnote">Assistant proposals are local and scripted. Review the diff, then click Apply to install the Blueprint in the Builder draft or Reject to keep the current draft.</p>
+                <p class="assistant-footnote">Assistant proposals are reviewed before Apply. Apply and review plan installs only the validated in-memory Builder draft; Reject keeps the current draft unchanged.</p>
               </section>
+              <details class="inline-advanced classic-draft-panel">
+                <summary>Use classic text-only draft</summary>
+                <p class="helper-copy">Prefer the older one-shot planner? Use these controls instead of the assistant conversation.</p>
+                <label class="idea-label">
+                  What should the app help someone do?
+                  <textarea id="planner-idea">Score incoming support tickets and help an operator triage the most urgent requests.</textarea>
+                </label>
+                <div id="idea-examples" class="example-row" aria-label="Example app ideas"></div>
+                <div class="actions primary-actions">
+                  <button id="draft-blueprint" class="quiet-button" type="button">Draft from text only</button>
+                  <button id="clarify-idea" class="quiet-button" type="button">Ask clarifying questions</button>
+                </div>
+                <div id="clarification-panel" class="planner-output hidden">
+                  <h3>Questions</h3>
+                  <div id="clarification-questions" class="question-list"></div>
+                  <div class="actions">
+                    <button id="submit-answers" type="button">Submit answers</button>
+                  </div>
+                </div>
+              </details>
             </section>
 
             <section id="review-flow" class="panel review-panel wizard-step" data-step="review" aria-labelledby="review-heading">

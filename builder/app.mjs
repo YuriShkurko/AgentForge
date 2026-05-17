@@ -82,6 +82,8 @@ let customizationDirty = false;
 let renderedCustomizationArchetype = "";
 let assistantSessionState = null;
 let assistantBusy = false;
+let assistantMode = "static";
+let assistantLiveProvider = false;
 
 function state() {
   return {
@@ -154,11 +156,16 @@ function renderModules() {
     .join("");
 }
 
-function renderCustomizationPanel(current) {
+function renderCustomizationPanel(current, activeBlueprint = plannerBlueprint) {
   if (!customizePanel) return;
+  customizeFamily.textContent = `Detected app family: ${getArchetypeFamilyLabel(current.archetype)}`;
+  if (isModelDrivenBlueprint(activeBlueprint || current)) {
+    renderedCustomizationArchetype = current.archetype;
+    customizeFields.innerHTML = renderModelDrivenReviewSummary(activeBlueprint);
+    return;
+  }
   const currentDefaults = createDefaultCustomizationFromForm();
   if (!customizationDirty) customizationValues = currentDefaults;
-  customizeFamily.textContent = `Detected app family: ${getArchetypeFamilyLabel(current.archetype)}`;
   if (renderedCustomizationArchetype === current.archetype && customizationDirty) return;
   renderedCustomizationArchetype = current.archetype;
   const c = customizationDirty && customizationValues ? customizationValues : currentDefaults;
@@ -234,16 +241,18 @@ function updatePreview() {
   statusPill.textContent = issues.length ? `${issues.length} issue${issues.length === 1 ? "" : "s"}` : "Valid draft";
   statusPill.classList.toggle("warning", issues.length > 0);
   validationSummary.textContent = issues.length ? issues.join(" ") : "Blueprint source is ready for `agentforge plan`.";
-  renderGenerationPreview(preview);
-  renderBuildSummary(current, preview, issues);
-  renderCustomizationPanel(current);
+  renderGenerationPreview(preview, plannerBlueprint);
+  renderBuildSummary(current, preview, issues, plannerBlueprint);
+  renderCustomizationPanel(current, plannerBlueprint);
 }
 
-function renderBuildSummary(current, preview, issues) {
-  summaryName.textContent = current.displayName || current.name || "Untitled app";
-  summaryArchetype.textContent = plainArchetype(preview.archetype);
+function renderBuildSummary(current, preview, issues, activeBlueprint = plannerBlueprint) {
+  const modelSummary = modelDrivenSummary(activeBlueprint);
+  summaryName.textContent = activeBlueprint?.display_name || current.displayName || current.name || "Untitled app";
+  summaryArchetype.textContent = modelSummary ? "Model-driven CRUD/workflow app" : plainArchetype(preview.archetype);
   summaryStatus.textContent = issues.length ? `${issues.length} issue${issues.length === 1 ? "" : "s"} to resolve` : plannerBlueprint ? "Plan drafted — ready to review" : "Ready for an app idea";
-  summaryCapabilityGroups.innerHTML = capabilityGroups(preview)
+  const groups = modelSummary ? modelDrivenCapabilityGroups(modelSummary) : capabilityGroups(preview);
+  summaryCapabilityGroups.innerHTML = groups
     .map((group) => `
       <section>
         <h3>${escapeHtml(group.title)}</h3>
@@ -291,6 +300,61 @@ function capabilityGroups(preview) {
   return groups.filter((group) => group.items.length > 0);
 }
 
+function isModelDrivenBlueprint(blueprint) {
+  return Boolean(blueprint && blueprint.app_archetype === "model_driven_app" && blueprint.model);
+}
+
+function modelDrivenSummary(blueprint) {
+  if (!isModelDrivenBlueprint(blueprint)) return null;
+  const model = blueprint.model || {};
+  const entities = Array.isArray(model.entities) ? model.entities : [];
+  const imports = Array.isArray(model.imports) ? model.imports : [];
+  const providers = Array.isArray(model.providers) ? model.providers : [];
+  const ui = model.ui || {};
+  const fieldCount = entities.reduce((total, entity) => total + (Array.isArray(entity.fields) ? entity.fields.length : 0), 0);
+  return {
+    entities,
+    imports,
+    providers,
+    fieldCount,
+    entityLabel: entities.map((entity) => entity.label_plural || entity.name).filter(Boolean).join(", ") || "(none)",
+    importLabel: imports.length ? imports.map((entry) => entry.label || entry.id || entry.entity || "import").join(", ") : "None",
+    providerLabel: providers.length ? providers.map((entry) => `${entry.label || entry.id || "provider"} (${entry.type || "provider"})`).join(", ") : "None",
+    uiLabel: [ui.recipe, ui.composition].filter(Boolean).join(" / ") || "Default model-driven UI",
+  };
+}
+
+function modelDrivenCapabilityGroups(summary) {
+  return [
+    { title: "Model", items: [`${summary.entities.length} entities`, `${summary.fieldCount} fields`, `Entities: ${summary.entityLabel}`] },
+    { title: "Data sources", items: [`Imports: ${summary.importLabel}`, `Providers: ${summary.providerLabel}`] },
+    { title: "Product surfaces", items: ["Generated CRUD routes", "Entity list/detail forms", `UI: ${summary.uiLabel}`] },
+    { title: "Next action", items: ["Continue to Review", "No Draft app plan click required"] },
+  ];
+}
+
+function renderModelDrivenReviewSummary(blueprint) {
+  const summary = modelDrivenSummary(blueprint);
+  if (!summary) return '<p class="helper-copy wide">Model-driven summary will appear after an assistant proposal is applied.</p>';
+  const entityRows = summary.entities.map((entity) => {
+    const fields = Array.isArray(entity.fields) ? entity.fields : [];
+    const names = fields.map((field) => field.label || field.name).filter(Boolean).join(", ") || "No fields";
+    return `<li><strong>${escapeHtml(entity.label_plural || entity.name)}</strong>: ${escapeHtml(fields.length)} fields — ${escapeHtml(names)}</li>`;
+  }).join("");
+  return `
+    <div class="customize-group wide model-driven-review-summary"><h3>Model-driven app summary</h3></div>
+    <div class="wide model-driven-summary-card">
+      <p class="helper-copy">This assistant-applied Blueprint is the active Builder draft. Continue to Review; no extra Draft app plan step is required.</p>
+      <ul>
+        ${entityRows}
+        <li><strong>Imports:</strong> ${escapeHtml(summary.importLabel)}</li>
+        <li><strong>Providers:</strong> ${escapeHtml(summary.providerLabel)}</li>
+        <li><strong>UI recipe/composition:</strong> ${escapeHtml(summary.uiLabel)}</li>
+      </ul>
+    </div>
+  `;
+}
+
 function setActiveStep(step) {
   activeStep = step;
   document.querySelectorAll("[data-step]").forEach((panel) => {
@@ -303,13 +367,28 @@ function setActiveStep(step) {
   if (activePanel) activePanel.focus?.({ preventScroll: true });
 }
 
-function renderGenerationPreview(preview) {
+function renderGenerationPreview(preview, activeBlueprint = plannerBlueprint) {
+  const modelSummary = modelDrivenSummary(activeBlueprint);
+  const modelBlock = modelSummary ? `
+    <div class="preview-block outcome-block wide-preview model-driven-review-summary">
+      <p class="eyebrow">Model-driven draft</p>
+      <h3>${escapeHtml(modelSummary.entities.length)} entities · ${escapeHtml(modelSummary.fieldCount)} fields</h3>
+      <ul>
+        <li>Entities: <strong>${escapeHtml(modelSummary.entityLabel)}</strong></li>
+        <li>Imports: <strong>${escapeHtml(modelSummary.importLabel)}</strong></li>
+        <li>Providers: <strong>${escapeHtml(modelSummary.providerLabel)}</strong></li>
+        <li>UI recipe: <strong>${escapeHtml(modelSummary.uiLabel)}</strong></li>
+      </ul>
+      <p class="helper-copy">This assistant-applied Blueprint is already validated. Continue to Review; you do not need to click Draft app plan again.</p>
+    </div>
+  ` : "";
   generationPreview.innerHTML = `
     <div class="preview-block outcome-block">
       <p class="eyebrow">App type</p>
-      <h3>${escapeHtml(preview.archetype)}</h3>
+      <h3>${escapeHtml(modelSummary ? "Model-driven CRUD/workflow app" : preview.archetype)}</h3>
       <p class="helper-copy">A local app demo with deterministic validation and no required external services.</p>
     </div>
+    ${modelBlock}
     <div class="preview-block outcome-block wide-preview">
       <p class="eyebrow">What you will get</p>
       <ul>${preview.outputs.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>
@@ -347,23 +426,40 @@ async function checkPlannerStatus() {
     if (!response.ok) throw new Error("planner unavailable");
     const status = await response.json();
     plannerAvailable = status.planner_available === true;
+    assistantMode = status.mode || (status.live_provider ? "live" : "scripted");
+    assistantLiveProvider = status.live_provider === true;
     plannerStatus.textContent = plannerAvailable
-      ? "Local planner connected. Draft, clarify, refine, and validate use the deterministic Python schema."
+      ? "Local planner connected. Use the assistant-first path, or open classic text-only draft controls."
       : "Static mode. Start `agentforge serve-builder` to enable scripted drafting.";
   } catch {
     plannerAvailable = false;
+    assistantMode = "static";
+    assistantLiveProvider = false;
     plannerStatus.textContent = "Static mode. Start `agentforge serve-builder` to enable scripted drafting.";
   }
   updateAssistantAvailability();
 }
 
+function assistantModeText(turnMode = null, fallbackReason = null) {
+  if (!plannerAvailable) return "Static mode";
+  if (fallbackReason) return `Fallback to scripted (${fallbackReason})`;
+  if (turnMode === "live" || assistantLiveProvider || assistantMode === "live") return "Live OpenAI";
+  return "Local scripted";
+}
+
+function updateAssistantModeLabel(turnMode = null, fallbackReason = null) {
+  const label = document.querySelector("#assistant-mode-label");
+  if (label) label.textContent = `Assistant-first path · ${assistantModeText(turnMode, fallbackReason)}`;
+}
+
 function updateAssistantAvailability() {
   if (!assistantPanel) return;
   assistantPanel.dataset.state = plannerAvailable ? "ready" : "static";
+  updateAssistantModeLabel();
   if (plannerAvailable) {
     assistantStatus.textContent = assistantSessionState
-      ? "Local assistant connected. Continue the conversation or reset to start over."
-      : "Local assistant connected. Send your app idea to start a scripted conversation.";
+      ? `${assistantModeText()} assistant connected. Continue the conversation or reset to start over.`
+      : `${assistantModeText()} assistant connected. Send your app idea to start a guided plan.`;
     assistantSendButton.disabled = assistantBusy;
     assistantInput.disabled = false;
   } else {
@@ -743,7 +839,7 @@ function renderAssistantProposal(proposal) {
     </ul>
     ${changes ? `<details class="assistant-proposal-changes" open><summary>Changed fields (${changesList.length})</summary><ul class="assistant-change-list">${changes}</ul></details>` : ""}
     <div class="assistant-proposal-actions actions">
-      <button id="assistant-apply" type="button" class="primary-button" ${applyDisabled}>Apply to Builder draft</button>
+      <button id="assistant-apply" type="button" class="primary-button" ${applyDisabled}>Apply and review plan</button>
       <button id="assistant-reject" type="button" class="quiet-button" ${applyDisabled}>Reject</button>
     </div>
     <p class="assistant-proposal-note">Apply mutates only the in-memory Builder draft and re-runs schema validation. Reject keeps your current draft unchanged.</p>
@@ -760,6 +856,10 @@ function clearAssistantConversation() {
 
 function handleAssistantResponse(result) {
   assistantSessionState = result.state || null;
+  updateAssistantModeLabel(result.turn_mode, result.fallback_reason);
+  if (result.fallback_reason) {
+    assistantStatus.textContent = `Assistant mode: ${assistantModeText(result.turn_mode, result.fallback_reason)}.`;
+  }
   (result.messages || []).forEach((message) => appendAssistantMessage("assistant", message));
   renderAssistantQuestions(result.questions, result.question_details);
   renderAssistantProposal(result.proposal);
@@ -829,9 +929,19 @@ async function applyAssistantProposal() {
     });
     clarificationPanel.classList.add("hidden");
     draftPanel.classList.remove("hidden");
-    plannerStatus.textContent = "Assistant proposal applied. Review the Builder draft, then continue to commands.";
+    const appliedSummary = modelDrivenSummary(plannerBlueprint);
+    const successParts = ["Blueprint applied", `App type: ${plannerBlueprint.app_archetype || "app"}`];
+    if (appliedSummary) {
+      successParts.push(
+        `Entities: ${appliedSummary.entityLabel}`,
+        `Imports: ${appliedSummary.importLabel}`,
+        `Providers: ${appliedSummary.providerLabel}`,
+        "Next action: Continue to Review",
+      );
+    }
+    plannerStatus.textContent = `Assistant proposal applied. ${successParts.join(" · ")}.`;
     setActiveStep("review");
-    appendAssistantMessage("assistant", "Applied the proposed Blueprint to the Builder draft. Validation passed.");
+    appendAssistantMessage("assistant", `${successParts.join(". ")}. Validation passed; you do not need to click Draft app plan again.`);
     assistantSessionState = { ...assistantSessionState, proposal: null, status: "applied" };
     renderAssistantProposal(null);
     updatePreview();
@@ -863,12 +973,11 @@ async function submitAssistantMessage() {
       ? await assistantRequest("message", { state: assistantSessionState, message: text })
       : await assistantRequest("start", { idea: text });
     handleAssistantResponse(result);
-    assistantStatus.textContent = "Local assistant connected. Continue the conversation or reset to start over.";
+    assistantStatus.textContent = `${assistantModeText(result.turn_mode, result.fallback_reason)} assistant connected. Continue the conversation or reset to start over.`;
   } catch (error) {
     appendAssistantMessage("assistant", `Assistant error: ${error.message}`);
   } finally {
-    assistantBusy = false;
-    if (plannerAvailable) assistantSendButton.disabled = false;
+    setAssistantBusy(false);
     assistantInput.focus({ preventScroll: true });
   }
 }
@@ -929,7 +1038,7 @@ assistantForm?.addEventListener("submit", (event) => {
 });
 assistantResetButton?.addEventListener("click", () => {
   clearAssistantConversation();
-  if (plannerAvailable) assistantStatus.textContent = "Local assistant connected. Send your app idea to start a scripted conversation.";
+  if (plannerAvailable) assistantStatus.textContent = `${assistantModeText()} assistant connected. Send your app idea to start a guided plan.`;
   assistantInput.focus({ preventScroll: true });
 });
 assistantQuestions?.addEventListener("click", (event) => {
