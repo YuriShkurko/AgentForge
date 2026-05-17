@@ -13,6 +13,7 @@ from typing import Any
 
 from agentforge.planner import PlannerResult, validate_blueprint_result
 from agentforge.planner.assistant import BuilderAssistant
+from agentforge.planner.local_run import generate_local_app, validate_blueprint_for_local_run, validate_generated_app
 from agentforge.planner.scripted import ScriptedPlanner
 
 
@@ -115,6 +116,12 @@ class PlannerRequestHandler(SimpleHTTPRequestHandler):
                 ))
             elif self.path == "/api/planner/assistant/apply-preview":
                 self._write_json(self.server.assistant.apply_preview(_optional_dict(payload.get("proposal"))))
+            elif self.path == "/api/planner/local-run/validate-blueprint":
+                self._write_json(validate_blueprint_for_local_run(_optional_dict(payload.get("blueprint"))))
+            elif self.path == "/api/planner/local-run/generate":
+                self._write_json(generate_local_app(_optional_dict(payload.get("blueprint"))))
+            elif self.path == "/api/planner/local-run/validate-app":
+                self._write_json(validate_generated_app(str(payload.get("run_id") or "")))
             else:
                 self._write_json({"error": "unknown planner endpoint"}, HTTPStatus.NOT_FOUND)
                 return

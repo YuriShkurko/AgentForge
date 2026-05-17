@@ -59,6 +59,8 @@ agentforge draft-blueprint \
 
 With `agentforge serve-builder` running, the Describe step exposes an inline chat panel backed by the deterministic local assistant (`/api/planner/assistant/*`). Use this path when you want to show the conversational front door for a model-driven app.
 
+After applying an assistant proposal, use the Review step's Local Control Room to validate the active Blueprint, generate a sandboxed app under `.tmp/builder-runs/<safe-run-id>/app`, and run `make validate` while showing the equivalent commands and logs. This is local-only: no GitHub, deployment, arbitrary shell commands, output path selection, or generated app server process management.
+
 Suggested flow:
 
 1. Send a deliberately vague idea such as `app` and show that the assistant asks bounded clarifying questions instead of guessing.

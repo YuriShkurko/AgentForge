@@ -111,14 +111,17 @@ Builder Assistant should reuse the current Builder/planner shape instead of intr
 - **Risks mitigated**: spec is bounded (entities + fields only — scaffolding stays scripted); every blueprint flows through `DomainPack.model_validate`; secrets are read from env only and never logged or echoed; fallback path keeps Builder usable when the live call misbehaves.
 - **Done**: default offline, live mode opt-in, mocked in tests, every output validated and user-applied.
 
-### Phase 7 — export/publish planning
+### Phase 7 — Builder Local Control Room MVP (shipped)
 
-- **Goal**: plan future export/publish flows without implementing side effects.
-- **User-visible behavior**: assistant can explain how to save a Blueprint, run `agentforge generate`, validate, and prepare manual publishing steps.
-- **Files likely touched**: docs, Builder helper copy, assistant response templates.
-- **Tests needed**: copy text and command generation tests where practical.
-- **Risks**: users interpreting planning as automatic publishing, mixing with deployment automation.
-- **Done criteria**: assistant offers planning/checklists only; no GitHub or deployment calls.
+- **Goal**: after an assistant proposal is applied, let the local Builder validate the active Blueprint, generate the app into a safe local run directory, run the generated app validation target, and show the exact commands/logs back in the UI.
+- **User-visible behavior**: Review gains a local control room panel for the active in-memory Blueprint. The user can run a bounded sequence: validate Blueprint → generate to `.tmp/builder-runs/<safe-run-id>/` → run `make validate` inside that generated app → inspect stdout/stderr, exit status, generated path, and copyable equivalent CLI commands.
+- **Safety boundaries**: no GitHub repo creation, no deployment, no arbitrary shell commands, no secret collection/display, no writes outside `.tmp/builder-runs`, no generated-app server start/stop, no backend/frontend process management, and no background automation. Every action is user-clicked, bounded to known commands, and tied to the active validated Blueprint.
+- **Architecture plan**: add planner-server endpoints for a local run lifecycle such as `/api/planner/local-run/validate-blueprint`, `/api/planner/local-run/generate`, and `/api/planner/local-run/validate-app`. The server writes a transient Blueprint file under the run directory, invokes existing AgentForge generation/validation paths with fixed arguments, captures logs with timeouts, and returns structured step results. The Builder UI renders the run state, command equivalents, log output, and next safe action.
+- **Files likely touched**: `generator/agentforge/planner/server.py`, possibly a small helper module such as `generator/agentforge/planner/local_run.py`, `builder/app.mjs`, `builder/index.html`, `builder/styles.css`, `builder/README.md`, `docs/DEMO_GUIDE.md`, and tests under `tests/generator/`.
+- **Tests needed**: safe run-id/path traversal rejection, writes only under `.tmp/builder-runs`, Blueprint validation success/failure, generation success/failure, `make validate` success/failure, timeout/log truncation behavior, command allowlist enforcement, UI button/log rendering, and no GitHub/deploy/process-management calls.
+- **Risks**: path traversal or accidental writes outside the sandbox, exposing secrets in logs, hanging validation commands, confusing local validation with deployment, and making the browser appear to run arbitrary commands.
+- **Done criteria**: the full local sequence works from Builder for an assistant-applied Blueprint; failures are visible and actionable; command/log output is copyable; generated files stay under `.tmp/builder-runs`; no GitHub, deployment, arbitrary shell, or app process management is implemented.
+- **Done**: implemented serve-builder-only local run endpoints for Blueprint validation, generation, and `make validate`; Builder Review renders status/path/commands/logs; tests cover path safety, command allowlisting, failures, timeout/log truncation, static unavailable state, and browser smoke.
 
 ### Phase 8 — GitHub repo creation later, not now
 
@@ -205,7 +208,7 @@ Later implementation phases should update:
 
 ## 10. Recommended next prompt
 
-Phases 1–6 are shipped (deterministic state machine, chat UI, Apply/Reject diff, imports/providers/relations helpers, validation explanation loop, optional live-LLM adapter behind an env flag).
+Phases 1–7 are shipped (deterministic state machine, chat UI, Apply/Reject diff, imports/providers/relations helpers, validation explanation loop, optional live-LLM adapter behind an env flag, and Builder Local Control Room MVP).
 
 Phase 6 is opt-in. Default Builder Assistant mode stays scripted with zero network calls. To enable the live adapter:
 
@@ -220,5 +223,4 @@ In live mode the LLM only proposes a bounded model spec (entities + fields). The
 
 Remaining un-shipped phases:
 
-- Phase 7 (export/publish planning) — copy and command-generation helpers; no side effects.
 - Phase 8 (GitHub repo creation) — deferred indefinitely; out of scope for Builder Assistant v0.

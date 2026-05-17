@@ -39,6 +39,8 @@ Then open the local URL and describe the app you want to build.
 
 ## Optional live Builder Assistant mode
 
+After an assistant proposal is applied, the Review step also exposes a **Local Control Room** when running through `agentforge serve-builder`. It can validate the active in-memory Blueprint, generate the app under `.tmp/builder-runs/<safe-run-id>/app`, run the generated app's fixed `make validate` target, and show status, exit code, generated path, equivalent commands, and stdout/stderr logs. Static browser mode shows these controls as unavailable. The control room does not accept arbitrary shell commands or output paths, and it does not create GitHub repos, deploy, or start/stop generated backend/frontend servers.
+
 The Builder Assistant is scripted by default and does not require an API key, network access, GitHub access, deployment credentials, or OAuth. Live LLM assistance is strictly opt-in for local development:
 
 ```bash

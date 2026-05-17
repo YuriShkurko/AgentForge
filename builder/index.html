@@ -134,6 +134,24 @@
                   <button id="reset-customization" class="quiet-button" type="button">Reset app details</button>
                 </div>
               </section>
+              <section id="local-run-panel" class="local-run-panel" aria-labelledby="local-run-heading" data-state="static">
+                <div class="section-head">
+                  <p class="eyebrow">Local Control Room</p>
+                  <h2 id="local-run-heading">Validate and generate locally</h2>
+                  <p id="local-run-status">Static browser mode. Start `agentforge serve-builder` and apply an assistant proposal to enable local validation.</p>
+                </div>
+                <div class="local-run-actions actions">
+                  <button id="local-run-validate-blueprint" type="button">Validate active Blueprint</button>
+                  <button id="local-run-generate" type="button">Generate local app</button>
+                  <button id="local-run-validate-app" type="button">Run make validate</button>
+                </div>
+                <div id="local-run-results" class="local-run-results" aria-live="polite"></div>
+                <details class="inline-advanced local-run-commands">
+                  <summary>Equivalent CLI commands and logs</summary>
+                  <pre id="local-run-log">Local run logs will appear here after you click a control room action.</pre>
+                </details>
+                <p class="helper-copy">Runs are sandboxed under `.tmp/builder-runs/&lt;safe-run-id&gt;/`. No GitHub, deployment, arbitrary shell commands, or app server process management is available here.</p>
+              </section>
               <details class="inline-advanced refine-row">
                 <summary>Refine or validate this plan</summary>
                 <label>

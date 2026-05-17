@@ -68,6 +68,13 @@ const assistantForm = document.querySelector("#assistant-form");
 const assistantInput = document.querySelector("#assistant-input");
 const assistantSendButton = document.querySelector("#assistant-send");
 const assistantResetButton = document.querySelector("#assistant-reset");
+const localRunPanel = document.querySelector("#local-run-panel");
+const localRunStatus = document.querySelector("#local-run-status");
+const localRunValidateBlueprintButton = document.querySelector("#local-run-validate-blueprint");
+const localRunGenerateButton = document.querySelector("#local-run-generate");
+const localRunValidateAppButton = document.querySelector("#local-run-validate-app");
+const localRunResults = document.querySelector("#local-run-results");
+const localRunLog = document.querySelector("#local-run-log");
 
 const plannerApi = window.location.protocol.startsWith("http") ? `${window.location.origin}/api/planner` : "http://127.0.0.1:8765/api/planner";
 let plannerAvailable = false;
@@ -84,6 +91,8 @@ let assistantSessionState = null;
 let assistantBusy = false;
 let assistantMode = "static";
 let assistantLiveProvider = false;
+let localRunBusy = false;
+let localRunState = { runId: null, generatedPath: null, steps: [] };
 
 function state() {
   return {
@@ -244,6 +253,7 @@ function updatePreview() {
   renderGenerationPreview(preview, plannerBlueprint);
   renderBuildSummary(current, preview, issues, plannerBlueprint);
   renderCustomizationPanel(current, plannerBlueprint);
+  updateLocalRunAvailability();
 }
 
 function renderBuildSummary(current, preview, issues, activeBlueprint = plannerBlueprint) {
@@ -438,6 +448,7 @@ async function checkPlannerStatus() {
     plannerStatus.textContent = "Static mode. Start `agentforge serve-builder` to enable scripted drafting.";
   }
   updateAssistantAvailability();
+  updateLocalRunAvailability();
 }
 
 function assistantModeText(turnMode = null, fallbackReason = null) {
@@ -466,6 +477,115 @@ function updateAssistantAvailability() {
     assistantStatus.textContent = "Static mode. Start `agentforge serve-builder` to chat with the local scripted assistant.";
     assistantSendButton.disabled = true;
     assistantInput.disabled = true;
+  }
+}
+
+function updateLocalRunAvailability() {
+  if (!localRunPanel) return;
+  const hasBlueprint = Boolean(plannerBlueprint);
+  const canUseServer = plannerAvailable && hasBlueprint && !localRunBusy;
+  localRunPanel.dataset.state = plannerAvailable ? (hasBlueprint ? "ready" : "needs-blueprint") : "static";
+  localRunValidateBlueprintButton.disabled = !canUseServer;
+  localRunGenerateButton.disabled = !canUseServer;
+  localRunValidateAppButton.disabled = !canUseServer || !localRunState.runId;
+  if (localRunBusy) return;
+  if (!plannerAvailable) {
+    localRunStatus.textContent = "Static browser mode. Start `agentforge serve-builder` to enable local validate/generate controls.";
+  } else if (!hasBlueprint) {
+    localRunStatus.textContent = "Apply an assistant proposal or draft a plan before using the Local Control Room.";
+  } else if (!localRunState.runId && localRunState.steps.length === 0) {
+    localRunStatus.textContent = "Ready. Validate the active Blueprint, then generate a sandboxed local app.";
+  }
+}
+
+async function localRunRequest(action, payload) {
+  const response = await fetch(`${plannerApi}/local-run/${action}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload || {}),
+  });
+  const result = await response.json();
+  if (!response.ok) throw new Error((result.errors || [result.error || "local run request failed"]).join(" "));
+  return result;
+}
+
+function setLocalRunBusy(message) {
+  localRunBusy = true;
+  localRunStatus.textContent = message;
+  updateLocalRunAvailability();
+}
+
+function finishLocalRun(result) {
+  localRunBusy = false;
+  if (result.run_id) localRunState.runId = result.run_id;
+  if (result.generated_path) localRunState.generatedPath = result.generated_path;
+  localRunState.steps = [...localRunState.steps.filter((step) => step.step !== result.step), result];
+  renderLocalRunResult(result);
+  updateLocalRunAvailability();
+}
+
+function renderLocalRunResult(result) {
+  const statusLabel = result.ok ? "success" : "failed";
+  const pathLine = result.generated_path ? `<p><strong>Generated path:</strong> <code>${escapeHtml(result.generated_path)}</code></p>` : "";
+  const commandItems = (result.commands || []).map((command) => `<li><code>${escapeHtml(command)}</code></li>`).join("");
+  localRunStatus.textContent = `${localRunStepLabel(result.step)} ${statusLabel}. Exit code ${result.exit_code ?? "n/a"}.`;
+  localRunResults.innerHTML = `
+    <article class="local-run-result ${result.ok ? "success" : "error"}">
+      <h3>${escapeHtml(localRunStepLabel(result.step))}: ${escapeHtml(statusLabel)}</h3>
+      <p><strong>Exit code:</strong> ${escapeHtml(result.exit_code ?? "n/a")}</p>
+      ${pathLine}
+      ${result.timed_out ? '<p class="error-text">Command timed out.</p>' : ""}
+      ${result.truncated ? '<p class="helper-copy">Long logs were truncated for display.</p>' : ""}
+      <h4>Equivalent command${(result.commands || []).length === 1 ? "" : "s"}</h4>
+      <ul>${commandItems || "<li>No command equivalent.</li>"}</ul>
+    </article>
+  `;
+  const logs = [
+    `# ${localRunStepLabel(result.step)} (${statusLabel})`,
+    ...(result.commands || []).map((command) => `$ ${command}`),
+    `# exit_code=${result.exit_code ?? "n/a"}`,
+    "\n[stdout]",
+    result.stdout || "",
+    "\n[stderr]",
+    result.stderr || "",
+  ];
+  localRunLog.textContent = logs.join("\n");
+}
+
+function localRunStepLabel(step) {
+  if (step === "validate-blueprint") return "Validate Blueprint";
+  if (step === "generate") return "Generate app";
+  if (step === "validate-app") return "Run make validate";
+  return "Local run";
+}
+
+async function validateLocalRunBlueprint() {
+  if (!plannerAvailable || !plannerBlueprint || localRunBusy) return;
+  setLocalRunBusy("Validating active Blueprint...");
+  try {
+    finishLocalRun(await localRunRequest("validate-blueprint", { blueprint: plannerBlueprint }));
+  } catch (error) {
+    finishLocalRun({ step: "validate-blueprint", ok: false, status: "error", exit_code: 1, errors: [error.message], stderr: error.message, stdout: "", commands: [] });
+  }
+}
+
+async function generateLocalRunApp() {
+  if (!plannerAvailable || !plannerBlueprint || localRunBusy) return;
+  setLocalRunBusy("Generating sandboxed local app...");
+  try {
+    finishLocalRun(await localRunRequest("generate", { blueprint: plannerBlueprint }));
+  } catch (error) {
+    finishLocalRun({ step: "generate", ok: false, status: "error", exit_code: 1, errors: [error.message], stderr: error.message, stdout: "", commands: [] });
+  }
+}
+
+async function validateLocalRunApp() {
+  if (!plannerAvailable || !plannerBlueprint || !localRunState.runId || localRunBusy) return;
+  setLocalRunBusy("Running make validate in generated app...");
+  try {
+    finishLocalRun(await localRunRequest("validate-app", { run_id: localRunState.runId }));
+  } catch (error) {
+    finishLocalRun({ step: "validate-app", ok: false, status: "error", exit_code: 1, run_id: localRunState.runId, generated_path: localRunState.generatedPath, errors: [error.message], stderr: error.message, stdout: "", commands: [] });
   }
 }
 
@@ -538,6 +658,7 @@ function handlePlannerResult(result, options = {}) {
     return;
   }
 
+  resetLocalRunState();
   plannerBlueprint = result.blueprint;
   plannerYaml = result.yaml || "";
   plannerCommands = result.commands || [];
@@ -682,6 +803,14 @@ function clearPlannerDraft() {
   plannerBlueprint = null;
   plannerYaml = "";
   plannerCommands = [];
+  resetLocalRunState();
+}
+
+function resetLocalRunState() {
+  localRunState = { runId: null, generatedPath: null, steps: [] };
+  if (localRunResults) localRunResults.innerHTML = "";
+  if (localRunLog) localRunLog.textContent = "Local run logs will appear here after you click a control room action.";
+  updateLocalRunAvailability();
 }
 
 function setPlannerBusy(message) {
@@ -916,6 +1045,7 @@ async function applyAssistantProposal() {
     }
     renderAssistantGuidance(null);
     const validated = result.proposal || proposal;
+    resetLocalRunState();
     plannerBlueprint = validated.blueprint;
     plannerYaml = validated.yaml || "";
     plannerCommands = [];
@@ -988,6 +1118,7 @@ renderModules();
 updatePreview();
 setActiveStep(activeStep);
 updateAssistantAvailability();
+updateLocalRunAvailability();
 checkPlannerStatus();
 
 form.archetype.addEventListener("change", () => {
@@ -1022,6 +1153,9 @@ clarifyButton.addEventListener("click", clarifyIdea);
 submitAnswersButton.addEventListener("click", draftBlueprint);
 refineButton.addEventListener("click", refineBlueprint);
 validateButton.addEventListener("click", validateBlueprint);
+localRunValidateBlueprintButton?.addEventListener("click", validateLocalRunBlueprint);
+localRunGenerateButton?.addEventListener("click", generateLocalRunApp);
+localRunValidateAppButton?.addEventListener("click", validateLocalRunApp);
 parseAnalyzerButton.addEventListener("click", previewAnalyzerReport);
 parseExtensionPlanButton.addEventListener("click", previewExtensionPlan);
 copyBlueprintSeedButton.addEventListener("click", copyBlueprintSeed);

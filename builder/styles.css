@@ -1117,6 +1117,56 @@ button + button,
   margin-top: 14px;
 }
 
+.local-run-panel {
+  display: grid;
+  gap: 14px;
+  margin: 18px 0;
+  padding: 18px;
+  border: 1px solid rgba(37, 99, 235, 0.16);
+  border-radius: 22px;
+  background: linear-gradient(180deg, #f8fbff, #ffffff);
+  box-shadow: 0 16px 40px rgba(15, 23, 42, 0.06);
+}
+
+.local-run-panel[data-state="static"],
+.local-run-panel[data-state="needs-blueprint"] {
+  border-style: dashed;
+  background: #f8fafc;
+}
+
+.local-run-actions {
+  flex-wrap: wrap;
+}
+
+.local-run-result {
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  border-radius: 16px;
+  padding: 14px;
+  background: #ffffff;
+}
+
+.local-run-result.success {
+  border-color: rgba(22, 163, 74, 0.28);
+  background: #f7fdf9;
+}
+
+.local-run-result.error {
+  border-color: rgba(220, 38, 38, 0.28);
+  background: #fff7f7;
+}
+
+.local-run-result ul {
+  margin: 8px 0 0;
+  padding-left: 18px;
+}
+
+.local-run-log,
+#local-run-log {
+  max-height: 420px;
+  overflow: auto;
+  white-space: pre-wrap;
+}
+
 .assistant-panel {
   display: grid;
   gap: 12px;
