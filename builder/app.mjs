@@ -571,8 +571,66 @@ function finishLocalRun(result) {
     localRunState.steps = [...localRunState.steps.filter((step) => step.step !== result.step), result];
   }
   renderLocalRunResult(result);
+  appendAssistantActivityForLocalRun(result);
   updateLocalRunAvailability();
   if (result.step === "start-service" || result.step === "service-status") scheduleServiceStatusPoll();
+}
+
+function appendAssistantActivityForLocalRun(result) {
+  const message = assistantActivityMessageForLocalRun(result);
+  if (message) appendAssistantMessage("activity", message);
+}
+
+function assistantActivityMessageForLocalRun(result) {
+  if (!result || result.step === "service-status") return "";
+  const detail = summarizeLocalRunIssue(result);
+  const exitCode = result.exit_code ?? "n/a";
+  if (result.step === "validate-blueprint") {
+    return result.ok
+      ? "Blueprint validation passed. Next: generate the app locally."
+      : `Blueprint validation failed: ${detail}. See Local Control Room details/logs, then update the plan.`;
+  }
+  if (result.step === "generate") {
+    return result.ok
+      ? `Generated app at ${result.generated_path || localRunState.generatedPath || "the sandboxed run folder"}. Next: run make validate.`
+      : `Generate failed: ${detail}. See Local Control Room details/logs, then retry after fixing the Blueprint.`;
+  }
+  if (result.step === "validate-app") {
+    return result.ok
+      ? `make validate passed (exit code ${exitCode}). Next: start the backend and frontend.`
+      : `make validate failed (exit code ${exitCode}): ${detail}. See Local Control Room logs, then fix and rerun.`;
+  }
+  if (result.step === "start-service") {
+    return serviceActivityMessage(result, "start");
+  }
+  if (result.step === "stop-service") {
+    return serviceActivityMessage(result, "stop");
+  }
+  return "";
+}
+
+function serviceActivityMessage(result, action) {
+  const service = plainServiceName(result.service);
+  const detail = summarizeLocalRunIssue(result);
+  if (!result.ok) {
+    return `${service} ${action} failed: ${detail}. See Local Control Room details/logs, then retry.`;
+  }
+  const status = result.status || (action === "stop" ? "stopped" : "running");
+  if (action === "stop") return status === "stopped" ? `${service} is stopped.` : `${service} is ${status}.`;
+  if (result.url && status === "running") return `${service} is running at ${result.url}.`;
+  if (result.url) return `${service} is ${status} at ${result.url}.`;
+  return `${service} is ${status}.`;
+}
+
+function summarizeLocalRunIssue(result) {
+  const errors = Array.isArray(result.errors) ? result.errors.filter(Boolean) : [];
+  const first = errors[0] || result.error || result.status || "action failed";
+  return String(first).replace(/\s+/g, " ").trim();
+}
+
+function plainServiceName(service) {
+  const value = String(service || "service");
+  return value ? value.charAt(0).toUpperCase() + value.slice(1) : "Service";
 }
 
 function renderLocalRunResult(result) {
@@ -986,7 +1044,7 @@ function appendAssistantMessage(role, text) {
   entry.className = `assistant-message assistant-message-${role}`;
   const label = document.createElement("span");
   label.className = "assistant-message-role";
-  label.textContent = role === "user" ? "You" : "Assistant";
+  label.textContent = assistantMessageRoleLabel(role);
   const body = document.createElement("p");
   body.className = "assistant-message-body";
   body.textContent = text;
@@ -994,6 +1052,12 @@ function appendAssistantMessage(role, text) {
   entry.appendChild(body);
   assistantLog.appendChild(entry);
   assistantLog.scrollTop = assistantLog.scrollHeight;
+}
+
+function assistantMessageRoleLabel(role) {
+  if (role === "user") return "You";
+  if (role === "activity") return "Activity";
+  return "Assistant";
 }
 
 function renderAssistantQuestions(questions, details) {
@@ -1185,7 +1249,7 @@ async function applyAssistantProposal() {
         `Entities: ${appliedSummary.entityLabel}`,
         `Imports: ${appliedSummary.importLabel}`,
         `Providers: ${appliedSummary.providerLabel}`,
-        "Next action: Continue to Review",
+        "Next action: Validate Blueprint in the Local Control Room",
       );
     }
     plannerStatus.textContent = `Assistant proposal applied. ${successParts.join(" · ")}.`;

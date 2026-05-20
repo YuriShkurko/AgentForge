@@ -104,6 +104,7 @@ def test_app_mjs_exposes_explicit_apply_and_reject_paths():
     assert "updatePreview()" in apply_handler
     assert "setActiveStep(\"review\")" in apply_handler
     assert "Apply and review plan" in script
+    assert "Validate Blueprint in the Local Control Room" in apply_handler
     assert "you do not need to click Draft app plan again" in apply_handler
     # Reject must NOT touch the Builder draft.
     reject_handler = _extract_function(script, "rejectAssistantProposal")
@@ -135,6 +136,15 @@ def _extract_function(script: str, name: str) -> str | None:
     return None
 
 
+def test_app_mjs_supports_assistant_activity_messages():
+    script = _read("app.mjs")
+
+    assert "appendAssistantMessage(\"activity\"" in script
+    role_label = _extract_function(script, "assistantMessageRoleLabel")
+    assert role_label is not None
+    assert "Activity" in role_label
+
+
 def test_styles_css_defines_assistant_panel_styles():
     css = _read("styles.css")
 
@@ -147,6 +157,7 @@ def test_styles_css_defines_assistant_panel_styles():
         ".assistant-panel",
         ".assistant-log",
         ".assistant-message",
+        ".assistant-message-activity",
         ".assistant-questions",
         ".assistant-proposal",
         ".assistant-footnote",

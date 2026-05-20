@@ -169,6 +169,30 @@ def test_local_run_results_render_status_path_logs_and_commands():
     assert "renderExportSummary" in fn
 
 
+def test_local_run_results_append_assistant_activity_narration():
+    script = _read("app.mjs")
+    finish = _extract_function(script, "finishLocalRun")
+    activity = _extract_function(script, "assistantActivityMessageForLocalRun")
+    service = _extract_function(script, "serviceActivityMessage")
+
+    assert finish is not None
+    assert "appendAssistantActivityForLocalRun(result)" in finish
+    assert activity is not None
+    assert "Blueprint validation passed. Next: generate the app locally." in activity
+    assert "Blueprint validation failed" in activity
+    assert "Generated app at" in activity
+    assert "Generate failed" in activity
+    assert "make validate passed" in activity
+    assert "make validate failed" in activity
+    assert "exit code" in activity
+    assert "See Local Control Room" in activity
+    assert "service-status" in activity
+    assert service is not None
+    assert "is running at" in service
+    assert "is stopped" in service
+    assert "${action} failed" in service
+
+
 def test_no_duplicate_conflicting_generate_step_messaging():
     html = _read("index.html")
     step4_block = html[html.index('id="generate-flow"'):html.index('id="existing-repo-flow"')]

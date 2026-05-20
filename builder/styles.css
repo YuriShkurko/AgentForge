@@ -1290,6 +1290,11 @@ button + button,
   background: rgba(91, 91, 214, 0.10);
 }
 
+.assistant-message-activity {
+  border: 1px solid rgba(18, 129, 68, 0.18);
+  background: rgba(243, 251, 246, 0.92);
+}
+
 .assistant-message-role {
   color: var(--brand-strong);
   font-size: 0.7rem;
@@ -1300,6 +1305,10 @@ button + button,
 
 .assistant-message-user .assistant-message-role {
   color: var(--accent);
+}
+
+.assistant-message-activity .assistant-message-role {
+  color: #128144;
 }
 
 .assistant-message-body {
