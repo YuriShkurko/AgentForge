@@ -136,6 +136,8 @@ def test_start_backend_frontend_lifecycle_with_mocked_processes(tmp_path, monkey
 
     monkeypatch.setattr(local_run, "_popen_allowlisted_service", fake_popen)
     monkeypatch.setattr(local_run, "_url_available", lambda url, timeout: True)
+    monkeypatch.setattr(local_run, "_tcp_port_available", lambda host, port: True)
+    monkeypatch.setattr(local_run, "_frontend_render_check", lambda app_dir, url, timeout: (True, ""))
 
     backend = local_run.start_generated_app_service("run-servers1", "backend", repo_root=tmp_path)
     frontend = local_run.start_generated_app_service("run-servers1", "frontend", repo_root=tmp_path)
@@ -173,7 +175,27 @@ def test_duplicate_start_returns_existing_status_without_new_process(tmp_path, m
     assert len(calls) == 1
 
 
-def test_stop_service_only_stops_matching_run_process(tmp_path, monkeypatch):
+def test_stop_frontend_cleans_builder_vite_child_on_fixed_port(tmp_path, monkeypatch):
+    paths = local_run.safe_run_paths("run-child11", repo_root=tmp_path)
+    paths.app_dir.mkdir(parents=True)
+    (paths.app_dir / "Makefile").write_text("run-frontend:\n\t@echo frontend\n", encoding="utf-8")
+    terminated = []
+    monkeypatch.setattr(local_run, "_tcp_port_available", lambda host, port: True)
+    monkeypatch.setattr(local_run, "_popen_allowlisted_service", lambda command, cwd: FakeProc(pid=7100))
+    monkeypatch.setattr(local_run, "_url_available", lambda url, timeout: True)
+    monkeypatch.setattr(local_run, "_frontend_render_check", lambda app_dir, url, timeout: (True, ""))
+    monkeypatch.setattr(local_run, "_listening_pids", lambda port: {7200})
+    monkeypatch.setattr(local_run, "_is_builder_run_process", lambda pid: True)
+    monkeypatch.setattr(local_run, "_terminate_pid_tree", lambda pid: terminated.append(pid))
+
+    local_run.start_generated_app_service("run-child11", "frontend", repo_root=tmp_path)
+    result = local_run.stop_generated_app_service("run-child11", "frontend", repo_root=tmp_path)
+
+    assert result["status"] == "stopped"
+    assert terminated == [7200]
+
+
+def test_starting_new_run_stops_previous_builder_started_service(tmp_path, monkeypatch):
     for run_id in ("run-stop111", "run-stop222"):
         paths = local_run.safe_run_paths(run_id, repo_root=tmp_path)
         paths.app_dir.mkdir(parents=True)
@@ -190,13 +212,93 @@ def test_stop_service_only_stops_matching_run_process(tmp_path, monkeypatch):
     monkeypatch.setattr(local_run, "_url_available", lambda url, timeout: True)
     monkeypatch.setattr(local_run, "_terminate_process_tree", lambda proc: (stopped.append(proc.pid), setattr(proc, "returncode", -15)))
 
-    local_run.start_generated_app_service("run-stop111", "backend", repo_root=tmp_path)
-    local_run.start_generated_app_service("run-stop222", "backend", repo_root=tmp_path)
-    result = local_run.stop_generated_app_service("run-stop111", "backend", repo_root=tmp_path)
+    first = local_run.start_generated_app_service("run-stop111", "backend", repo_root=tmp_path)
+    second = local_run.start_generated_app_service("run-stop222", "backend", repo_root=tmp_path)
 
-    assert result["status"] == "stopped"
+    assert first["status"] == "running"
+    assert second["status"] == "running"
     assert stopped == [7000]
+    assert local_run.get_generated_app_service_status("run-stop111", "backend", repo_root=tmp_path)["status"] == "stopped"
     assert local_run.get_generated_app_service_status("run-stop222", "backend", repo_root=tmp_path)["status"] == "running"
+
+
+def test_frontend_port_occupied_by_non_builder_process_returns_clear_failure(tmp_path, monkeypatch):
+    paths = local_run.safe_run_paths("run-port123", repo_root=tmp_path)
+    paths.app_dir.mkdir(parents=True)
+    (paths.app_dir / "Makefile").write_text("run-frontend:\n\t@echo frontend\n", encoding="utf-8")
+    monkeypatch.setattr(local_run, "_tcp_port_available", lambda host, port: False)
+    monkeypatch.setattr(local_run, "_listening_pids", lambda port: {12345})
+    monkeypatch.setattr(local_run, "_is_builder_run_process", lambda pid: False)
+
+    result = local_run.start_generated_app_service("run-port123", "frontend", repo_root=tmp_path)
+
+    assert result["ok"] is False
+    assert result["status"] == "error"
+    assert "Frontend port 5173 is already in use by another process" in result["stderr"]
+
+
+def test_frontend_port_held_by_orphan_builder_process_is_reclaimed(tmp_path, monkeypatch):
+    paths = local_run.safe_run_paths("run-reclaim1", repo_root=tmp_path)
+    paths.app_dir.mkdir(parents=True)
+    (paths.app_dir / "Makefile").write_text("run-frontend:\n\t@echo frontend\n", encoding="utf-8")
+    availability = iter([False, True, True, True])
+    terminated = []
+    monkeypatch.setattr(local_run, "_tcp_port_available", lambda host, port: next(availability))
+    monkeypatch.setattr(local_run, "_listening_pids", lambda port: {4496})
+    monkeypatch.setattr(local_run, "_is_builder_run_process", lambda pid: True)
+    monkeypatch.setattr(local_run, "_terminate_pid_tree", lambda pid: terminated.append(pid))
+    monkeypatch.setattr(local_run, "_popen_allowlisted_service", lambda command, cwd: FakeProc(pid=6201))
+    monkeypatch.setattr(local_run, "_url_available", lambda url, timeout: True)
+    monkeypatch.setattr(local_run, "_frontend_render_check", lambda app_dir, url, timeout: (True, ""))
+
+    result = local_run.start_generated_app_service("run-reclaim1", "frontend", repo_root=tmp_path)
+
+    assert result["status"] == "running"
+    assert terminated == [4496]
+
+
+def test_frontend_process_exit_before_health_check_reports_failed(tmp_path, monkeypatch):
+    paths = local_run.safe_run_paths("run-exit123", repo_root=tmp_path)
+    paths.app_dir.mkdir(parents=True)
+    (paths.app_dir / "Makefile").write_text("run-frontend:\n\t@echo frontend\n", encoding="utf-8")
+    proc = FakeProc(pid=6200)
+    proc.returncode = 2
+    monkeypatch.setattr(local_run, "_tcp_port_available", lambda host, port: True)
+    monkeypatch.setattr(local_run, "_popen_allowlisted_service", lambda command, cwd: proc)
+
+    result = local_run.start_generated_app_service("run-exit123", "frontend", repo_root=tmp_path)
+
+    assert result["ok"] is False
+    assert result["status"] == "failed"
+    assert result["errors"] == ["frontend process exited"]
+
+
+def test_frontend_render_check_catches_blank_wrong_and_current_app(tmp_path, monkeypatch):
+    paths = local_run.safe_run_paths("run-render1", repo_root=tmp_path)
+    frontend_dir = paths.app_dir / "frontend"
+    frontend_dir.mkdir(parents=True)
+    (frontend_dir / "index.html").write_text('<title>Current Tennis Coach App</title><div id="root"></div>', encoding="utf-8")
+
+    assert local_run._frontend_render_check(paths.app_dir, "mock://current", timeout=1)[0] is False
+
+    responses = {
+        "http://blank": ("", ""),
+        "http://wrong": ('<title>Old Vendor App</title><div id="root"></div>', ""),
+        "http://current": ('<title>Current Tennis Coach App</title><div id="root"></div><script type="module"></script>', ""),
+    }
+
+    def fake_fetch(url, timeout):
+        return responses[url]
+
+    monkeypatch.setattr(local_run, "_fetch_text", fake_fetch)
+    blank = local_run._frontend_render_check(paths.app_dir, "http://blank", timeout=1)
+    wrong = local_run._frontend_render_check(paths.app_dir, "http://wrong", timeout=1)
+    current = local_run._frontend_render_check(paths.app_dir, "http://current", timeout=1)
+
+    assert blank == (False, "frontend render check failed: blank response")
+    assert wrong[0] is False
+    assert "Current Tennis Coach App" in wrong[1]
+    assert current == (True, "")
 
 
 def test_start_service_reports_starting_until_health_url_is_reachable(tmp_path, monkeypatch):

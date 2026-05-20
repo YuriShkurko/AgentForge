@@ -9,10 +9,12 @@ from __future__ import annotations
 import os
 import re
 import signal
+import socket
 import subprocess
 import threading
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 import uuid
 from dataclasses import dataclass, field
@@ -62,6 +64,7 @@ class ManagedProcess:
     stderr: str = ""
     stdout_truncated: bool = False
     stderr_truncated: bool = False
+    readiness_error: str = ""
 
 
 def builder_runs_root(repo_root: Path | None = None) -> Path:
@@ -194,6 +197,10 @@ def start_generated_app_service(run_id: str, service: str, *, repo_root: Path | 
             return _service_status(paths, service, spec, "start-service", existing, repo_root, duplicate=True)
         if existing:
             _PROCESS_REGISTRY.pop(key, None)
+        _stop_other_run_processes_locked(paths, service)
+        port_error = _fixed_port_preflight_error(service, spec)
+        if port_error:
+            return _service_error(paths, service, spec, "start-service", port_error, repo_root)
         command = ["make", spec["target"]]
         try:
             proc = _popen_allowlisted_service(command, cwd=paths.app_dir)
@@ -217,6 +224,7 @@ def stop_generated_app_service(run_id: str, service: str, *, repo_root: Path | N
         if not managed:
             return _service_not_running(paths, service, spec, "stop-service", repo_root)
         _terminate_process_tree(managed.proc)
+        _cleanup_builder_service_port(service, spec)
         _PROCESS_REGISTRY.pop(key, None)
         return _service_status(paths, service, spec, "stop-service", managed, repo_root, stopped=True)
 
@@ -343,8 +351,11 @@ def _process_running(proc: subprocess.Popen[str]) -> bool:
 def _service_status(paths: LocalRunPaths, service: str, spec: dict[str, str], step: str, managed: ManagedProcess, repo_root: Path | None, *, duplicate: bool = False, stopped: bool = False) -> dict[str, Any]:
     running = _process_running(managed.proc) and not stopped
     exit_code = managed.proc.poll()
-    ready = running and _url_available(spec["health_url"], timeout=0.5)
-    status = "running" if ready else ("starting" if running else ("stopped" if stopped or exit_code is None else "failed"))
+    ready = running and not managed.readiness_error and _url_available(spec["health_url"], timeout=0.5)
+    if managed.readiness_error:
+        status = "failed"
+    else:
+        status = "running" if ready else ("starting" if running else ("stopped" if stopped or exit_code is None else "failed"))
     stdout, stdout_truncated = _truncate_log_with_flag(managed.stdout)
     stderr, stderr_truncated = _truncate_log_with_flag(managed.stderr)
     return {
@@ -364,7 +375,8 @@ def _service_status(paths: LocalRunPaths, service: str, spec: dict[str, str], st
         "stderr": stderr,
         "truncated": stdout_truncated or stderr_truncated or managed.stdout_truncated or managed.stderr_truncated,
         "duplicate": duplicate,
-        "errors": [] if status in {"running", "starting", "stopped"} else [f"{service} process exited"],
+        "render_check": "passed" if service == "frontend" and status == "running" else ("failed" if service == "frontend" and managed.readiness_error else None),
+        "errors": [] if status in {"running", "starting", "stopped"} else [managed.readiness_error or f"{service} process exited"],
     }
 
 
@@ -410,9 +422,169 @@ def _wait_for_service_ready(managed: ManagedProcess, spec: dict[str, str], timeo
         if not _process_running(managed.proc):
             return False
         if _url_available(spec["health_url"], timeout=0.5):
+            if managed.service == "frontend":
+                ok, error = _frontend_render_check(managed.cwd, spec["health_url"], timeout=2.0)
+                if not ok:
+                    managed.readiness_error = error
+                    return False
             return True
         time.sleep(0.25)
     return False
+
+
+def _stop_other_run_processes_locked(paths: LocalRunPaths, service: str) -> None:
+    for key, managed in list(_PROCESS_REGISTRY.items()):
+        root, run_id, managed_service = key
+        if root == paths.root and managed_service == service and run_id != paths.run_id:
+            if _process_running(managed.proc):
+                _terminate_process_tree(managed.proc)
+            _PROCESS_REGISTRY.pop(key, None)
+
+
+def _fixed_port_preflight_error(service: str, spec: dict[str, str]) -> str | None:
+    if service != "frontend":
+        return None
+    parsed = urllib.parse.urlparse(spec["url"])
+    host = parsed.hostname or "127.0.0.1"
+    port = parsed.port
+    if not port or _tcp_port_available(host, port):
+        return None
+    listening_pids = _listening_pids(port)
+    if listening_pids and all(_is_builder_run_process(pid) for pid in listening_pids):
+        _cleanup_builder_service_port(service, spec)
+        deadline = time.time() + 5.0
+        while time.time() < deadline:
+            if _tcp_port_available(host, port):
+                return None
+            time.sleep(0.1)
+        return f"Frontend port {port} is still held by a previous Builder-started generated app. Stop it or restart serve-builder."
+    return f"Frontend port {port} is already in use by another process. Stop it or restart serve-builder."
+
+
+def _cleanup_builder_service_port(service: str, spec: dict[str, str]) -> None:
+    if service != "frontend":
+        return
+    parsed = urllib.parse.urlparse(spec["url"])
+    port = parsed.port
+    if not port:
+        return
+    for pid in _listening_pids(port):
+        if _is_builder_run_process(pid):
+            _terminate_pid_tree(pid)
+
+
+def _tcp_port_available(host: str, port: int) -> bool:
+    candidates = [host]
+    if host == "localhost":
+        candidates = ["127.0.0.1", "::1"]
+    for candidate in candidates:
+        family = socket.AF_INET6 if ":" in candidate else socket.AF_INET
+        with socket.socket(family, socket.SOCK_STREAM) as sock:
+            try:
+                sock.bind((candidate, port))
+            except OSError:
+                return False
+    return True
+
+
+def _listening_pids(port: int) -> set[int]:
+    if os.name == "nt":
+        try:
+            result = subprocess.run(["netstat", "-ano"], text=True, capture_output=True, timeout=5, check=False)
+        except Exception:
+            return set()
+        pids: set[int] = set()
+        marker = f":{port}"
+        for line in result.stdout.splitlines():
+            columns = line.split()
+            if len(columns) >= 5 and columns[0].upper() == "TCP" and columns[1].endswith(marker) and columns[3].upper() == "LISTENING":
+                try:
+                    pids.add(int(columns[4]))
+                except ValueError:
+                    pass
+        return pids
+    try:
+        result = subprocess.run(["lsof", "-nP", f"-iTCP:{port}", "-sTCP:LISTEN", "-t"], text=True, capture_output=True, timeout=5, check=False)
+    except Exception:
+        return set()
+    pids: set[int] = set()
+    for line in result.stdout.splitlines():
+        try:
+            pids.add(int(line.strip()))
+        except ValueError:
+            pass
+    return pids
+
+
+def _is_builder_run_process(pid: int) -> bool:
+    command_line = _process_command_line(pid).replace("\\", "/").lower()
+    return "/.tmp/builder-runs/" in command_line and ("vite" in command_line or "run-frontend" in command_line or "node" in command_line)
+
+
+def _process_command_line(pid: int) -> str:
+    if os.name == "nt":
+        try:
+            result = subprocess.run(
+                ["powershell", "-NoProfile", "-Command", f"(Get-CimInstance Win32_Process -Filter 'ProcessId={pid}').CommandLine"],
+                text=True,
+                capture_output=True,
+                timeout=5,
+                check=False,
+            )
+            return result.stdout.strip()
+        except Exception:
+            return ""
+    try:
+        return Path(f"/proc/{pid}/cmdline").read_text(encoding="utf-8", errors="replace").replace("\x00", " ")
+    except Exception:
+        return ""
+
+
+def _terminate_pid_tree(pid: int) -> None:
+    try:
+        if os.name == "nt":
+            subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"], capture_output=True, text=True, timeout=10, check=False)
+        else:
+            os.kill(pid, signal.SIGTERM)
+    except Exception:
+        pass
+
+
+def _frontend_render_check(app_dir: Path, url: str, *, timeout: float) -> tuple[bool, str]:
+    html, error = _fetch_text(url, timeout=timeout)
+    if error:
+        return False, error
+    if not html.strip():
+        return False, "frontend render check failed: blank response"
+    expected_title = _expected_frontend_title(app_dir)
+    if expected_title and expected_title not in html:
+        return False, f"frontend render check failed: expected generated app title {expected_title!r} was not served"
+    if '<div id="root"' not in html and "<div id='root'" not in html:
+        return False, "frontend render check failed: Vite root element was not served"
+    return True, ""
+
+
+def _expected_frontend_title(app_dir: Path) -> str:
+    index = app_dir / "frontend" / "index.html"
+    if not index.exists():
+        return ""
+    html = index.read_text(encoding="utf-8", errors="replace")
+    match = re.search(r"<title>(.*?)</title>", html, flags=re.IGNORECASE | re.DOTALL)
+    return re.sub(r"\s+", " ", match.group(1)).strip() if match else ""
+
+
+def _fetch_text(url: str, *, timeout: float) -> tuple[str, str]:
+    try:
+        with urllib.request.urlopen(url, timeout=timeout) as response:
+            status = getattr(response, "status", 0)
+            if not 200 <= status < 400:
+                return "", f"frontend render check failed: HTTP {status}"
+            content_type = response.headers.get("Content-Type", "")
+            if "html" not in content_type.lower() and content_type:
+                return "", f"frontend render check failed: expected HTML but got {content_type}"
+            return response.read(200000).decode("utf-8", errors="replace"), ""
+    except (urllib.error.URLError, TimeoutError, OSError) as exc:
+        return "", f"frontend render check failed: {exc}"
 
 
 def _url_available(url: str, *, timeout: float) -> bool:
