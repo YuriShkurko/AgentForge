@@ -93,11 +93,13 @@ try {
   await page.waitForSelector('#generate-flow.active', { timeout: 10000 });
   const exportStep = await page.locator('.wizard-step.active').getAttribute('data-step');
   const visibleOnExport = await page.locator('#assistant-panel').isVisible();
+  const advancedVisible = await page.locator('.export-advanced-drawer').isVisible();
+  await page.locator('.export-advanced-drawer').evaluate(el => { el.open = true; });
   const cliStillVisible = await page.locator('.command-card').isVisible();
   const livePlan = await page.locator('.live-plan').innerText();
   const review = await page.locator('#review-flow').innerText();
   const classicDraftClicks = await page.locator('#draft-blueprint').evaluate(el => el.dataset.clicked || '0').catch(() => '0');
-  console.log(JSON.stringify({ visibleOnStart, startStep, visibleOnDescribe, proposalDisabled, activeStep, visibleOnReview, localRunReachable, localRunValidateEnabled, exportStep, visibleOnExport, cliStillVisible, livePlan, review, classicDraftClicks, consoleErrors, failedRequests }));
+  console.log(JSON.stringify({ visibleOnStart, startStep, visibleOnDescribe, proposalDisabled, activeStep, visibleOnReview, localRunReachable, localRunValidateEnabled, exportStep, visibleOnExport, advancedVisible, cliStillVisible, livePlan, review, classicDraftClicks, consoleErrors, failedRequests }));
 } finally {
   await browser.close();
 }
@@ -123,6 +125,7 @@ try {
         assert payload["localRunValidateEnabled"] is True
         assert payload["exportStep"] == "generate"
         assert payload["visibleOnExport"] is True
+        assert payload["advancedVisible"] is True
         assert payload["cliStillVisible"] is True
         live_plan = payload["livePlan"].lower()
         review = payload["review"].lower()

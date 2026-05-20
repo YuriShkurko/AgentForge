@@ -25,6 +25,8 @@ const copyButton = document.querySelector("#copy-yaml");
 const downloadButton = document.querySelector("#download-yaml");
 const copyYamlExportButton = document.querySelector("#copy-yaml-export");
 const downloadYamlExportButton = document.querySelector("#download-yaml-export");
+const copyCliCommandsButton = document.querySelector("#copy-cli-commands");
+const copyLocalRunLogButton = document.querySelector("#copy-local-run-log");
 const plannerStatus = document.querySelector("#planner-status");
 const plannerIdea = document.querySelector("#planner-idea");
 const draftButton = document.querySelector("#draft-blueprint");
@@ -1009,11 +1011,27 @@ function escapeHtml(value) {
   });
 }
 
-async function copyYaml() {
+async function copyYaml(event = null) {
   await navigator.clipboard.writeText(yamlPreview.textContent);
-  copyButton.textContent = "Copied";
+  const target = event?.currentTarget || copyButton;
+  showCopied(target, target?.textContent || "Copy YAML");
+}
+
+async function copyCliCommands() {
+  await navigator.clipboard.writeText(planPreview.textContent);
+  showCopied(copyCliCommandsButton, "Copy CLI commands");
+}
+
+async function copyLocalRunLog() {
+  await navigator.clipboard.writeText(localRunLog.textContent);
+  showCopied(copyLocalRunLogButton, "Copy local run log");
+}
+
+function showCopied(button, originalLabel) {
+  if (!button) return;
+  button.textContent = "Copied";
   window.setTimeout(() => {
-    copyButton.textContent = "Copy YAML";
+    button.textContent = originalLabel;
   }, 1200);
 }
 
@@ -1333,6 +1351,8 @@ copyButton.addEventListener("click", copyYaml);
 downloadButton.addEventListener("click", downloadYaml);
 copyYamlExportButton?.addEventListener("click", copyYaml);
 downloadYamlExportButton?.addEventListener("click", downloadYaml);
+copyCliCommandsButton?.addEventListener("click", copyCliCommands);
+copyLocalRunLogButton?.addEventListener("click", copyLocalRunLog);
 draftButton.addEventListener("click", draftBlueprint);
 clarifyButton.addEventListener("click", clarifyIdea);
 submitAnswersButton.addEventListener("click", draftBlueprint);

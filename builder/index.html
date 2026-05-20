@@ -91,6 +91,13 @@
                 <h2 id="review-heading">Review &amp; build the app plan</h2>
                 <p>Start with the plain-language summary, then optionally validate and generate a sandboxed local app when the Builder server is running.</p>
               </div>
+              <div class="plan-build-run-workspace" aria-label="Plan Build Run workspace">
+                <section class="workspace-card plan-card" aria-labelledby="plan-card-heading">
+                  <div class="workspace-card-head">
+                    <p class="eyebrow">Plan</p>
+                    <h3 id="plan-card-heading">Review the assistant proposal and live app plan</h3>
+                    <p>Use the persistent assistant for proposal, Apply/Reject, and validation guidance. This card shows the active Live App Plan after Apply.</p>
+                  </div>
               <div id="draft-panel" class="planner-output draft-review plan-summary-card">
                 <h3>Plan summary</h3>
                 <p id="draft-summary">Draft from an idea to see what AgentForge understood, what it will generate, and any assumptions or warnings.</p>
@@ -117,44 +124,87 @@
                   <button id="reset-customization" class="quiet-button" type="button">Reset app details</button>
                 </div>
               </section>
-              <section id="local-run-panel" class="local-run-panel" aria-labelledby="local-run-heading" data-state="static">
+              <section class="build-summary live-plan plan-card-live-plan" aria-labelledby="build-summary-heading">
+                <div class="live-plan-head">
+                  <p class="eyebrow">Live app plan</p>
+                  <h2 id="build-summary-heading">Local demo plan</h2>
+                  <p id="summary-status" class="plan-status">Ready to draft</p>
+                </div>
+                <div class="plan-snapshot">
+                  <span id="summary-name">Starter Agent App</span>
+                  <strong id="summary-archetype">Ingestion scoring app</strong>
+                </div>
+                <div id="summary-capability-groups" class="capability-groups" aria-label="Included capabilities">
+                  <section>
+                    <h3>App foundation</h3>
+                    <ul><li>FastAPI backend</li><li>React frontend</li><li>Local persistence</li></ul>
+                  </section>
+                </div>
+                <details class="summary-advanced">
+                  <summary>Run locally</summary>
+                  <pre id="summary-commands" class="mini-pre"></pre>
+                </details>
+              </section>
+                </section>
+              <section id="local-run-panel" class="local-run-panel workspace-card build-card" aria-labelledby="local-run-heading" data-state="static">
                 <div class="section-head">
-                  <p class="eyebrow">Local Control Room</p>
+                  <p class="eyebrow">Build</p>
                   <h2 id="local-run-heading">Validate and generate locally</h2>
                   <p id="local-run-status">Static browser mode. Start `agentforge serve-builder` and apply an assistant proposal to enable local validation.</p>
                 </div>
-                <div class="local-run-actions actions">
+                <div class="local-run-actions actions build-actions" aria-label="Build actions">
                   <button id="local-run-validate-blueprint" type="button">Validate active Blueprint</button>
                   <button id="local-run-generate" type="button">Generate local app</button>
                   <button id="local-run-validate-app" type="button">Run make validate</button>
                 </div>
-                <div class="local-run-actions actions app-process-actions" aria-label="Generated app server controls">
-                  <button id="local-run-start-backend" type="button">Start backend</button>
-                  <button id="local-run-stop-backend" type="button">Stop backend</button>
-                  <button id="local-run-start-frontend" type="button">Start frontend</button>
-                  <button id="local-run-stop-frontend" type="button">Stop frontend</button>
-                </div>
-                <div id="local-run-process-status" class="local-run-process-status" aria-live="polite"></div>
                 <div id="local-run-results" class="local-run-results" aria-live="polite"></div>
-                <details class="inline-advanced local-run-commands">
-                  <summary>Equivalent CLI commands and logs</summary>
-                  <pre id="local-run-log">Local run logs will appear here after you click a control room action.</pre>
-                </details>
+                <section class="workspace-card run-card" aria-labelledby="run-card-heading">
+                  <div class="workspace-card-head">
+                    <p class="eyebrow">Run</p>
+                    <h3 id="run-card-heading">Start or stop the generated app</h3>
+                    <p>Use the existing backend/frontend service controls after a local app has been generated.</p>
+                  </div>
+                  <div class="local-run-actions actions app-process-actions" aria-label="Generated app server controls">
+                    <button id="local-run-start-backend" type="button">Start backend</button>
+                    <button id="local-run-stop-backend" type="button">Stop backend</button>
+                    <button id="local-run-start-frontend" type="button">Start frontend</button>
+                    <button id="local-run-stop-frontend" type="button">Stop frontend</button>
+                  </div>
+                  <div id="local-run-process-status" class="local-run-process-status" aria-live="polite"></div>
+                </section>
                 <p class="helper-copy">Runs are sandboxed under `.tmp/builder-runs/&lt;safe-run-id&gt;/`. Start/Stop uses only the generated app's fixed Makefile targets. No GitHub, deployment, arbitrary shell commands, or output path selection is available here.</p>
               </section>
-              <details class="inline-advanced refine-row">
-                <summary>Refine or validate this plan</summary>
-                <label>
-                  Refine instruction
-                  <textarea id="planner-refine" placeholder="Add workspace widgets, add agent runtime, add notification triage"></textarea>
-                </label>
-                <div class="actions">
-                  <button id="refine-blueprint" type="button">Refine plan</button>
-                  <button id="validate-blueprint" type="button">Validate plan</button>
-                </div>
-              </details>
-              <details class="inline-advanced">
-                <summary>Blueprint Source and module details</summary>
+              </div>
+              <details class="advanced-drawer" id="advanced-drawer">
+                <summary>Advanced: YAML, CLI, logs</summary>
+                <p class="helper-copy">Source YAML, copied CLI commands, raw stdout/stderr logs, and developer diagnostics stay available here without dominating the default Plan / Build / Run view.</p>
+                <section class="advanced-section local-run-commands">
+                  <div class="section-head">
+                    <h2>Local run commands and raw logs</h2>
+                    <p>Inspect stdout/stderr only when you need implementation details. High-level status remains in Build and Run.</p>
+                  </div>
+                  <div class="actions"><button id="copy-local-run-log" type="button">Copy local run log</button></div>
+                  <pre id="local-run-log">Local run logs will appear here after you click a control room action.</pre>
+                </section>
+                <section class="advanced-section refine-row">
+                  <div class="section-head">
+                    <h2>Planner diagnostics</h2>
+                    <p>Optional low-level plan refinement and schema validation controls.</p>
+                  </div>
+                  <label>
+                    Refine instruction
+                    <textarea id="planner-refine" placeholder="Add workspace widgets, add agent runtime, add notification triage"></textarea>
+                  </label>
+                  <div class="actions">
+                    <button id="refine-blueprint" type="button">Refine plan</button>
+                    <button id="validate-blueprint" type="button">Validate plan</button>
+                  </div>
+                </section>
+                <section class="advanced-section blueprint-source-details">
+                  <div class="section-head">
+                    <h2>Blueprint YAML and module details</h2>
+                    <p>Copy or download the source-of-truth Blueprint YAML for the CLI path.</p>
+                  </div>
                 <section class="advanced-section metadata-panel">
                   <div class="section-head">
                     <h2>Blueprint details</h2>
@@ -191,16 +241,17 @@
                     <label class="toggle-row"><input id="fixture-enabled" type="checkbox" checked />Use included sample data</label>
                   </div>
                 </section>
-                <section class="advanced-section preview-panel">
-                  <div class="section-head">
-                    <h2>Blueprint Source <span class="subtle">Advanced</span></h2>
-                    <p id="validation-summary">Ready for `agentforge plan`.</p>
-                  </div>
-                  <pre id="yaml-preview" tabindex="0"></pre>
-                  <div class="actions">
-                    <button id="copy-yaml" type="button">Copy YAML</button>
-                    <button id="download-yaml" type="button">Download</button>
-                  </div>
+                  <section class="advanced-section preview-panel">
+                    <div class="section-head">
+                      <h2>Blueprint Source <span class="subtle">Advanced</span></h2>
+                      <p id="validation-summary">Ready for `agentforge plan`.</p>
+                    </div>
+                    <pre id="yaml-preview" tabindex="0"></pre>
+                    <div class="actions">
+                      <button id="copy-yaml" type="button">Copy YAML</button>
+                      <button id="download-yaml" type="button">Download</button>
+                    </div>
+                  </section>
                 </section>
               </details>
               <div class="wizard-actions">
@@ -216,14 +267,28 @@
                 <p>Use the local run summary if you generated in Step 3, or keep the manual YAML + CLI path. The CLI remains the source of truth.</p>
               </div>
               <section id="export-summary" class="export-summary" aria-live="polite"></section>
-              <div class="actions">
-                <button id="copy-yaml-export" type="button">Copy YAML</button>
-                <button id="download-yaml-export" type="button">Download YAML</button>
-              </div>
-              <div id="generation-preview" class="generation-preview"></div>
-              <details class="inline-advanced command-card" open>
-                <summary>Manual CLI commands</summary>
-                <pre id="plan-preview"></pre>
+              <details class="advanced-drawer export-advanced-drawer">
+                <summary>Advanced: YAML, CLI, logs</summary>
+                <p class="helper-copy">Static/offline fallback stays available here: copy or download YAML and copy the CLI commands when you want to leave the guided Builder flow.</p>
+                <section class="advanced-section export-yaml-tools">
+                  <div class="section-head">
+                    <h2>Blueprint YAML export</h2>
+                    <p>Use this source-of-truth YAML with AgentForge CLI commands outside the Builder.</p>
+                  </div>
+                  <div class="actions">
+                    <button id="copy-yaml-export" type="button">Copy YAML</button>
+                    <button id="download-yaml-export" type="button">Download YAML</button>
+                  </div>
+                </section>
+                <section class="advanced-section command-card">
+                  <div class="section-head">
+                    <h2>Manual CLI commands</h2>
+                    <p>Commands remain copyable for CLI-first or static/offline workflows.</p>
+                  </div>
+                  <div class="actions"><button id="copy-cli-commands" type="button">Copy CLI commands</button></div>
+                  <pre id="plan-preview"></pre>
+                </section>
+                <div id="generation-preview" class="generation-preview"></div>
               </details>
               <div class="test-path">
                 <h3>How to test the generated demo</h3>
@@ -277,7 +342,7 @@
             </section>
           </div>
 
-          <aside class="builder-side-panel" aria-label="Persistent Builder assistant and live app plan">
+          <aside class="builder-side-panel" aria-label="Persistent Builder assistant">
             <section class="assistant-panel assistant-primary-path persistent-assistant-panel" id="assistant-panel" aria-labelledby="assistant-heading" data-state="static">
               <div class="section-head">
                 <p class="eyebrow" id="assistant-mode-label">Assistant-first path · local scripted by default</p>
@@ -297,28 +362,6 @@
                 </div>
               </form>
               <p class="assistant-footnote">Assistant proposals are reviewed before Apply. Apply and review plan installs only the validated in-memory Builder draft; Reject keeps the current draft unchanged.</p>
-            </section>
-
-            <section class="build-summary live-plan" aria-labelledby="build-summary-heading">
-              <div class="live-plan-head">
-                <p class="eyebrow">Live app plan</p>
-                <h2 id="build-summary-heading">Local demo plan</h2>
-                <p id="summary-status" class="plan-status">Ready to draft</p>
-              </div>
-              <div class="plan-snapshot">
-                <span id="summary-name">Starter Agent App</span>
-                <strong id="summary-archetype">Ingestion scoring app</strong>
-              </div>
-              <div id="summary-capability-groups" class="capability-groups" aria-label="Included capabilities">
-                <section>
-                  <h3>App foundation</h3>
-                  <ul><li>FastAPI backend</li><li>React frontend</li><li>Local persistence</li></ul>
-                </section>
-              </div>
-              <details class="summary-advanced">
-                <summary>Run locally</summary>
-                <pre id="summary-commands" class="mini-pre"></pre>
-              </details>
             </section>
           </aside>
         </div>

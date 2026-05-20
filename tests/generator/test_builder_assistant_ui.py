@@ -50,8 +50,46 @@ def test_assistant_panel_is_persistent_outside_describe_step():
     assert 'id="assistant-panel"' not in describe_block
     assert 'id="assistant-panel"' in side_panel
     assert 'persistent-assistant-panel' in side_panel
-    assert 'aria-label="Persistent Builder assistant and live app plan"' in html
+    assert 'aria-label="Persistent Builder assistant"' in html
     assert "Assistant stays open" in describe_block
+
+
+def test_review_workspace_renders_plan_build_run_cards_without_advanced_drawer():
+    html = _read("index.html")
+    review_block = html[html.index('id="review-flow"'):html.index('id="generate-flow"')]
+
+    assert 'class="plan-build-run-workspace"' in review_block
+    assert 'class="workspace-card plan-card"' in review_block
+    assert '>Plan<' in review_block
+    assert 'id="assistant-proposal"' in html
+    assert 'id="assistant-guidance"' in html
+    assert 'class="build-summary live-plan plan-card-live-plan"' in review_block
+    assert 'class="local-run-panel workspace-card build-card"' in review_block
+    assert '>Build<' in review_block
+    assert 'class="workspace-card run-card"' in review_block
+    assert '>Run<' in review_block
+    assert 'Advanced: YAML, CLI, logs' in html
+
+
+def test_advanced_surface_contains_yaml_cli_logs_and_diagnostics():
+    html = _read("index.html")
+    script = _read("app.mjs")
+    review_block = html[html.index('id="review-flow"'):html.index('id="generate-flow"')]
+    export_block = html[html.index('id="generate-flow"'):html.index('id="existing-repo-flow"')]
+
+    assert 'id="advanced-drawer"' in review_block
+    assert review_block.count("Advanced: YAML, CLI, logs") == 1
+    assert 'id="yaml-preview"' in review_block
+    assert 'id="copy-yaml"' in review_block
+    assert 'id="download-yaml"' in review_block
+    assert 'id="local-run-log"' in review_block
+    assert 'id="copy-local-run-log"' in review_block
+    assert 'Planner diagnostics' in review_block
+    assert 'id="copy-yaml-export"' in export_block
+    assert 'id="copy-cli-commands"' in export_block
+    assert 'id="plan-preview"' in export_block
+    assert "copyCliCommands" in script
+    assert "copyLocalRunLog" in script
 
 
 def test_describe_step_keeps_classic_draft_without_plan_build_run_rewrite():

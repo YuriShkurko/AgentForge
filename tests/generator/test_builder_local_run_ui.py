@@ -55,6 +55,8 @@ def test_review_step_contains_local_control_room_panel():
     assert 'id="local-run-process-status"' in review_block
     assert 'id="local-run-results"' in review_block
     assert 'id="local-run-log"' in review_block
+    assert 'class="local-run-panel workspace-card build-card"' in review_block
+    assert 'class="workspace-card run-card"' in review_block
     assert "Static browser mode" in review_block
     assert "No GitHub, deployment, arbitrary shell commands" in review_block
     assert "fixed Makefile targets" in review_block
@@ -129,8 +131,11 @@ def test_step_4_manual_fallback_keeps_yaml_and_cli_export_path():
     render_export = _extract_function(script, "renderExportSummary")
 
     assert 'id="export-summary"' in step4_block
+    assert 'class="advanced-drawer export-advanced-drawer"' in step4_block
     assert 'id="copy-yaml-export"' in step4_block
     assert 'id="download-yaml-export"' in step4_block
+    assert 'id="copy-cli-commands"' in step4_block
+    assert "Advanced: YAML, CLI, logs" in step4_block
     assert "Manual CLI commands" in step4_block
     assert render_export is not None
     assert "No local Builder run yet" in render_export
@@ -200,6 +205,7 @@ def test_no_duplicate_conflicting_generate_step_messaging():
     assert ">Generate<" not in html[html.index('<nav class="flow-rail"'):html.index('</nav>')]
     assert "Generate and run locally" not in step4_block
     assert "Manual CLI commands" in step4_block
+    assert "Advanced: YAML, CLI, logs" in step4_block
     assert "The CLI remains the source of truth" in step4_block
 
 
@@ -207,6 +213,13 @@ def test_styles_define_local_run_panel():
     css = _read("styles.css")
 
     for selector in (
+        ".plan-build-run-workspace",
+        ".workspace-card",
+        ".advanced-drawer",
+        ".export-advanced-drawer",
+        ".plan-card",
+        ".build-card",
+        ".run-card",
         ".local-run-panel",
         ".export-summary",
         ".export-card",
