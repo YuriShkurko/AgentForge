@@ -75,7 +75,10 @@ page.on('console', msg => { if (msg.type() === 'error') consoleErrors.push(msg.t
 page.on('requestfailed', req => failedRequests.push(`${req.method()} ${req.url()} ${req.failure()?.errorText}`));
 try {
   await page.goto(`http://127.0.0.1:${port}/`, { waitUntil: 'networkidle' });
+  const visibleOnStart = await page.locator('#assistant-panel').isVisible();
+  const startStep = await page.locator('.wizard-step.active').getAttribute('data-step');
   await page.click('[data-step-target="new-app"]');
+  const visibleOnDescribe = await page.locator('#assistant-panel').isVisible();
   await page.fill('#assistant-input', 'support ticket triage with title status priority owner notes to close tickets');
   await page.click('#assistant-send');
   await page.waitForSelector('#assistant-proposal:not(.hidden)', { timeout: 30000 });
@@ -83,10 +86,18 @@ try {
   await page.click('#assistant-apply');
   await page.waitForSelector('#review-flow.active', { timeout: 10000 });
   const activeStep = await page.locator('.wizard-step.active').getAttribute('data-step');
+  const visibleOnReview = await page.locator('#assistant-panel').isVisible();
+  const localRunReachable = await page.locator('#local-run-panel').isVisible();
+  const localRunValidateEnabled = await page.locator('#local-run-validate-blueprint').isEnabled();
+  await page.click('[data-step-target="generate"]');
+  await page.waitForSelector('#generate-flow.active', { timeout: 10000 });
+  const exportStep = await page.locator('.wizard-step.active').getAttribute('data-step');
+  const visibleOnExport = await page.locator('#assistant-panel').isVisible();
+  const cliStillVisible = await page.locator('.command-card').isVisible();
   const livePlan = await page.locator('.live-plan').innerText();
   const review = await page.locator('#review-flow').innerText();
   const classicDraftClicks = await page.locator('#draft-blueprint').evaluate(el => el.dataset.clicked || '0').catch(() => '0');
-  console.log(JSON.stringify({ proposalDisabled, activeStep, livePlan, review, classicDraftClicks, consoleErrors, failedRequests }));
+  console.log(JSON.stringify({ visibleOnStart, startStep, visibleOnDescribe, proposalDisabled, activeStep, visibleOnReview, localRunReachable, localRunValidateEnabled, exportStep, visibleOnExport, cliStillVisible, livePlan, review, classicDraftClicks, consoleErrors, failedRequests }));
 } finally {
   await browser.close();
 }
@@ -102,8 +113,17 @@ try {
         )
         assert result.returncode == 0, result.stdout + result.stderr
         payload = json.loads(result.stdout.strip().splitlines()[-1])
+        assert payload["visibleOnStart"] is True
+        assert payload["startStep"] == "start"
+        assert payload["visibleOnDescribe"] is True
         assert payload["proposalDisabled"] is False
         assert payload["activeStep"] == "review"
+        assert payload["visibleOnReview"] is True
+        assert payload["localRunReachable"] is True
+        assert payload["localRunValidateEnabled"] is True
+        assert payload["exportStep"] == "generate"
+        assert payload["visibleOnExport"] is True
+        assert payload["cliStillVisible"] is True
         live_plan = payload["livePlan"].lower()
         review = payload["review"].lower()
         assert "model-driven" in live_plan

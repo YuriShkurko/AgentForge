@@ -42,27 +42,31 @@ def test_index_html_keeps_existing_wizard_steps():
     assert 'id="yaml-preview"' in html
 
 
-def test_assistant_panel_is_inside_describe_step():
-    html = _read("index.html")
-    describe_start = html.index('id="new-app-flow"')
-    describe_end = html.index('id="review-flow"')
-    describe_block = html[describe_start:describe_end]
-    assert 'id="assistant-panel"' in describe_block, (
-        "assistant panel must live inside the Describe wizard step so static "
-        "mode and the existing planner flow stay intact"
-    )
-
-
-def test_describe_step_makes_assistant_primary_and_keeps_classic_draft():
+def test_assistant_panel_is_persistent_outside_describe_step():
     html = _read("index.html")
     describe_block = html[html.index('id="new-app-flow"'):html.index('id="review-flow"')]
+    side_panel = html[html.index('class="builder-side-panel"'):html.index('</aside>', html.index('class="builder-side-panel"'))]
 
-    assert "assistant-primary-path" in describe_block
-    assert describe_block.index('id="assistant-panel"') < describe_block.index("classic-draft-panel")
-    assert "Plan with the Builder Assistant" in describe_block
+    assert 'id="assistant-panel"' not in describe_block
+    assert 'id="assistant-panel"' in side_panel
+    assert 'persistent-assistant-panel' in side_panel
+    assert 'aria-label="Persistent Builder assistant and live app plan"' in html
+    assert "Assistant stays open" in describe_block
+
+
+def test_describe_step_keeps_classic_draft_without_plan_build_run_rewrite():
+    html = _read("index.html")
+    describe_block = html[html.index('id="new-app-flow"'):html.index('id="review-flow"')]
+    nav = html[html.index('<nav class="flow-rail"'):html.index('</nav>')]
+
     assert "Use classic text-only draft" in describe_block
     assert "Draft from text only" in describe_block
     assert "Draft app plan" not in describe_block
+    assert "Review &amp; Build" in nav
+    assert "Export / Next Steps" in nav
+    assert ">Plan<" not in nav
+    assert ">Build<" not in nav
+    assert ">Run<" not in nav
 
 
 def test_app_mjs_calls_assistant_endpoints_and_handles_fallback():
@@ -75,6 +79,7 @@ def test_app_mjs_calls_assistant_endpoints_and_handles_fallback():
     assert "clearAssistantConversation" in script
     assert "updateAssistantAvailability" in script
     assert "plannerAvailable" in script
+    assert '!event.target.closest(".planner-panel") && !event.target.closest("#assistant-panel")' in script
     assert "Fallback to scripted" in script
     # Fallback message wired when planner is offline.
     assert "Static mode" in script
@@ -134,6 +139,9 @@ def test_styles_css_defines_assistant_panel_styles():
     css = _read("styles.css")
 
     for selector in (
+        ".builder-side-panel",
+        ".persistent-assistant-panel",
+        ".assistant-shell-note",
         ".assistant-primary-path",
         ".classic-draft-panel",
         ".assistant-panel",

@@ -1251,12 +1251,12 @@ form.archetype.addEventListener("change", () => {
 
 document.addEventListener("input", (event) => {
   if (event.target.closest("#customize-panel")) readCustomizationInputs();
-  if (!event.target.closest(".planner-panel")) clearPlannerDraft();
+  if (!event.target.closest(".planner-panel") && !event.target.closest("#assistant-panel")) clearPlannerDraft();
   updatePreview();
 });
 document.addEventListener("change", (event) => {
   if (event.target.closest("#customize-panel")) readCustomizationInputs();
-  if (!event.target.closest(".planner-panel")) clearPlannerDraft();
+  if (!event.target.closest(".planner-panel") && !event.target.closest("#assistant-panel")) clearPlannerDraft();
   updatePreview();
 });
 

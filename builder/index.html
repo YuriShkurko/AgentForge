@@ -60,26 +60,9 @@
                 <h2 id="describe-heading">Describe the app idea</h2>
                 <p id="planner-status">Static mode. Start `agentforge serve-builder` to enable scripted drafting.</p>
               </div>
-              <section class="assistant-panel assistant-primary-path" id="assistant-panel" aria-labelledby="assistant-heading" data-state="static">
-                <div class="section-head">
-                  <p class="eyebrow" id="assistant-mode-label">Assistant-first path · local scripted by default</p>
-                  <h3 id="assistant-heading">Plan with the Builder Assistant</h3>
-                  <p id="assistant-status" class="assistant-status">Static mode. Start `agentforge serve-builder` to enable the local scripted assistant.</p>
-                </div>
-                <div id="assistant-log" class="assistant-log" role="log" aria-live="polite" aria-label="Assistant conversation"></div>
-                <div id="assistant-questions" class="assistant-questions hidden" aria-label="Clarifying questions"></div>
-                <div id="assistant-proposal" class="assistant-proposal hidden" aria-label="Proposed Blueprint preview"></div>
-                <div id="assistant-guidance" class="assistant-guidance hidden" role="status" aria-live="polite" aria-label="Validation guidance"></div>
-                <form id="assistant-form" class="assistant-form" autocomplete="off">
-                  <label class="assistant-input-label" for="assistant-input">Message the assistant</label>
-                  <textarea id="assistant-input" rows="2" placeholder="Describe what you want to build, or answer the assistant's last question."></textarea>
-                  <div class="actions">
-                    <button id="assistant-send" class="primary-button" type="submit" disabled>Send</button>
-                    <button id="assistant-reset" class="quiet-button" type="button">Reset chat</button>
-                  </div>
-                </form>
-                <p class="assistant-footnote">Assistant proposals are reviewed before Apply. Apply and review plan installs only the validated in-memory Builder draft; Reject keeps the current draft unchanged.</p>
-              </section>
+              <div class="assistant-shell-note" aria-live="polite">
+                <strong>Assistant stays open.</strong> Use the persistent Builder Assistant panel beside the workspace while you move through Start, Describe, Review &amp; Build, and Export / Next Steps.
+              </div>
               <details class="inline-advanced classic-draft-panel">
                 <summary>Use classic text-only draft</summary>
                 <p class="helper-copy">Prefer the older one-shot planner? Use these controls instead of the assistant conversation.</p>
@@ -294,26 +277,49 @@
             </section>
           </div>
 
-          <aside class="build-summary live-plan" aria-labelledby="build-summary-heading">
-            <div class="live-plan-head">
-              <p class="eyebrow">Live app plan</p>
-              <h2 id="build-summary-heading">Local demo plan</h2>
-              <p id="summary-status" class="plan-status">Ready to draft</p>
-            </div>
-            <div class="plan-snapshot">
-              <span id="summary-name">Starter Agent App</span>
-              <strong id="summary-archetype">Ingestion scoring app</strong>
-            </div>
-            <div id="summary-capability-groups" class="capability-groups" aria-label="Included capabilities">
-              <section>
-                <h3>App foundation</h3>
-                <ul><li>FastAPI backend</li><li>React frontend</li><li>Local persistence</li></ul>
-              </section>
-            </div>
-            <details class="summary-advanced">
-              <summary>Run locally</summary>
-              <pre id="summary-commands" class="mini-pre"></pre>
-            </details>
+          <aside class="builder-side-panel" aria-label="Persistent Builder assistant and live app plan">
+            <section class="assistant-panel assistant-primary-path persistent-assistant-panel" id="assistant-panel" aria-labelledby="assistant-heading" data-state="static">
+              <div class="section-head">
+                <p class="eyebrow" id="assistant-mode-label">Assistant-first path · local scripted by default</p>
+                <h3 id="assistant-heading">Builder Assistant</h3>
+                <p id="assistant-status" class="assistant-status">Static mode. Start `agentforge serve-builder` to enable the local scripted assistant.</p>
+              </div>
+              <div id="assistant-log" class="assistant-log" role="log" aria-live="polite" aria-label="Assistant conversation"></div>
+              <div id="assistant-questions" class="assistant-questions hidden" aria-label="Clarifying questions"></div>
+              <div id="assistant-proposal" class="assistant-proposal hidden" aria-label="Proposed Blueprint preview"></div>
+              <div id="assistant-guidance" class="assistant-guidance hidden" role="status" aria-live="polite" aria-label="Validation guidance"></div>
+              <form id="assistant-form" class="assistant-form" autocomplete="off">
+                <label class="assistant-input-label" for="assistant-input">Message the assistant</label>
+                <textarea id="assistant-input" rows="2" placeholder="Describe what you want to build, or answer the assistant's last question."></textarea>
+                <div class="actions">
+                  <button id="assistant-send" class="primary-button" type="submit" disabled>Send</button>
+                  <button id="assistant-reset" class="quiet-button" type="button">Reset chat</button>
+                </div>
+              </form>
+              <p class="assistant-footnote">Assistant proposals are reviewed before Apply. Apply and review plan installs only the validated in-memory Builder draft; Reject keeps the current draft unchanged.</p>
+            </section>
+
+            <section class="build-summary live-plan" aria-labelledby="build-summary-heading">
+              <div class="live-plan-head">
+                <p class="eyebrow">Live app plan</p>
+                <h2 id="build-summary-heading">Local demo plan</h2>
+                <p id="summary-status" class="plan-status">Ready to draft</p>
+              </div>
+              <div class="plan-snapshot">
+                <span id="summary-name">Starter Agent App</span>
+                <strong id="summary-archetype">Ingestion scoring app</strong>
+              </div>
+              <div id="summary-capability-groups" class="capability-groups" aria-label="Included capabilities">
+                <section>
+                  <h3>App foundation</h3>
+                  <ul><li>FastAPI backend</li><li>React frontend</li><li>Local persistence</li></ul>
+                </section>
+              </div>
+              <details class="summary-advanced">
+                <summary>Run locally</summary>
+                <pre id="summary-commands" class="mini-pre"></pre>
+              </details>
+            </section>
           </aside>
         </div>
       </section>

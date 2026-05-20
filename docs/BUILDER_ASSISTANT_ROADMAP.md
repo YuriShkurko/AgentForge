@@ -123,7 +123,53 @@ Builder Assistant should reuse the current Builder/planner shape instead of intr
 - **Done criteria**: the full local sequence works from Builder for an assistant-applied Blueprint; failures are visible and actionable; command/log output is copyable; generated files stay under `.tmp/builder-runs`; no GitHub, deployment, arbitrary shell, or app process management is implemented.
 - **Done**: implemented serve-builder-only local run endpoints for Blueprint validation, generation, and `make validate`; Builder Review renders status/path/commands/logs; tests cover path safety, command allowlisting, failures, timeout/log truncation, static unavailable state, and browser smoke.
 
-### Phase 8 — GitHub repo creation later, not now
+### Phase 8 — Agent-first Builder shell refactor (planned)
+
+- **Goal**: make the assistant feel persistent and central by default, while keeping YAML, CLI commands, raw logs, and dev-oriented controls available as advanced surfaces.
+- **Target UX**:
+  - A persistent assistant side panel or right-side drawer remains visible across Describe, Plan, Build, Run, and Review moments.
+  - The main workspace eventually becomes a clear **Plan / Build / Run** surface instead of a step-by-step wizard. Plan shows the assistant proposal, Live App Plan, validation guidance, and Apply/Reject. Build shows local generation and `make validate`. Run shows backend/frontend service controls, URLs, health, and open-app actions.
+  - Phase A prepares the shell for Plan / Build / Run, but keeps existing step content mostly intact to avoid a risky full redesign in the first pass.
+  - An activity/log timeline eventually captures assistant narration, proposal events, Apply/Reject, validation results, generation output, service status changes, and open-app affordances. Raw stdout/stderr remains expandable, not the primary narrative.
+  - The first timeline implementation should stay intentionally simple: assistant message, system/build event, success/failure state, and optional details/log link. Stable IDs, timestamps, severity, and richer action metadata can follow after the UX is proven.
+  - **Live App Plan** moves into the Plan workspace as the current structured plan card, with compact summary visibility from the assistant panel.
+  - YAML preview/export, copied CLI commands, repo analyzer handoff, extension planner handoff, and raw dev diagnostics move behind an obvious **Advanced: YAML, CLI, logs** drawer or tab that is collapsed by default but easy to find.
+- **User flow**:
+  1. User describes an app idea in the persistent assistant.
+  2. Assistant asks clarifying questions or proposes a plan.
+  3. User reviews the plan, Live App Plan, and changed-field summary, then explicitly clicks **Apply** or **Reject**.
+  4. User clicks Builder actions to validate the Blueprint, generate locally, run generated app validation, and start/stop backend/frontend.
+  5. Assistant narrates each result in the activity timeline with next safe actions and links to details.
+  6. User opens the generated app from the Run workspace when the frontend is healthy.
+- **Architecture plan**:
+  - Introduce a Builder session state shape in the frontend that separates assistant conversation, active Blueprint draft, latest proposal, local-run results, service statuses, and advanced drawer visibility.
+  - Normalize assistant messages and local-run results into activity events with stable IDs, timestamps, severity, action source, and optional links to raw logs or commands.
+  - Keep existing local-run endpoints and service status endpoints; the refactor should subscribe/render their returned structures rather than add backend powers.
+  - Keep YAML/export as a projection of the in-memory Blueprint. Advanced controls should not become a second authoring path.
+  - Prefer frontend composition changes in `builder/index.html`, `builder/app.mjs`, and `builder/styles.css`; backend changes should be limited to response-shape reuse unless a missing field is required for display.
+- **Safety boundaries**:
+  - No hidden Apply; assistant proposals mutate the in-memory draft only after the user clicks **Apply**.
+  - No arbitrary shell commands; all Builder actions remain fixed local-run operations.
+  - No GitHub creation, deployment execution, OAuth, credential collection, or secret display.
+  - No file writes outside `.tmp/builder-runs` for local generation.
+  - No background automation; every validate/generate/run/start/stop action is user-clicked.
+  - No generated app runtime behavior changes.
+- **Implementation phases**:
+  - **Phase A — persistent assistant shell only**: create the two-pane/shell layout, keep current controls wired, ensure assistant remains visible across existing Start / Describe / Review & Build / Export moments, make no backend changes, do not introduce the activity timeline, do not reorganize into Plan/Build/Run cards yet, and keep YAML/CLI where they are for now.
+  - **Phase B — simple assistant activity messages for validate/generate/run**: translate existing local-run and service-status results into lightweight assistant/system events with success/failure and optional details/log links, without changing endpoints or building a complex event system.
+  - **Phase C — reorganize Plan/Build/Run cards**: move proposal/Live App Plan, local generation/validation, and backend/frontend run controls into dedicated workspace cards.
+  - **Phase D — Advanced YAML/CLI drawer**: move YAML preview/export, copied CLI commands, and raw logs behind a visible **Advanced: YAML, CLI, logs** entry while preserving discoverability.
+  - **Phase E — visual polish**: improve hierarchy, empty/loading/error states, labels, and responsive behavior without redesigning generated apps.
+- **Tests needed**:
+  - Browser smoke is mandatory for this refactor; static tests are not enough because previous Builder regressions passed static checks.
+  - Browser smoke for describe → proposal → Apply → validate → generate → validate app → start backend/frontend → open frontend path, using existing safe local-run controls.
+  - Assistant panel remains visible after Apply, validation, generation, and service start/stop.
+  - Existing actions still call the same bounded endpoints and remain user-clicked.
+  - Static/offline planner fallback still renders useful guidance and advanced YAML remains available.
+  - Local runner regression tests continue to cover path safety, command allowlisting, timeouts, service status, and frontend port handling.
+- **Done criteria**: Builder opens into an agent-first shell, the assistant/activity timeline is persistent, the Plan/Build/Run workspace replaces wizard-first hierarchy, Advanced contains YAML/CLI/dev details, and all existing safety boundaries remain intact.
+
+### Phase 9 — GitHub repo creation later, not now
 
 - **Goal**: reserve GitHub repo creation as a separate future project after Builder Assistant v0 is safe and reviewed.
 - **User-visible behavior**: none in v0, except explicit non-goal language.
@@ -134,25 +180,28 @@ Builder Assistant should reuse the current Builder/planner shape instead of intr
 
 ## 6. First implementation slice recommendation
 
-Implement Phase 1 first, then the smallest Phase 2/3 UI slice.
+Recommended next slice: **Phase A — persistent assistant shell only**.
 
-Recommended first slice:
+Scope:
 
-- Add a deterministic scripted assistant endpoint to the local planner server.
-- Add a minimal assistant state machine that can:
-  - start from an idea;
-  - ask clarifying questions;
-  - infer a `model_driven_app` direction when appropriate;
-  - propose model-driven Blueprint changes for entities, fields, and a UI recipe;
-  - validate the proposed Blueprint through existing `DomainPack` validation.
-- Add a chat panel in Builder that calls the endpoint.
-- Show a proposal summary and changed fields before applying.
-- Require the user to click **Apply** before any in-memory Builder state changes.
-- Do not add live LLM support.
-- Do not add GitHub/deploy automation.
-- Do not write files or generate apps from the assistant.
+- Refactor the Builder layout so a persistent assistant panel/drawer is visible by default across Start / Describe / Review & Build / Export.
+- Keep existing assistant proposal, Apply/Reject, validation, generation, generated-app validation, and backend/frontend run controls wired to their current state and endpoints.
+- Make no backend changes and do not change generated app runtime behavior.
+- Keep existing step content mostly intact; do not do the full Plan/Build/Run card rewrite in Phase A.
+- Keep YAML preview/export, CLI commands, and raw logs where they are for now; moving them to Advanced belongs in Phase D.
+- Do not add the activity timeline in Phase A.
+- Add mandatory browser smoke coverage that proves the assistant remains visible and existing actions are still reachable.
 
-This slice is useful because it changes the Builder feel from form-first to assistant-guided while preserving all current safety guarantees.
+Phase A acceptance criteria:
+
+- Assistant stays visible on Start / Describe / Review & Build / Export.
+- Existing assistant proposal and Apply/Reject still work.
+- Existing local control room actions still work.
+- No backend changes.
+- YAML/CLI remains accessible in its current location.
+- Browser smoke passes.
+
+This slice is useful because it changes the default feel from wizard-first to agent-first while preserving the proven assistant, local-run, and safety boundaries.
 
 ## 7. Safety model
 
@@ -160,14 +209,17 @@ Builder Assistant v0 must preserve the current AgentForge safety posture:
 
 - No automatic file writes.
 - No external side effects.
-- No generated app creation unless the user explicitly uses existing Generate/CLI flow.
+- No generated app creation unless the user explicitly clicks the bounded Builder Generate action or uses the CLI manually.
+- No arbitrary shell commands.
 - No GitHub calls.
 - No deployment calls.
+- No OAuth flows.
 - No secret collection, secret storage, or secret display.
 - No live LLM in the default path.
 - All proposed changes are visible before apply.
 - Apply changes only to the in-memory Builder draft.
 - Reject leaves the current draft unchanged.
+- Validate/generate/run/start/stop actions remain explicit user clicks.
 - Validation errors are shown clearly and are not hidden behind assistant prose.
 - Python schema validation remains authoritative.
 - Builder YAML preview/export remains user-controlled.
@@ -181,10 +233,12 @@ Tests should cover both assistant logic and regression safety for existing Build
 - **Proposed Blueprint patch/diff**: proposals include changed paths/summary, validate before apply, and avoid unsupported schema fields.
 - **Apply/reject behavior**: Apply mutates only in-memory Builder state; Reject leaves state unchanged; repeated Apply is idempotent or clearly disabled.
 - **Schema validation loop**: invalid entities, fields, relations, imports, providers, and UI hints surface actionable validation errors.
-- **Builder UI presence**: chat panel renders, controls have labels, planner-unavailable fallback works, existing wizard steps still function.
-- **No hidden mutation**: assistant messages/proposals do not change YAML until Apply; server endpoints do not write files.
+- **Builder UI presence**: persistent assistant panel renders, controls have labels, planner-unavailable fallback works, and the Plan/Build/Run workspace keeps existing actions reachable.
+- **Agent-first shell regression**: assistant remains visible after Apply, validation, generation, generated-app validation, service start/stop, and open-app actions.
+- **Activity timeline**: validate/generate/run results append readable events while raw logs remain inspectable without becoming hidden side effects.
+- **No hidden mutation**: assistant messages/proposals do not change YAML until Apply; server endpoints do not write files except bounded local generation under `.tmp/builder-runs` after a user click.
 - **Existing Builder flows still work**: draft/refine/validate endpoints continue to pass; manual/static mode still produces Blueprint YAML.
-- **No network/default live calls**: tests prove no live LLM, GitHub, provider, or deployment calls occur in default mode.
+- **No network/default live calls**: tests prove no live LLM, GitHub, provider, OAuth, or deployment calls occur in default mode.
 
 Practical validation targets by phase:
 
@@ -223,4 +277,7 @@ In live mode the LLM only proposes a bounded model spec (entities + fields). The
 
 Remaining un-shipped phases:
 
-- Phase 8 (GitHub repo creation) — deferred indefinitely; out of scope for Builder Assistant v0.
+- Phase 8 (Agent-first Builder shell refactor) — next recommended product slice.
+- Phase 9 (GitHub repo creation) — deferred indefinitely; out of scope for Builder Assistant v0.
+
+Suggested next implementation prompt: implement Phase A only by refactoring the Builder into a persistent assistant shell, keeping all current endpoints/actions and generated app behavior unchanged, then add browser/static smoke coverage for assistant persistence and action reachability.
