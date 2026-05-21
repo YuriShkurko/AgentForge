@@ -318,7 +318,7 @@ def _create_model_driven_blueprint(
             "actions": [
                 {"name": "mark_done", "label": "Mark done", "type": "update_status", "entity": "item", "field": "status", "value": "done"}
             ],
-            "seed_data": {"item": [{"title": "Example item", "status": "open", "notes": "Edit the model block for your domain."}]},
+            "seed_data": {"item": [{"title": "First sample item", "status": "open", "notes": "Open this record to see how the workflow runs end-to-end."}]},
         },
         "tests": {
             "expectations": {"no_live_provider_in_tests": True, "deterministic_fixture_data": True},

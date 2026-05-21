@@ -12,6 +12,12 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from agentforge.blueprints import create_starter_blueprint, sanitize_pack_name
+from agentforge.naming import (
+    clean_prompt,
+    domain_summary,
+    natural_app_name,
+    natural_pack_slug,
+)
 from agentforge.planner import validate_blueprint_result
 from agentforge.planner.live_llm import LiveAssistantProvider, LiveLLMResponseError
 from agentforge.planner.validation_guidance import summarize_validation_errors
@@ -507,12 +513,24 @@ def _model_blueprint_from_text(text: str) -> dict[str, Any]:
 def _model_blueprint_from_spec(text: str, spec: dict[str, Any]) -> dict[str, Any]:
     spec = deepcopy(spec)
     _attach_imports_and_providers(spec, text)
-    name = sanitize_pack_name(" ".join(_keywords(text)[:4]) or f"{spec['primary']}-workspace")
-    display = name.replace("-", " ").title()
+    primary = spec.get("primary") or ""
+    entity_names = [
+        str(entity.get("name") or "")
+        for entity in (spec.get("model") or {}).get("entities") or []
+        if entity.get("name")
+    ]
+    display = natural_app_name(text, primary_entity=primary, entities=entity_names)
+    name = sanitize_pack_name(
+        natural_pack_slug(text, primary_entity=primary, entities=entity_names)
+    )
+    if not name:
+        name = sanitize_pack_name(" ".join(_keywords(text)[:4]) or f"{primary}-workspace")
+    primary_label = _primary_entity_label(spec, primary)
+    summary = domain_summary(text, primary_entity_label=primary_label)
     blueprint = create_starter_blueprint(
         name,
         display_name=display,
-        description=f"{text.strip().rstrip('.')}. Drafted by the Builder Assistant.",
+        description=summary,
         target_user=_target_user(text),
         archetype="model_driven_app",
         optional_modules=[],
@@ -520,9 +538,25 @@ def _model_blueprint_from_spec(text: str, spec: dict[str, Any]) -> dict[str, Any
         fixture_provider_enabled=True,
     )
     blueprint["model"] = spec["model"]
+    _apply_dashboard_copy(blueprint["model"], display, summary)
     blueprint["compatibility_gaps"] = []
     blueprint["future_extensions"] = {"features": ["assistant_refinement", "provider_imports"]}
     return blueprint
+
+
+def _primary_entity_label(spec: dict[str, Any], primary: str) -> str:
+    for entity in (spec.get("model") or {}).get("entities") or []:
+        if entity.get("name") == primary:
+            return str(entity.get("label_plural") or entity.get("label_singular") or "")
+    return ""
+
+
+def _apply_dashboard_copy(model: dict[str, Any], headline: str, summary: str) -> None:
+    ui = model.setdefault("ui", {})
+    dashboard = ui.setdefault("dashboard", {})
+    dashboard.setdefault("title", headline)
+    dashboard["headline"] = headline
+    dashboard["summary"] = summary
 
 
 _GITHUB_KEYWORDS = ("github", "gh issues")

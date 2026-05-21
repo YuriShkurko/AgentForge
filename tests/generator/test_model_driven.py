@@ -257,7 +257,11 @@ def test_model_driven_generation_writes_entity_specific_files(tmp_path):
     assert "data-ui-layout=\"composition-board-workspace\"" in app
     assert "data-ui-layout=\"board_by_status\"" in app
     assert "data-ui-state=\"empty\"" in app
-    assert "No items yet." in app
+    assert "emptyForLane" in app
+    assert "emptyForList" in app
+    assert "emptyForRelated" in app
+    assert "No items yet." not in app
+    assert "No related records yet." not in app
     assert "humanize" in app and "replace(/_/g, ' ')" in app
     makefile = (output / "Makefile").read_text()
     assert "validate:" in makefile
@@ -316,7 +320,8 @@ def test_two_model_driven_packs_share_path_but_generate_different_outputs(tmp_pa
     assert "register-main" in vendor_app
     assert "register-card" in vendor_app
     assert '"recipe": "executive_register"' in vendor_app
-    assert "No records yet" in vendor_app
+    assert "emptyForList" in vendor_app
+    assert "No records yet" not in vendor_app
     assert "emerald" in client_app and "amber" in vendor_app
     assert client_app != vendor_app
 
@@ -368,8 +373,9 @@ def test_title_humanizer_applied_to_composition_headers(tmp_path):
     client_app = (client_out / "frontend/src/App.tsx").read_text()
     vendor_app = (vendor_out / "frontend/src/App.tsx").read_text()
     assert "const titleize" in client_app
-    assert "titleize(`${ctx.primary.labelPlural} Board`)" in client_app
-    assert "titleize(`${ctx.primary.labelPlural} Register`)" in vendor_app
+    assert "function HeroBanner" in client_app
+    assert "heroHeadline" in client_app
+    assert "function HeroBanner" in vendor_app
     assert "labelPlural} board" not in client_app
     assert "labelPlural} register" not in vendor_app
 
@@ -390,7 +396,7 @@ def test_responsive_breakpoints_in_styles(tmp_path):
     out = tmp_path / vendor.name
     generate(vendor, out)
     styles = (out / "frontend/src/styles.css").read_text()
-    assert "max-width:1440px" in styles
+    assert "max-width:1320px" in styles
     assert "margin:0 auto" in styles
     assert "@media(max-width:1280px)" in styles
     assert "@media(max-width:980px)" in styles

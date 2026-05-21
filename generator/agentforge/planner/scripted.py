@@ -6,6 +6,7 @@ from typing import Any
 
 from agentforge.blueprints import create_starter_blueprint
 from agentforge.modules import ARCHETYPE_REQUIRED_MODULES
+from agentforge.naming import natural_app_name, natural_pack_slug
 from agentforge.planner import PlannerResult, validate_blueprint_result
 
 
@@ -107,10 +108,11 @@ class ScriptedPlanner:
 
     def _draft_for_archetype(self, archetype: str, idea: str) -> PlannerResult:
         name = _name_from_idea(idea, archetype)
+        display = natural_app_name(idea) if idea.strip() else name.replace("-", " ").title()
         optional_modules = _DEFAULT_OPTIONAL_MODULES.get(archetype, [])
         blueprint = create_starter_blueprint(
             name,
-            display_name=name.replace("-", " ").title(),
+            display_name=display,
             description=_description_from_idea(idea, archetype),
             target_user=_target_user_from_idea(idea),
             archetype=archetype,
