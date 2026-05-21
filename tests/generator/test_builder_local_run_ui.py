@@ -123,9 +123,10 @@ def test_service_status_urls_logs_and_handlers_render():
     assert "localRunStopFrontendButton?.addEventListener" in script
     assert "scheduleServiceStatusPoll" in script
     assert 'localRunRequest("service-status", { run_id: localRunState.runId, service })' in script
-    assert "URL:" in render_result
+    assert "Ready link:" in render_result
     assert "stdout" in render_result
     assert "stderr" in render_result
+    assert "Advanced logs" in render_result
 
 
 def test_step_4_manual_fallback_keeps_yaml_and_cli_export_path():
@@ -170,9 +171,10 @@ def test_local_run_results_render_status_path_logs_and_commands():
     assert fn is not None
     assert "Generated path" in fn
     assert "Exit code" in fn
-    assert "Equivalent command" in fn
+    assert "Equivalent command" not in fn
     assert "stdout" in fn
     assert "stderr" in fn
+    assert "advancedLink" in fn
     assert "timed_out" in fn
     assert "truncated" in fn
     assert "renderExportSummary" in fn
@@ -245,3 +247,116 @@ def test_styles_define_local_run_panel():
         "#local-run-log",
     ):
         assert selector in css
+
+
+
+def test_slice_c_build_run_has_single_primary_next_action_and_secondary_controls():
+    html = _read("index.html")
+    review_block = html[html.index('id="review-flow"'):html.index('id="generate-flow"')]
+
+    assert review_block.count('id="build-primary-action"') == 1
+    assert 'id="build-next-action"' in review_block
+    assert 'All build actions' in review_block
+    assert 'class="inline-advanced secondary-build-actions-details"' in review_block
+    assert 'class="inline-advanced service-controls-details"' in review_block
+    assert 'Use the main next-action button above to start or open the app' in review_block
+
+
+def test_slice_c_compute_next_step_progresses_through_guided_build_run_flow():
+    script = _read("app.mjs")
+    fn = _extract_function(script, "computeNextStep")
+
+    assert fn is not None
+    for expected in (
+        'label: "Validate Blueprint"',
+        'label: "Generate app locally"',
+        'label: "Run app checks"',
+        'id: "start-app", label: "Start app"',
+        'id: "open-app", label: "Open app"',
+    ):
+        assert expected in fn
+    assert 'action: validateLocalRunBlueprint' in fn
+    assert 'action: generateLocalRunApp' in fn
+    assert 'action: validateLocalRunApp' in fn
+    assert 'action: startLocalRunApp' in fn
+
+
+def test_slice_c_service_copy_and_open_app_are_human_and_reachable_only():
+    script = _read("app.mjs")
+    service_label = _extract_function(script, "serviceStatusLabel")
+    update_row = _extract_function(script, "updateServiceRow")
+    render_status = _extract_function(script, "renderServiceStatus")
+
+    assert service_label is not None
+    assert "Backend ready" in service_label
+    assert "Frontend ready" in service_label
+    assert "failed" in service_label
+    assert update_row is not None
+    assert 'if (running && url)' in update_row
+    assert 'frontendOpenLink.hidden = true' in update_row
+    assert render_status is not None
+    assert 'status === "running" && result?.url' in render_status
+    assert "Start to get link" in render_status
+
+
+def test_slice_c_errors_point_to_advanced_logs_without_default_raw_log_dump():
+    html = _read("index.html")
+    script = _read("app.mjs")
+    render_result = _extract_function(script, "renderLocalRunResult")
+
+    assert 'id="advanced-logs"' in html
+    assert render_result is not None
+    assert 'href="#advanced-logs"' in render_result
+    assert "Advanced logs" in render_result
+    assert "Equivalent command" not in render_result
+    # Raw streams are still captured into the Advanced log pre, not rendered as default result blocks.
+    assert "localRunLog.textContent" in render_result
+    assert "[stdout]" in render_result and "[stderr]" in render_result
+
+
+def test_slice_c_right_rail_next_action_sync_uses_start_app_copy():
+    script = _read("app.mjs")
+    hud = _extract_function(script, "hudNextStepCopy")
+
+    assert hud is not None
+    assert '"start-app": "Start app."' in hud
+    assert "Starts backend, then frontend" in hud
+
+
+def test_slice_c1_start_app_orchestrates_backend_then_frontend_with_existing_endpoints():
+    script = _read("app.mjs")
+    fn = _extract_function(script, "startLocalRunApp")
+
+    assert fn is not None
+    assert 'localRunRequest("start-service", { run_id: localRunState.runId, service: "backend" })' in fn
+    assert 'waitForLocalRunService("backend", backend)' in fn
+    assert 'localRunRequest("start-service", { run_id: localRunState.runId, service: "frontend" })' in fn
+    assert 'waitForLocalRunService("frontend", frontend)' in fn
+    assert fn.index('service: "backend"') < fn.index('service: "frontend"')
+    assert "Starting backend…" in fn
+    assert "Starting frontend…" in fn
+    assert "App is running." in fn
+
+
+def test_slice_c1_start_app_failure_stops_and_points_to_advanced_logs():
+    script = _read("app.mjs")
+    fn = _extract_function(script, "startLocalRunApp")
+    waiter = _extract_function(script, "waitForLocalRunService")
+
+    assert fn is not None and waiter is not None
+    assert "Backend failed to start. See Advanced/logs." in fn
+    assert "Frontend failed to start. See Advanced/logs." in fn
+    assert "Frontend failed to start. See Advanced/logs." in waiter or "did not become reachable. See Advanced/logs." in waiter
+    assert "finishLocalRun({ step: \"start-service\", service, ok: false" in fn
+    assert "exit_code: null" in fn
+
+
+def test_slice_c1_start_app_reuses_service_status_polling_and_no_new_endpoints():
+    script = _read("app.mjs")
+    waiter = _extract_function(script, "waitForLocalRunService")
+
+    assert waiter is not None
+    assert 'localRunRequest("service-status", { run_id: localRunState.runId, service })' in waiter
+    assert '"/api/planner/local-run/start-app"' not in script
+    assert 'startLocalRunApp' in script
+    assert 'controlLocalRunService' in script

@@ -93,6 +93,7 @@ const heroComposerSend = document.querySelector("#hero-composer-send");
 const heroComposerThinking = document.querySelector("#hero-composer-thinking");
 const frontendOpenLink = document.querySelector("#frontend-open-link");
 const backendMeta = document.querySelector("#backend-meta");
+const serviceControlsDetails = document.querySelector(".service-controls-details");
 const serviceRows = {
   backend: document.querySelector('.service-row[data-service="backend"]'),
   frontend: document.querySelector('.service-row[data-service="frontend"]'),
@@ -692,25 +693,22 @@ function computeNextStep() {
     return { id: "validate-blueprint", label: "Validate Blueprint", detail: "Run a schema validation pass on the applied Blueprint before generating files.", action: validateLocalRunBlueprint };
   }
   if (!build.validateBlueprint.ok) {
-    return { id: "review-validation", label: "Fix Blueprint validation errors", detail: "Open the build result below for details, then update the plan.", action: null };
+    return { id: "review-validation", label: "Retry validation", detail: "Fix the Blueprint, then retry. Advanced/logs has details.", action: validateLocalRunBlueprint };
   }
   if (!build.generated) {
-    return { id: "generate", label: "Generate app locally", detail: "Materialize the validated Blueprint into a sandboxed local app.", action: generateLocalRunApp };
+    return { id: "generate", label: "Generate app locally", detail: "Create the sandboxed local app from the validated Blueprint.", action: generateLocalRunApp };
   }
   if (!build.generated.ok) {
-    return { id: "review-generate", label: "Review generate log", detail: "Open the build result and Advanced logs to diagnose, then retry.", action: generateLocalRunApp };
+    return { id: "review-generate", label: "Retry generate", detail: "Advanced/logs has the raw output.", action: generateLocalRunApp };
   }
   if (!build.appChecks) {
-    return { id: "run-checks", label: "Run app checks", detail: "Execute the generated app's `make validate` target.", action: validateLocalRunApp };
+    return { id: "run-checks", label: "Run app checks", detail: "Validate the generated app before starting it.", action: validateLocalRunApp };
   }
   if (!build.appChecks.ok) {
-    return { id: "review-checks", label: "Review check log", detail: "Open the build result and Advanced logs to diagnose, then re-run checks.", action: validateLocalRunApp };
+    return { id: "review-checks", label: "Retry checks", detail: "Advanced/logs has the raw output.", action: validateLocalRunApp };
   }
-  if (build.backendStatus !== "running") {
-    return { id: "start-backend", label: "Start backend", detail: "Boot the generated FastAPI server.", action: () => controlLocalRunService("backend", "start-service") };
-  }
-  if (build.frontendStatus !== "running") {
-    return { id: "start-frontend", label: "Start frontend", detail: "Boot the generated React app.", action: () => controlLocalRunService("frontend", "start-service") };
+  if (build.backendStatus !== "running" || build.frontendStatus !== "running") {
+    return { id: "start-app", label: "Start app", detail: "Start backend, then frontend with the existing service controls.", action: startLocalRunApp };
   }
   if (build.frontendUrl) {
     return { id: "open-app", label: "Open app", detail: `Open ${build.frontendUrl} in your browser.`, action: () => window.open(build.frontendUrl, "_blank", "noreferrer") };
@@ -722,8 +720,8 @@ function renderBuildRunStatusChips() {
   const { generated, appChecks, backendStatus, frontendStatus, frontendUrl, backendUrl } = computeBuildState();
   setStatusChip(buildGeneratedChip, generated ? (generated.ok ? "Generated" : "Generate failed") : "Not generated", generated ? (generated.ok ? "success" : "error") : "neutral");
   setStatusChip(buildChecksChip, appChecks ? (appChecks.ok ? "Checks passed" : "Checks failed") : "Checks pending", appChecks ? (appChecks.ok ? "success" : "error") : "neutral");
-  setStatusChip(backendStatusChip, `Backend ${backendStatus}`, backendStatus === "running" ? "success" : backendStatus === "starting" ? "warning" : ["failed", "error"].includes(backendStatus) ? "error" : "neutral");
-  setStatusChip(frontendStatusChip, `Frontend ${frontendStatus}`, frontendStatus === "running" ? "success" : frontendStatus === "starting" ? "warning" : ["failed", "error"].includes(frontendStatus) ? "error" : "neutral");
+  setStatusChip(backendStatusChip, serviceStatusLabel("backend", backendStatus), backendStatus === "running" ? "success" : backendStatus === "starting" ? "warning" : ["failed", "error"].includes(backendStatus) ? "error" : "neutral");
+  setStatusChip(frontendStatusChip, serviceStatusLabel("frontend", frontendStatus), frontendStatus === "running" ? "success" : frontendStatus === "starting" ? "warning" : ["failed", "error"].includes(frontendStatus) ? "error" : "neutral");
   updateServiceRow("backend", backendStatus, backendUrl);
   updateServiceRow("frontend", frontendStatus, frontendUrl);
   const next = computeNextStep();
@@ -731,6 +729,16 @@ function renderBuildRunStatusChips() {
   updateBuildPrimaryAction(next);
   renderAssistantNextStep(next);
   applyCanvasState();
+}
+
+function serviceStatusLabel(service, status) {
+  if (service === "backend" && status === "running") return "Backend ready";
+  if (service === "frontend" && status === "running") return "Frontend ready";
+  const name = service === "backend" ? "Backend" : service === "frontend" ? "Frontend" : plainServiceName(service);
+  if (status === "starting") return `${name} starting`;
+  if (status === "stopping") return `${name} stopping`;
+  if (status === "failed" || status === "error") return `${name} failed`;
+  return `${name} stopped`;
 }
 
 function updateServiceRow(service, status, url = "") {
@@ -746,6 +754,7 @@ function updateServiceRow(service, status, url = "") {
     startButton.hidden = running || transitional;
     startButton.textContent = status === "failed" || status === "error" ? `Retry ${service}` : `Start ${service}`;
   }
+  if ((status === "failed" || status === "error") && serviceControlsDetails) serviceControlsDetails.open = true;
   if (service === "frontend" && frontendOpenLink) {
     if (running && url) {
       frontendOpenLink.hidden = false;
@@ -804,8 +813,7 @@ function hudNextStepCopy(stateName, next) {
     "review-generate": "Review generate error.",
     "run-checks": "Run checks.",
     "review-checks": "Review check error.",
-    "start-backend": "Start services.",
-    "start-frontend": "Start services.",
+    "start-app": "Start app.",
     "open-app": "Open the app.",
     ready: "Open the app.",
   };
@@ -818,8 +826,7 @@ function hudNextStepCopy(stateName, next) {
     "review-generate": "Use Advanced/logs, then retry.",
     "run-checks": "Build controls are in the main canvas.",
     "review-checks": "Use Advanced/logs, then retry.",
-    "start-backend": "Use the service controls below Build.",
-    "start-frontend": "Use the service controls below Build.",
+    "start-app": "Starts backend, then frontend.",
     "open-app": "Frontend is reachable.",
     ready: "Services are healthy.",
   };
@@ -849,7 +856,7 @@ function railStatusLine(stateName) {
   if (stateName === "validating") return "Validating…";
   if (stateName === "generating") return "Generating…";
   if (stateName === "checking") return "Running checks…";
-  if (stateName === "running") return "Services are starting.";
+  if (stateName === "running") return activeBuildOp === "start-app" ? "Starting app…" : "Services are starting.";
   if (stateName === "open-app") return "App is running.";
   if (stateName === "error") return "Something failed. See Advanced/logs.";
   return "Ready.";
@@ -1063,22 +1070,21 @@ function plainServiceName(service) {
 function renderLocalRunResult(result) {
   const statusLabel = result.ok ? "success" : "failed";
   const pathLine = result.generated_path ? `<p><strong>Generated path:</strong> <code>${escapeHtml(result.generated_path)}</code></p>` : "";
-  const commandItems = (result.commands || []).map((command) => `<li><code>${escapeHtml(command)}</code></li>`).join("");
   const label = localRunStepLabel(result.step, result.service);
-  const urlLine = result.url ? `<p><strong>URL:</strong> <a href="${escapeHtml(result.url)}" target="_blank" rel="noreferrer">${escapeHtml(result.url)}</a></p>` : "";
+  const urlLine = result.url && result.status === "running" ? `<p><strong>Ready link:</strong> <a href="${escapeHtml(result.url)}" target="_blank" rel="noreferrer">${escapeHtml(result.url)}</a></p>` : "";
   const hasExitCode = result.exit_code !== undefined && result.exit_code !== null;
   const exitLine = hasExitCode ? `<p><strong>Exit code:</strong> ${escapeHtml(result.exit_code)}</p>` : "";
+  const advancedLink = `<a href="#advanced-logs">Advanced logs</a>`;
   localRunStatus.textContent = `${compactLocalRunStatus(result, label)}${hasExitCode ? ` · exit ${result.exit_code}` : ""}`;
   localRunResults.innerHTML = `
     <article class="local-run-result ${result.ok ? "success" : "error"}">
       <h3>${escapeHtml(label)}: ${escapeHtml(result.status || statusLabel)}</h3>
-      ${exitLine}
+      <p>${escapeHtml(localRunResultSummary(result, label))} ${advancedLink}</p>
+      ${result.ok ? exitLine : ""}
       ${pathLine}
       ${urlLine}
-      ${result.timed_out ? '<p class="error-text">Command timed out.</p>' : ""}
-      ${result.truncated ? '<p class="helper-copy">Long logs were truncated for display.</p>' : ""}
-      <h4>Equivalent command${(result.commands || []).length === 1 ? "" : "s"}</h4>
-      <ul>${commandItems || "<li>No command equivalent.</li>"}</ul>
+      ${result.timed_out ? '<p class="error-text">Command timed out. See Advanced logs, then retry.</p>' : ""}
+      ${result.truncated ? '<p class="helper-copy">Long logs were truncated here. Full output stays in Advanced logs.</p>' : ""}
     </article>
   `;
   const logs = [
@@ -1092,6 +1098,16 @@ function renderLocalRunResult(result) {
   ];
   localRunLog.textContent = logs.join("\n");
   renderExportSummary(getGenerationPreview(state()));
+}
+
+function localRunResultSummary(result, label) {
+  if (!result.ok) return `${label} failed. See`;
+  if (result.step === "validate-blueprint") return "Blueprint valid. Next: generate the app.";
+  if (result.step === "generate") return "App generated. Next: run checks.";
+  if (result.step === "validate-app") return "Checks passed. Next: start the app.";
+  if (result.step === "start-service") return result.service === "frontend" ? "App is running." : "Backend ready. Start the app again to launch the frontend.";
+  if (result.step === "stop-service") return `${plainServiceName(result.service)} stopped.`;
+  return `${label} completed.`;
 }
 
 function compactLocalRunStatus(result, label) {
@@ -1160,11 +1176,77 @@ function renderServiceStatus() {
   const serviceRows = ["backend", "frontend"].map((service) => {
     const result = localRunState.services[service];
     const status = result?.status || "stopped";
-    const url = result?.url ? `<a href="${escapeHtml(result.url)}" target="_blank" rel="noreferrer">${escapeHtml(result.url)}</a>` : "Start to get link";
-    return `<div class="service-status ${escapeHtml(status)}"><strong>${escapeHtml(service)}</strong><span>${escapeHtml(status)}</span><span>${url}</span></div>`;
+    const label = serviceStatusLabel(service, status);
+    const url = status === "running" && result?.url ? `<a href="${escapeHtml(result.url)}" target="_blank" rel="noreferrer">${escapeHtml(result.url)}</a>` : "Start to get link";
+    return `<div class="service-status ${escapeHtml(status)}"><strong>${escapeHtml(service)}</strong><span>${escapeHtml(label)}</span><span>${url}</span></div>`;
   }).join("");
   localRunProcessStatus.innerHTML = `<h3>App services</h3>${serviceRows}`;
   renderBuildRunStatusChips();
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+function renderStartAppProgress(message) {
+  if (localRunStatus) localRunStatus.textContent = message;
+  if (localRunResults) {
+    localRunResults.innerHTML = `<article class="local-run-result pending"><h3>${escapeHtml(message)}</h3><p class="helper-copy">Starting the generated app with existing local-run service endpoints.</p></article>`;
+  }
+  renderServiceStatus();
+  renderBuildRunStatusChips();
+}
+
+async function waitForLocalRunService(service, initialResult = null) {
+  let latest = initialResult;
+  for (let attempt = 0; attempt < 12; attempt += 1) {
+    if (latest?.status === "running" && (service !== "frontend" || latest.url)) return latest;
+    if (["failed", "error"].includes(latest?.status)) throw new Error(`${plainServiceName(service)} failed to start. See Advanced/logs.`);
+    await sleep(attempt === 0 ? 250 : 1000);
+    latest = await localRunRequest("service-status", { run_id: localRunState.runId, service });
+    localRunState.services[service] = latest;
+    renderServiceStatus();
+  }
+  throw new Error(`${plainServiceName(service)} did not become reachable. See Advanced/logs.`);
+}
+
+async function startLocalRunApp() {
+  if (!plannerAvailable || !plannerBlueprint || !localRunState.runId || localRunBusy) return;
+  localRunBusy = true;
+  activeBuildOp = "start-app";
+  localRunPanel?.setAttribute("aria-busy", "true");
+  try {
+    let backend = localRunState.services.backend;
+    if (backend?.status !== "running") {
+      renderStartAppProgress("Starting backend…");
+      backend = await localRunRequest("start-service", { run_id: localRunState.runId, service: "backend" });
+      localRunState.services.backend = backend;
+      if (backend.ok === false) throw new Error("Backend failed to start. See Advanced/logs.");
+      backend = await waitForLocalRunService("backend", backend);
+      localRunState.services.backend = backend;
+    }
+
+    renderStartAppProgress("Starting frontend…");
+    let frontend = await localRunRequest("start-service", { run_id: localRunState.runId, service: "frontend" });
+    localRunState.services.frontend = frontend;
+    if (frontend.ok === false) throw new Error("Frontend failed to start. See Advanced/logs.");
+    frontend = await waitForLocalRunService("frontend", frontend);
+    localRunState.services.frontend = frontend;
+
+    localRunBusy = false;
+    activeBuildOp = null;
+    localRunPanel?.setAttribute("aria-busy", "false");
+    finishLocalRun({ ...frontend, step: "start-service", service: "frontend", ok: true, status: "running", run_id: localRunState.runId, generated_path: localRunState.generatedPath });
+    localRunStatus.textContent = "App is running.";
+  } catch (error) {
+    localRunBusy = false;
+    activeBuildOp = null;
+    localRunPanel?.setAttribute("aria-busy", "false");
+    const message = String(error.message || error);
+    const service = message.toLowerCase().includes("frontend") ? "frontend" : "backend";
+    finishLocalRun({ step: "start-service", service, ok: false, status: "error", exit_code: null, run_id: localRunState.runId, generated_path: localRunState.generatedPath, errors: [message], stderr: message, stdout: "", commands: [] });
+    localRunStatus.textContent = message;
+  }
 }
 
 async function controlLocalRunService(service, action) {
@@ -1761,7 +1843,7 @@ function buildOpToState(op) {
   if (op === "validate-blueprint") return "validating";
   if (op === "generate") return "generating";
   if (op === "validate-app") return "checking";
-  if (op === "start-service" || op === "stop-service") return "running";
+  if (op === "start-service" || op === "stop-service" || op === "start-app") return "running";
   return null;
 }
 

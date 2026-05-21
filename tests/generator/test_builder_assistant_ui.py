@@ -167,11 +167,12 @@ def test_phase_8e_simplification_rebuilds_run_controls_as_service_rows():
     assert 'class="service-row"' in html
     assert 'data-service="backend"' in html
     assert 'data-service="frontend"' in html
-    # Service-row Start buttons are visible by default; Stop buttons start hidden.
-    assert 'id="local-run-start-backend" type="button" class="primary-button service-row-primary"' in html
+    # Service-row controls are secondary; the main Build button owns the default path.
+    assert 'id="local-run-start-backend" type="button" class="quiet-button service-row-primary"' in html
     assert 'id="local-run-stop-backend" type="button" class="quiet-button service-row-stop" hidden' in html
-    assert 'id="local-run-start-frontend" type="button" class="primary-button service-row-primary"' in html
+    assert 'id="local-run-start-frontend" type="button" class="quiet-button service-row-primary"' in html
     assert 'id="local-run-stop-frontend" type="button" class="quiet-button service-row-stop" hidden' in html
+    assert 'class="inline-advanced service-controls-details"' in html
     # The "Open in browser" link is rendered next to the frontend row when reachable.
     assert 'id="frontend-open-link"' in html
     # JS toggles Start/Stop visibility based on status and never renders both as equally prominent.
@@ -904,7 +905,7 @@ def test_slice_b_rail_state_next_action_and_summary_are_computed_in_app_mjs():
         "Validate the Blueprint.",
         "Generate the local app.",
         "Run checks.",
-        "Start services.",
+        "Start app.",
         "Open the app.",
         "Something failed. See Advanced/logs.",
     ):
