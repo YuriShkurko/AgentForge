@@ -622,6 +622,112 @@ def _seed_value(value: Any, field: ModelField | None = None) -> str:
     return repr(value)
 
 
+def _required_relation_fields(entity) -> list[ModelField]:
+    return [f for f in entity.fields if f.type == "relation" and f.required and f.target_entity]
+
+
+def _placeholder_seed_value(field: ModelField) -> Any:
+    label = field.label or field.name.replace("_", " ").title()
+    if field.type == "integer":
+        return 0
+    if field.type == "boolean":
+        return False
+    if field.type == "date":
+        return "2026-01-01"
+    if field.type == "enum":
+        return field.enum_values[0] if field.enum_values else "unknown"
+    if field.type == "relation":
+        # Filled at runtime via a parent-row lookup; no literal needed.
+        return None
+    if field.type == "text":
+        return f"Sample {label}."
+    return f"Example {label}"
+
+
+def _build_placeholder_seed_row(entity) -> dict[str, Any]:
+    row: dict[str, Any] = {}
+    for field in entity.fields:
+        if field.type == "relation":
+            continue
+        if not field.required and field.type not in {"integer", "boolean"}:
+            continue
+        row[field.name] = _placeholder_seed_value(field)
+    return row
+
+
+def _order_entities_for_seed(model: ModelDrivenApp):
+    by_name = {entity.name: entity for entity in model.entities}
+    ordered: list = []
+    seen: set[str] = set()
+
+    def visit(entity, stack: set[str]) -> None:
+        if entity.name in seen or entity.name in stack:
+            return
+        stack.add(entity.name)
+        for field in _required_relation_fields(entity):
+            parent = by_name.get(field.target_entity)
+            if parent is not None:
+                visit(parent, stack)
+        stack.discard(entity.name)
+        if entity.name not in seen:
+            seen.add(entity.name)
+            ordered.append(entity)
+
+    for entity in model.entities:
+        visit(entity, set())
+    return ordered
+
+
+def _entities_needing_placeholder_seed(model: ModelDrivenApp) -> set[str]:
+    referenced: set[str] = set()
+    for entity in model.entities:
+        for field in _required_relation_fields(entity):
+            referenced.add(field.target_entity)
+    return {name for name in referenced if not model.seed_data.get(name)}
+
+
+def _seed_block_for_entity(entity, model: ModelDrivenApp) -> list[str]:
+    cls = _class_name(entity.name)
+    rows = list(model.seed_data.get(entity.name) or [])
+    placeholder_needed = entity.name in _entities_needing_placeholder_seed(model)
+    if not rows and placeholder_needed:
+        rows = [_build_placeholder_seed_row(entity)]
+    required_relations = _required_relation_fields(entity)
+    field_map = {field.name: field for field in entity.fields}
+    block: list[str] = [f"    if db.query(models.{cls}).count() == 0:"]
+    if not rows:
+        block.append("        pass")
+    else:
+        for index, row in enumerate(rows):
+            row_kwargs: list[str] = []
+            for key, value in row.items():
+                if key in {rel.name for rel in required_relations} and value in (None, "", 0):
+                    continue
+                row_kwargs.append(f"{key}={_seed_value(value, field_map.get(key))}")
+            missing_relations = [rel for rel in required_relations if rel.name not in row]
+            lookup_lines: list[str] = []
+            guards: list[str] = []
+            for rel in missing_relations:
+                parent_cls = _class_name(rel.target_entity)
+                var = f"_{rel.name}_parent_{index}"
+                lookup_lines.append(
+                    f"        {var} = db.query(models.{parent_cls}).order_by(models.{parent_cls}.id).first()"
+                )
+                guards.append(var)
+                row_kwargs.append(f"{rel.name}={var}.id")
+            if lookup_lines:
+                block.extend(lookup_lines)
+                guard_expr = " and ".join(f"{var} is not None" for var in guards)
+                block.append(f"        if {guard_expr}:")
+                block.append(f"            db.add(models.{cls}({', '.join(row_kwargs)}))")
+            else:
+                block.append(f"        db.add(models.{cls}({', '.join(row_kwargs)}))")
+        # Flush so subsequent entities can resolve FKs to ids assigned here.
+        block.append("        db.flush()")
+    block.append(f"    created['{entity.name}'] = db.query(models.{cls}).count()")
+    return block
+
+
 def _backend_providers_module(model: ModelDrivenApp) -> str:
     providers_payload = [
         {
@@ -895,18 +1001,8 @@ def _backend_main(pack: DomainPack, model: ModelDrivenApp) -> str:
     body = [*imports, f"app = FastAPI(title={pack.display_name!r})", "app.add_middleware(CORSMiddleware, allow_origins=['http://localhost:5173'], allow_methods=['*'], allow_headers=['*'])", "Base.metadata.create_all(bind=engine)", ""]
     body += ["@app.get('/health')", "def health():", "    return {'status': 'ok'}", ""]
     body += ["@app.post('/seed')", "def seed(db: Session = Depends(get_db)):", "    created = {}"]
-    for entity in model.entities:
-        cls = _class_name(entity.name)
-        rows = model.seed_data.get(entity.name, [])
-        body += [f"    if db.query(models.{cls}).count() == 0:"]
-        if rows:
-            for row in rows:
-                field_map = {field.name: field for field in entity.fields}
-                args = ", ".join(f"{k}={_seed_value(v, field_map.get(k))}" for k, v in row.items())
-                body.append(f"        db.add(models.{cls}({args}))")
-        else:
-            body.append("        pass")
-        body.append(f"    created['{entity.name}'] = db.query(models.{cls}).count()")
+    for entity in _order_entities_for_seed(model):
+        body += _seed_block_for_entity(entity, model)
     body += ["    db.commit()", "    return created", ""]
     for entity in model.entities:
         cls = _class_name(entity.name); route = entity.name.replace('_','-')

@@ -462,6 +462,93 @@ def test_generated_backend_tests_use_isolated_database(tmp_path, pack_name):
     assert "_TEST_DB_PATH.unlink()" in conftest
 
 
+def test_seed_inserts_parent_before_child_and_fills_required_fk(tmp_path):
+    pack_data = _base_pack()
+    pack_data["name"] = "model-test-fk"
+    pack_data["model"]["entities"] = [
+        {
+            "name": "farm",
+            "label_singular": "Farm",
+            "label_plural": "Farms",
+            "fields": [
+                {"name": "name", "type": "string", "required": True},
+                {"name": "location", "type": "string", "required": True},
+            ],
+        },
+        {
+            "name": "livestock",
+            "label_singular": "Livestock",
+            "label_plural": "Livestock",
+            "fields": [
+                {"name": "type", "type": "string", "required": True},
+                {"name": "age", "type": "integer", "required": True},
+                {"name": "health_status", "type": "enum", "required": True, "enum_values": ["healthy", "sick"]},
+                {"name": "farm_id", "type": "relation", "required": True, "target_entity": "farm"},
+            ],
+        },
+    ]
+    pack_data["model"]["pages"] = [
+        {"name": "farms", "type": "entity_list", "entity": "farm"},
+        {"name": "livestock", "type": "entity_list", "entity": "livestock"},
+    ]
+    pack_data["model"]["actions"] = []
+    # Intentionally omit a farm seed row AND omit farm_id on the livestock seed
+    # row — this matches the failure mode where the generator emitted an
+    # INSERT with farm_id=NULL against a NOT NULL column.
+    pack_data["model"]["seed_data"] = {
+        "livestock": [{"type": "Example Type", "age": 0, "health_status": "healthy"}],
+    }
+    pack = DomainPack.model_validate(pack_data)
+    out = tmp_path / pack.name
+    generate(pack, out)
+    main_py = (out / "backend/app/main.py").read_text(encoding="utf-8")
+    # Parent (Farm) must be seeded before the child (Livestock) block.
+    farm_index = main_py.index("db.add(models.Farm(")
+    livestock_index = main_py.index("db.add(models.Livestock(")
+    assert farm_index < livestock_index
+    # The Livestock insert must include farm_id resolved from a parent lookup.
+    livestock_block = main_py[livestock_index - 400:livestock_index + 400]
+    assert "db.query(models.Farm).order_by(models.Farm.id).first()" in livestock_block
+    assert "farm_id=_farm_id_parent_" in livestock_block
+    # Parent insert receives a placeholder row even though seed_data omitted it.
+    assert "name='Example Farm Name'" in main_py or "name=\"Example Farm Name\"" in main_py or "models.Farm(name=" in main_py
+    # Flush before the next entity so freshly-assigned ids are usable as FKs.
+    assert "db.flush()" in main_py
+
+
+def test_seed_block_guards_when_parent_row_is_unavailable(tmp_path):
+    pack_data = _base_pack()
+    pack_data["name"] = "model-test-fk-guard"
+    pack_data["model"]["entities"] = [
+        {
+            "name": "owner",
+            "label_singular": "Owner",
+            "label_plural": "Owners",
+            "fields": [{"name": "name", "type": "string", "required": True}],
+        },
+        {
+            "name": "pet",
+            "label_singular": "Pet",
+            "label_plural": "Pets",
+            "fields": [
+                {"name": "nickname", "type": "string", "required": True},
+                {"name": "owner_id", "type": "relation", "required": True, "target_entity": "owner"},
+            ],
+        },
+    ]
+    pack_data["model"]["pages"] = [{"name": "pets", "type": "entity_list", "entity": "pet"}]
+    pack_data["model"]["actions"] = []
+    pack_data["model"]["seed_data"] = {"pet": [{"nickname": "Spot"}]}
+    pack = DomainPack.model_validate(pack_data)
+    out = tmp_path / pack.name
+    generate(pack, out)
+    main_py = (out / "backend/app/main.py").read_text(encoding="utf-8")
+    # The pet insert is guarded against missing parent rows.
+    pet_block = main_py.split("db.query(models.Pet)")[1].split("created['pet']")[0]
+    assert "if _owner_id_parent_0 is not None" in pet_block
+    assert "db.add(models.Pet(nickname='Spot', owner_id=_owner_id_parent_0.id))" in pet_block
+
+
 def test_app_exposes_active_entity_state(tmp_path):
     client = load_pack(PACKS_DIR / "client-onboarding-workspace" / "domain-pack.yaml")
     out = tmp_path / client.name
