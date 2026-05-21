@@ -104,6 +104,10 @@ const canvasStateLabel = document.querySelector("#canvas-state-label");
 const canvasStateDetail = document.querySelector("#canvas-state-detail");
 const canvasThinkingOverlay = document.querySelector("#canvas-thinking-overlay");
 const canvasThinkingEcho = document.querySelector("#canvas-thinking-echo");
+const canvasThinkingHeadline = document.querySelector("#canvas-thinking-headline");
+const canvasThinkingSubline = document.querySelector("#canvas-thinking-subline");
+const canvasThinkingExpectation = document.querySelector("#canvas-thinking-expectation");
+const resetSessionButton = document.querySelector("#reset-session");
 const summaryCapabilityGroups = document.querySelector("#summary-capability-groups");
 const summaryCommands = document.querySelector("#summary-commands");
 const customizePanel = document.querySelector("#customize-panel");
@@ -135,6 +139,249 @@ const localRunLog = document.querySelector("#local-run-log");
 const exportSummary = document.querySelector("#export-summary");
 
 const plannerApi = window.location.protocol.startsWith("http") ? `${window.location.origin}/api/planner` : "http://127.0.0.1:8765/api/planner";
+
+const SESSION_STORAGE_KEY = "agentforge.builder.session.v1";
+const SESSION_SCHEMA_VERSION = 1;
+const MAX_PERSISTED_HISTORY = 40;
+const MAX_PERSISTED_STEP_DETAIL = 280;
+const SECRET_KEY_PATTERN = /(secret|token|password|api[_-]?key|bearer|authorization)/i;
+
+const BUILD_OP_PROGRESS = {
+  "validate-blueprint": {
+    headline: "Validating plan…",
+    subline: "Checking the Blueprint before we generate files.",
+    expectation: "Usually a few seconds.",
+    busy: "Validating plan…",
+  },
+  generate: {
+    headline: "Generating your app…",
+    subline: "Writing backend, frontend, and tests.",
+    expectation: "May take 20–60 seconds on first install.",
+    busy: "Generating your app…",
+  },
+  "validate-app": {
+    headline: "Running app checks…",
+    subline: "Making sure the generated app builds cleanly.",
+    expectation: "Usually 10–30 seconds.",
+    busy: "Running app checks…",
+  },
+  "start-app": {
+    headline: "Starting your app…",
+    subline: "Backend first, then the frontend.",
+    expectation: "Starting services… this can take a moment (10–30s).",
+    busy: "Starting your app…",
+  },
+  "start-service": {
+    headline: "Starting service…",
+    subline: "Bringing the service up.",
+    expectation: "Usually a few seconds.",
+    busy: "Starting service…",
+  },
+  "stop-service": {
+    headline: "Stopping service…",
+    subline: "Shutting the service down.",
+    expectation: "Usually a few seconds.",
+    busy: "Stopping service…",
+  },
+};
+
+function isInsideAdvancedRegion(node) {
+  if (!node || !node.closest) return false;
+  return Boolean(
+    node.closest("#advanced-drawer") ||
+    node.closest(".inline-advanced") ||
+    node.closest(".assistant-history-details") ||
+    node.closest(".plan-summary-extras") ||
+    node.closest(".customize-details") ||
+    node.closest(".assistant-proposal-changes") ||
+    node.closest(".assistant-guidance-raw")
+  );
+}
+
+function safeReadSession() {
+  try {
+    const raw = window.localStorage?.getItem(SESSION_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || parsed.version !== SESSION_SCHEMA_VERSION) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function safeWriteSession(snapshot) {
+  try {
+    window.localStorage?.setItem(SESSION_STORAGE_KEY, JSON.stringify(snapshot));
+  } catch {
+    // Quota or disabled storage — fail silently; Builder still works in-memory.
+  }
+}
+
+function safeClearSession() {
+  try {
+    window.localStorage?.removeItem(SESSION_STORAGE_KEY);
+  } catch {
+    // ignore
+  }
+}
+
+function sanitizeStepForPersistence(step) {
+  if (!step || typeof step !== "object") return null;
+  const errors = Array.isArray(step.errors)
+    ? step.errors.filter(Boolean).map((value) => String(value).slice(0, MAX_PERSISTED_STEP_DETAIL))
+    : [];
+  return {
+    step: step.step,
+    ok: Boolean(step.ok),
+    status: step.status || (step.ok ? "ok" : "failed"),
+    exit_code: step.exit_code ?? null,
+    service: step.service || null,
+    generated_path: step.generated_path || null,
+    run_id: step.run_id || null,
+    errors,
+    url: step.url || null,
+    timed_out: Boolean(step.timed_out),
+    truncated: Boolean(step.truncated),
+  };
+}
+
+function sanitizeServiceForPersistence(service) {
+  if (!service || typeof service !== "object") return null;
+  return {
+    status: service.status || "stopped",
+    service: service.service || null,
+    url: service.url || null,
+    ok: service.ok !== false,
+  };
+}
+
+function sanitizeSessionStateForPersistence(state) {
+  if (!state || typeof state !== "object") return null;
+  const proposal = state.proposal && state.proposal.blueprint
+    ? { blueprint: state.proposal.blueprint, changes: Array.isArray(state.proposal.changes) ? state.proposal.changes : [] }
+    : null;
+  return {
+    status: state.status || null,
+    proposal,
+    // Drop large internal fields (raw turns, scratch buffers). The applied
+    // blueprint is recoverable from plannerBlueprint; the assistant turn
+    // history is recoverable by reading the truncated log buffer.
+  };
+}
+
+function sanitizeLogEntriesForPersistence() {
+  if (!assistantLog) return [];
+  const entries = Array.from(assistantLog.querySelectorAll(".assistant-message"));
+  const recent = entries.slice(-MAX_PERSISTED_HISTORY);
+  return recent.map((entry) => {
+    const role = entry.classList.contains("assistant-message-user")
+      ? "user"
+      : entry.classList.contains("assistant-message-activity")
+        ? "activity"
+        : "assistant";
+    const body = entry.querySelector(".assistant-message-body");
+    const text = body ? String(body.textContent || "") : "";
+    if (SECRET_KEY_PATTERN.test(text)) return { role, text: "[redacted line]" };
+    return { role, text: text.slice(0, 600) };
+  });
+}
+
+function collectSessionSnapshot() {
+  return {
+    version: SESSION_SCHEMA_VERSION,
+    savedAt: Date.now(),
+    activeStep,
+    canvasState: builderShell?.dataset.canvasState || null,
+    plannerBlueprint,
+    plannerYaml: plannerYaml ? plannerYaml.slice(0, 20000) : "",
+    plannerCommands: Array.isArray(plannerCommands) ? plannerCommands.slice(0, 24) : [],
+    assistantSessionState: sanitizeSessionStateForPersistence(assistantSessionState),
+    assistantLog: sanitizeLogEntriesForPersistence(),
+    lastUserPrompt: typeof lastUserPrompt === "string" ? lastUserPrompt.slice(0, 600) : "",
+    localRunState: {
+      runId: localRunState.runId,
+      generatedPath: localRunState.generatedPath,
+      steps: (localRunState.steps || []).map(sanitizeStepForPersistence).filter(Boolean),
+      services: {
+        backend: sanitizeServiceForPersistence(localRunState.services?.backend),
+        frontend: sanitizeServiceForPersistence(localRunState.services?.frontend),
+      },
+    },
+  };
+}
+
+let sessionPersistDebounce = null;
+let sessionResetInFlight = false;
+function persistSessionSoon() {
+  if (sessionResetInFlight) return;
+  if (sessionPersistDebounce) return;
+  sessionPersistDebounce = window.setTimeout(() => {
+    sessionPersistDebounce = null;
+    if (sessionResetInFlight) return;
+    safeWriteSession(collectSessionSnapshot());
+  }, 120);
+}
+
+function restoreSessionFromStorage() {
+  const snapshot = safeReadSession();
+  if (!snapshot) return false;
+  try {
+    if (snapshot.plannerBlueprint) {
+      plannerBlueprint = snapshot.plannerBlueprint;
+      plannerYaml = snapshot.plannerYaml || "";
+      plannerCommands = Array.isArray(snapshot.plannerCommands) ? snapshot.plannerCommands : [];
+      applyBlueprintToForm(plannerBlueprint);
+    }
+    if (snapshot.assistantSessionState) {
+      assistantSessionState = snapshot.assistantSessionState;
+      if (assistantSessionState?.proposal?.blueprint) {
+        renderAssistantProposal(assistantSessionState.proposal);
+      } else if (assistantSessionState?.status === "applied") {
+        setAssistantApplied(true);
+      }
+    }
+    if (Array.isArray(snapshot.assistantLog) && snapshot.assistantLog.length > 0) {
+      snapshot.assistantLog.forEach((entry) => {
+        if (entry && entry.text) appendAssistantMessage(entry.role || "assistant", entry.text);
+      });
+      appendAssistantMessage("activity", "Restored from your previous session. Re-checking live services…");
+    }
+    if (snapshot.localRunState) {
+      const restoredLocal = snapshot.localRunState;
+      localRunState = {
+        runId: restoredLocal.runId || null,
+        generatedPath: restoredLocal.generatedPath || null,
+        steps: Array.isArray(restoredLocal.steps) ? restoredLocal.steps.map(sanitizeStepForPersistence).filter(Boolean) : [],
+        services: {
+          backend: sanitizeServiceForPersistence(restoredLocal.services?.backend),
+          frontend: sanitizeServiceForPersistence(restoredLocal.services?.frontend),
+        },
+      };
+    }
+    if (typeof snapshot.lastUserPrompt === "string") lastUserPrompt = snapshot.lastUserPrompt;
+    if (snapshot.activeStep && typeof snapshot.activeStep === "string") activeStep = snapshot.activeStep;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function resetBuilderSession({ reload = true } = {}) {
+  // Set the reset flag BEFORE clearing storage so the beforeunload flush
+  // (triggered by the reload below) cannot re-write the snapshot we just
+  // erased. Without this guard the page would reload back into the same
+  // restored state and reset would appear to do nothing.
+  sessionResetInFlight = true;
+  safeClearSession();
+  if (sessionPersistDebounce) {
+    window.clearTimeout(sessionPersistDebounce);
+    sessionPersistDebounce = null;
+  }
+  if (!reload) return;
+  // Reload to a clean canvas; the planner status check + canvas state recompute.
+  window.location.reload();
+}
 let plannerAvailable = false;
 let plannerBlueprint = null;
 let plannerYaml = "";
@@ -986,18 +1233,32 @@ function setLocalRunBusy(message, op = null) {
   localRunBusy = true;
   activeBuildOp = op;
   localRunPanel?.setAttribute("aria-busy", "true");
-  localRunStatus.textContent = message;
+  localRunPanel?.setAttribute("data-busy-op", op || "");
+  if (buildPrimaryAction) {
+    buildPrimaryAction.disabled = true;
+    buildPrimaryAction.dataset.busy = "true";
+  }
+  const expectation = BUILD_OP_PROGRESS[op]?.expectation;
+  localRunStatus.textContent = expectation ? `${message} ${expectation}` : message;
   if (localRunResults) {
-    localRunResults.innerHTML = `<article class="local-run-result pending"><h3>${escapeHtml(message)}</h3><p class="helper-copy">Keep this tab open. The assistant will summarize the result when the action finishes.</p></article>`;
+    const helperLine = expectation
+      ? expectation
+      : "Keep this tab open. The assistant will summarize the result when the action finishes.";
+    localRunResults.innerHTML = `<article class="local-run-result pending" aria-live="polite"><h3>${escapeHtml(message)}</h3><p class="helper-copy">${escapeHtml(helperLine)}</p><p class="local-run-busy-hint helper-copy">Keep this tab open — primary action stays disabled until the step finishes.</p></article>`;
   }
   updateLocalRunAvailability();
   applyCanvasState();
+  persistSessionSoon();
 }
 
 function finishLocalRun(result) {
   localRunBusy = false;
   activeBuildOp = null;
   localRunPanel?.setAttribute("aria-busy", "false");
+  localRunPanel?.removeAttribute("data-busy-op");
+  if (buildPrimaryAction) {
+    delete buildPrimaryAction.dataset.busy;
+  }
   if (result.run_id) localRunState.runId = result.run_id;
   if (result.generated_path) localRunState.generatedPath = result.generated_path;
   if (result.service) localRunState.services[result.service] = result;
@@ -1008,6 +1269,7 @@ function finishLocalRun(result) {
   appendAssistantActivityForLocalRun(result);
   updateLocalRunAvailability();
   if (result.step === "start-service" || result.step === "service-status") scheduleServiceStatusPoll();
+  persistSessionSoon();
 }
 
 function appendAssistantActivityForLocalRun(result) {
@@ -1101,13 +1363,13 @@ function renderLocalRunResult(result) {
 }
 
 function localRunResultSummary(result, label) {
-  if (!result.ok) return `${label} failed. See`;
-  if (result.step === "validate-blueprint") return "Blueprint valid. Next: generate the app.";
-  if (result.step === "generate") return "App generated. Next: run checks.";
+  if (!result.ok) return `${label} didn't finish — see`;
+  if (result.step === "validate-blueprint") return "Plan looks good. Next: generate the app.";
+  if (result.step === "generate") return "App is generated. Next: run checks.";
   if (result.step === "validate-app") return "Checks passed. Next: start the app.";
-  if (result.step === "start-service") return result.service === "frontend" ? "App is running." : "Backend ready. Start the app again to launch the frontend.";
-  if (result.step === "stop-service") return `${plainServiceName(result.service)} stopped.`;
-  return `${label} completed.`;
+  if (result.step === "start-service") return result.service === "frontend" ? "Your app is running." : "Backend is ready. Click Start app to launch the frontend.";
+  if (result.step === "stop-service") return `${plainServiceName(result.service)} is stopped.`;
+  return `${label} is done.`;
 }
 
 function compactLocalRunStatus(result, label) {
@@ -1133,7 +1395,7 @@ function localRunStepLabel(step, service = "") {
 
 async function validateLocalRunBlueprint() {
   if (!plannerAvailable || !plannerBlueprint || localRunBusy) return;
-  setLocalRunBusy("Validating active Blueprint...", "validate-blueprint");
+  setLocalRunBusy("Validating plan…", "validate-blueprint");
   try {
     finishLocalRun(await localRunRequest("validate-blueprint", { blueprint: plannerBlueprint }));
   } catch (error) {
@@ -1143,7 +1405,7 @@ async function validateLocalRunBlueprint() {
 
 async function generateLocalRunApp() {
   if (!plannerAvailable || !plannerBlueprint || localRunBusy) return;
-  setLocalRunBusy("Generating sandboxed local app...", "generate");
+  setLocalRunBusy("Generating your app…", "generate");
   try {
     finishLocalRun(await localRunRequest("generate", { blueprint: plannerBlueprint }));
   } catch (error) {
@@ -1153,7 +1415,7 @@ async function generateLocalRunApp() {
 
 async function validateLocalRunApp() {
   if (!plannerAvailable || !plannerBlueprint || !localRunState.runId || localRunBusy) return;
-  setLocalRunBusy("Running make validate in generated app...", "validate-app");
+  setLocalRunBusy("Running app checks…", "validate-app");
   try {
     finishLocalRun(await localRunRequest("validate-app", { run_id: localRunState.runId }));
   } catch (error) {
@@ -1734,6 +1996,48 @@ function clearAssistantConversation() {
   applyCanvasState();
 }
 
+const NEEDS_DETAIL_PATTERNS = [
+  /need (?:a bit )?more (?:details|info|information)/i,
+  /tell me more/i,
+  /could you (?:share|describe)/i,
+  /what (?:kind|type) of/i,
+  /can you (?:share|describe|tell)/i,
+  /can propose (?:once|after)/i,
+];
+
+function inferClarifyingQuestions(result, incomingMessages) {
+  const hasQuestions = Array.isArray(result.questions) && result.questions.length > 0;
+  const hasDetails = Array.isArray(result.question_details) && result.question_details.length > 0;
+  if (hasQuestions || hasDetails) return null;
+  if (result.proposal && result.proposal.blueprint) return null;
+  const messages = (incomingMessages || []).map((value) => String(value || "").trim()).filter(Boolean);
+  const lastQuestion = messages.reverse().find((text) => text.endsWith("?"));
+  if (lastQuestion) {
+    return {
+      questions: [lastQuestion],
+      details: [{
+        id: "auto-clarify",
+        prompt: lastQuestion,
+        helper: "Reply in the assistant composer below.",
+        examples: ["A short, plain-English answer is enough.", "If you're unsure, share one concrete example."],
+      }],
+    };
+  }
+  const signalsMoreDetail = messages.some((text) => NEEDS_DETAIL_PATTERNS.some((pattern) => pattern.test(text)));
+  if (signalsMoreDetail) {
+    return {
+      questions: ["Tell the assistant a bit more about the app you want to build."],
+      details: [{
+        id: "auto-clarify",
+        prompt: "Tell the assistant a bit more about the app you want to build.",
+        helper: "Share entities, who uses it, and one concrete workflow.",
+        examples: ["Manage clients and lessons for a tennis coach.", "Track support tickets and let an operator triage them."],
+      }],
+    };
+  }
+  return null;
+}
+
 function handleAssistantResponse(result) {
   assistantSessionState = result.state || null;
   updateAssistantModeLabel(result.turn_mode, result.fallback_reason);
@@ -1747,13 +2051,18 @@ function handleAssistantResponse(result) {
     const planMsg = planReadyMessage(result.proposal);
     if (planMsg) appendAssistantMessage("activity", planMsg);
   }
-  renderAssistantQuestions(result.questions, result.question_details);
+  const inferred = inferClarifyingQuestions(result, filtered);
+  renderAssistantQuestions(
+    inferred ? inferred.questions : result.questions,
+    inferred ? inferred.details : result.question_details,
+  );
   renderAssistantProposal(result.proposal);
   renderAssistantGuidance(result.guidance);
   if (result.errors && result.errors.length) {
     appendAssistantMessage("assistant", result.errors.join(" "));
   }
   renderAssistantNextStep();
+  persistSessionSoon();
 }
 
 function renderAssistantGuidance(guidance) {
@@ -1879,10 +2188,22 @@ function applyCanvasState() {
   if (canvasStateBadge) canvasStateBadge.dataset.state = stateName;
   if (canvasStateLabel) canvasStateLabel.textContent = copy.label;
   if (canvasStateDetail) canvasStateDetail.textContent = copy.detail;
-  if (canvasThinkingOverlay) canvasThinkingOverlay.hidden = stateName !== "thinking";
+  const showOverlay = stateName === "thinking" || (localRunBusy && ["validating", "generating", "checking", "running"].includes(stateName));
+  if (canvasThinkingOverlay) canvasThinkingOverlay.hidden = !showOverlay;
+  const opProgress = activeBuildOp ? BUILD_OP_PROGRESS[activeBuildOp] : null;
+  if (canvasThinkingHeadline) {
+    canvasThinkingHeadline.textContent = opProgress ? opProgress.headline : (stateName === "thinking" ? "Drafting your app plan…" : copy.detail);
+  }
+  if (canvasThinkingSubline) {
+    canvasThinkingSubline.textContent = opProgress ? opProgress.subline : "Finding entities, pages, and build steps.";
+  }
+  if (canvasThinkingExpectation) {
+    canvasThinkingExpectation.textContent = opProgress ? opProgress.expectation : "Usually a few seconds.";
+  }
   renderRailHud(stateName);
   const region = CANVAS_STATE_REGION[stateName];
   if (region && region !== activeStep) setActiveStep(region);
+  persistSessionSoon();
 }
 
 const GENERIC_ACK_PATTERNS = [
@@ -2011,12 +2332,23 @@ async function submitAssistantMessage(textOverride, sourceInput) {
 renderArchetypes();
 renderEntryHelpers();
 renderModules();
+const sessionRestored = restoreSessionFromStorage();
 updatePreview();
 setActiveStep(activeStep);
 updateAssistantAvailability();
 updateLocalRunAvailability();
 applyCanvasState();
 checkPlannerStatus();
+if (sessionRestored) persistSessionSoon();
+
+window.addEventListener("beforeunload", () => {
+  if (sessionPersistDebounce) {
+    window.clearTimeout(sessionPersistDebounce);
+    sessionPersistDebounce = null;
+  }
+  if (sessionResetInFlight) return;
+  safeWriteSession(collectSessionSnapshot());
+});
 
 form.archetype.addEventListener("change", () => {
   clearPlannerDraft();
@@ -2027,21 +2359,45 @@ form.archetype.addEventListener("change", () => {
   updatePreview();
 });
 
+function shouldClearOnFormInput(target) {
+  if (!target || !target.closest) return false;
+  if (target.closest(".planner-panel")) return false;
+  if (target.closest("#assistant-panel")) return false;
+  // Inputs inside any Advanced/details region are inspection or post-apply
+  // edits. They must not wipe the applied plan and reset the build flow.
+  if (isInsideAdvancedRegion(target)) return false;
+  return true;
+}
+
 document.addEventListener("input", (event) => {
   if (event.target.closest("#customize-panel")) readCustomizationInputs();
-  if (!event.target.closest(".planner-panel") && !event.target.closest("#assistant-panel")) clearPlannerDraft();
+  if (shouldClearOnFormInput(event.target)) clearPlannerDraft();
   updatePreview();
+  persistSessionSoon();
 });
 document.addEventListener("change", (event) => {
   if (event.target.closest("#customize-panel")) readCustomizationInputs();
-  if (!event.target.closest(".planner-panel") && !event.target.closest("#assistant-panel")) clearPlannerDraft();
+  if (shouldClearOnFormInput(event.target)) clearPlannerDraft();
   updatePreview();
+  persistSessionSoon();
 });
 
 document.addEventListener("click", (event) => {
+  // A <summary> click toggles its <details>. Some legacy panels carry a
+  // [data-step-target] attribute on an ancestor; opening Advanced/details
+  // should never count as a step-target click.
+  if (event.target.closest("summary")) return;
+  if (isInsideAdvancedRegion(event.target)) return;
   const target = event.target.closest("[data-step-target]");
   if (!target) return;
   setActiveStep(target.dataset.stepTarget);
+});
+
+resetSessionButton?.addEventListener("click", () => {
+  if (typeof window.confirm === "function") {
+    if (!window.confirm("Reset Builder session? This clears the saved plan, run summary, and chat history in this browser.")) return;
+  }
+  resetBuilderSession();
 });
 copyButton.addEventListener("click", copyYaml);
 downloadButton.addEventListener("click", downloadYaml);

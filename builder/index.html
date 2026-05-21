@@ -17,6 +17,7 @@
             <p class="app-header-title">Agent workspace</p>
           </div>
           <div class="status-pill" id="status-pill">Valid draft</div>
+          <button id="reset-session" type="button" class="quiet-button reset-session-button" title="Clear saved Builder session and start over">Reset session</button>
         </header>
 
         <div class="wizard-layout">
@@ -32,8 +33,9 @@
               <div class="canvas-thinking-indicator" aria-hidden="true">
                 <span></span><span></span><span></span>
               </div>
-              <h2 class="canvas-thinking-headline">Drafting your app plan…</h2>
-              <p class="canvas-thinking-subline">Finding entities, pages, and build steps.</p>
+              <h2 class="canvas-thinking-headline" id="canvas-thinking-headline">Drafting your app plan…</h2>
+              <p class="canvas-thinking-subline" id="canvas-thinking-subline">Finding entities, pages, and build steps.</p>
+              <p class="canvas-thinking-expectation" id="canvas-thinking-expectation">Usually a few seconds.</p>
               <p class="canvas-thinking-echo" id="canvas-thinking-echo" hidden></p>
             </div>
 

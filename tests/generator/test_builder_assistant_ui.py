@@ -252,7 +252,13 @@ def test_app_mjs_calls_assistant_endpoints_and_handles_fallback():
     assert "clearAssistantConversation" in script
     assert "updateAssistantAvailability" in script
     assert "plannerAvailable" in script
-    assert '!event.target.closest(".planner-panel") && !event.target.closest("#assistant-panel")' in script
+    # The clear-on-form-input guard moved into shouldClearOnFormInput, which
+    # still respects .planner-panel and #assistant-panel exemptions (and now
+    # also exempts Advanced/details inspection regions).
+    should_clear = _extract_function(script, "shouldClearOnFormInput")
+    assert should_clear is not None
+    assert '.planner-panel' in should_clear
+    assert '#assistant-panel' in should_clear
     assert "Fallback to scripted" in script
     # Fallback message wired when planner is offline.
     assert "Static mode" in script
@@ -812,10 +818,11 @@ def test_slice_a_local_run_busy_tracks_active_build_op():
     # setLocalRunBusy accepts an op argument and assigns it.
     assert "function setLocalRunBusy(message, op = null)" in script
     assert "activeBuildOp = op" in script
-    # The four local-run actions pass the op key.
-    assert 'setLocalRunBusy("Validating active Blueprint...", "validate-blueprint")' in script
-    assert 'setLocalRunBusy("Generating sandboxed local app...", "generate")' in script
-    assert 'setLocalRunBusy("Running make validate in generated app...", "validate-app")' in script
+    # The four local-run actions pass the op key. Copy was humanized in the
+    # Builder UX persistence/progress polish pass.
+    assert 'setLocalRunBusy("Validating plan…", "validate-blueprint")' in script
+    assert 'setLocalRunBusy("Generating your app…", "generate")' in script
+    assert 'setLocalRunBusy("Running app checks…", "validate-app")' in script
     assert 'setLocalRunBusy(`${verb} ${service}...`, action)' in script
 
 

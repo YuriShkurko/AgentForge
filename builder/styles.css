@@ -2873,6 +2873,31 @@ button + button,
   max-width: 540px;
 }
 
+.canvas-thinking-expectation {
+  font-size: 13px;
+  color: #475569;
+  margin: 0;
+  font-weight: 500;
+}
+
+.reset-session-button {
+  margin-left: auto;
+  font-size: 12px;
+  padding: 4px 10px;
+}
+
+.local-run-busy-hint {
+  margin-top: 6px;
+  font-size: 12px;
+  color: #6b7280;
+}
+
+[data-busy-op] .next-action-button,
+.primary-button[data-busy="true"] {
+  cursor: progress;
+  opacity: 0.7;
+}
+
 /* Plan-ready: hide the assistant composer so the proposal dominates */
 .builder[data-canvas-state="plan-ready"] #assistant-form,
 .builder[data-canvas-state="plan-ready"] #hero-composer,
@@ -2979,5 +3004,78 @@ button + button,
 .advanced-drawer[open] > div,
 .advanced-drawer[open] > p {
   margin-top: 14px;
+}
+
+/* ---------------------------------------------------------------------------
+   UX polish: dead-space reduction + empty/start composition
+   --------------------------------------------------------------------------- */
+
+/* Empty/start: center the composer block inside the available main area
+   instead of pinning it to the top of a tall shell. */
+.builder[data-canvas-state="empty"] .wizard-main,
+.builder[data-canvas-state="static"] .wizard-main {
+  min-height: calc(100vh - 180px);
+  align-content: center;
+  justify-items: stretch;
+}
+
+.builder[data-canvas-state="empty"] .entry-step,
+.builder[data-canvas-state="static"] .entry-step {
+  min-height: auto;
+  align-content: start;
+  gap: 18px;
+}
+
+/* Compact entry step on the start state — collapse the legacy 540px min-height
+   so the hero composer sits naturally without an empty band beneath it. */
+.builder[data-canvas-state="empty"] .entry-step.compact-entry-step,
+.builder[data-canvas-state="static"] .entry-step.compact-entry-step {
+  min-height: auto;
+  padding-top: 1.2rem;
+  padding-bottom: 1.2rem;
+}
+
+/* Plan / Build / Run cards: size to content. Earlier passes forced fixed
+   min-heights that left blank zones when validation/generation had no
+   results yet. Keep extra room only while a long-running op is actually
+   pending (the .pending result card already provides its own breathing
+   space). */
+.workspace-card {
+  min-height: 0;
+}
+
+.plan-build-run-workspace {
+  gap: 12px;
+}
+
+.local-run-panel:not([aria-busy="true"]) .local-run-results:empty {
+  display: none;
+}
+
+.local-run-empty-state {
+  min-height: 0;
+  padding: 14px 16px;
+}
+
+/* Pending result card keeps a readable height so the spinner copy doesn't
+   feel cramped during long-running ops. */
+.local-run-result.pending {
+  min-height: 92px;
+}
+
+/* Status lines: gentler line-height + clamped width so Build copy looks
+   like a sentence, not a log dump. */
+.local-run-status-line,
+#local-run-status,
+.assistant-next-step-detail,
+.canvas-state-detail {
+  font-weight: 500;
+  max-width: 64ch;
+}
+
+/* Right-rail HUD stays aligned with the main card top across states. */
+.builder[data-canvas-state="empty"] .builder-side-panel,
+.builder[data-canvas-state="static"] .builder-side-panel {
+  align-self: start;
 }
 
