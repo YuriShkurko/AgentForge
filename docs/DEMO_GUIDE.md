@@ -57,9 +57,9 @@ agentforge draft-blueprint \
 
 ### Optional: Builder Assistant chat path
 
-With `agentforge serve-builder` running, the Describe step exposes an inline chat panel backed by the deterministic local assistant (`/api/planner/assistant/*`). Use this path when you want to show the conversational front door for a model-driven app.
+With `agentforge serve-builder` running, the Builder opens as an agent-first workspace backed by the deterministic local assistant (`/api/planner/assistant/*`). Use this path when you want to show the conversational front door for a model-driven app.
 
-After applying an assistant proposal, use the Review step's Local Control Room to validate the active Blueprint, generate a sandboxed app under `.tmp/builder-runs/<safe-run-id>/app`, and run `make validate` while showing the equivalent commands and logs. This is local-only: no GitHub, deployment, arbitrary shell commands, output path selection, or generated app server process management.
+After applying an assistant proposal, use the Plan / Build / Run workspace to validate the active Blueprint, generate a sandboxed app under `.tmp/builder-runs/<safe-run-id>/app`, run `make validate`, start backend/frontend services, and open the generated frontend. This is local-only: no GitHub, deployment, arbitrary shell commands, output path selection, or production process management.
 
 Suggested flow:
 
@@ -69,13 +69,14 @@ Suggested flow:
    - the **Imports** and **Providers** meta rows listing `ticket_import` and a read-only `github_issues` provider with `target_import=ticket_import` and env-var *names* `GITHUB_TOKEN` / `GITHUB_REPO` (no secret values are stored);
    - the assistant message confirming the proposal validated through the same Python schema path the CLI uses.
 3. Click **Reject** to show the draft is untouched, then re-send the same idea and click **Apply** to install the proposal into the Builder draft. Apply re-runs `DomainPack.model_validate` through `apply-preview` before any state changes.
-4. (Optional) Edit the YAML preview to break it — e.g. set a provider `target_import` to a missing id — and click Apply again. The assistant surfaces a structured **Validation guidance** block with a category tag (`missing_target_import`), a plain-language message, a suggested manual fix, an optional follow-up question, and a collapsible raw error. Nothing is repaired automatically; the user has to edit and re-Apply.
+4. (Optional) Edit the YAML preview to break it, for example set a provider `target_import` to a missing id, and click Apply again. The assistant surfaces a structured **Validation guidance** block with a category tag (`missing_target_import`), a plain-language message, a suggested manual fix, an optional follow-up question, and a collapsible raw error. Nothing is repaired automatically; the user has to edit and re-Apply.
 
 Trust points to call out:
 
 - scripted, deterministic, offline — no live LLM in the default path;
 - no GitHub, deployment, OAuth, or secret handling;
 - Apply mutates only the in-memory Builder draft; Reject leaves it alone;
+- validate/generate/check/start/open actions stay in the local Builder sandbox;
 - raw schema errors stay visible alongside the assistant's guidance.
 
 For local-only live Assistant demos, you may put `AGENTFORGE_ASSISTANT_PROVIDER=openai`, `OPENAI_API_KEY=...`, and optional `AGENTFORGE_ASSISTANT_LLM_MODEL=...` in a `.env` file before running `agentforge serve-builder`. The Builder server loads that file only for local Builder development, does not override exported shell variables, and never prints secret values or exposes them through `/api/planner/status`. Do not commit real `.env` files.

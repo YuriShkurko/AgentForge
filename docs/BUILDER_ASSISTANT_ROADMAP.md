@@ -123,9 +123,10 @@ Builder Assistant should reuse the current Builder/planner shape instead of intr
 - **Done criteria**: the full local sequence works from Builder for an assistant-applied Blueprint; failures are visible and actionable; command/log output is copyable; generated files stay under `.tmp/builder-runs`; no GitHub, deployment, arbitrary shell, or app process management is implemented.
 - **Done**: implemented serve-builder-only local run endpoints for Blueprint validation, generation, and `make validate`; Builder Review renders status/path/commands/logs; tests cover path safety, command allowlisting, failures, timeout/log truncation, static unavailable state, and browser smoke.
 
-### Phase 8 — Agent-first Builder shell refactor (planned)
+### Phase 8 — Agent-first Builder shell refactor (shipped foundation, polish next)
 
 - **Goal**: make the assistant feel persistent and central by default, while keeping YAML, CLI commands, raw logs, and dev-oriented controls available as advanced surfaces.
+- **Current status (2026-05-21)**: The Builder Agent Workspace shell, compact right rail HUD, Advanced dev surfaces, progressive validate/generate/check/start/open flow, and one-click Start/Open app path have shipped. Remaining work belongs to Builder UX persistence/progress polish, not to the initial shell foundation.
 - **Target UX**:
   - A persistent assistant side panel or right-side drawer remains visible across Describe, Plan, Build, Run, and Review moments.
   - The main workspace eventually becomes a clear **Plan / Build / Run** surface instead of a step-by-step wizard. Plan shows the assistant proposal, Live App Plan, validation guidance, and Apply/Reject. Build shows local generation and `make validate`. Run shows backend/frontend service controls, URLs, health, and open-app actions.
@@ -155,11 +156,11 @@ Builder Assistant should reuse the current Builder/planner shape instead of intr
   - No background automation; every validate/generate/run/start/stop action is user-clicked.
   - No generated app runtime behavior changes.
 - **Implementation phases**:
-  - **Phase A — persistent assistant shell only**: create the two-pane/shell layout, keep current controls wired, ensure assistant remains visible across existing Start / Describe / Review & Build / Export moments, make no backend changes, do not introduce the activity timeline, do not reorganize into Plan/Build/Run cards yet, and keep YAML/CLI where they are for now.
-  - **Phase B — simple assistant activity messages for validate/generate/run**: translate existing local-run and service-status results into lightweight assistant/system events with success/failure and optional details/log links, without changing endpoints or building a complex event system.
-  - **Phase C — reorganize Plan/Build/Run cards**: move proposal/Live App Plan, local generation/validation, and backend/frontend run controls into dedicated workspace cards.
-  - **Phase D — Advanced YAML/CLI drawer**: move YAML preview/export, copied CLI commands, and raw logs behind a visible **Advanced: YAML, CLI, logs** entry while preserving discoverability.
-  - **Phase E — visual polish**: improve hierarchy, empty/loading/error states, labels, and responsive behavior without redesigning generated apps.
+  - **Phase A — persistent assistant shell only**: shipped.
+  - **Phase B — simple assistant activity messages for validate/generate/run**: shipped.
+  - **Phase C — reorganize Plan/Build/Run cards**: shipped.
+  - **Phase D — Advanced YAML/CLI drawer**: shipped.
+  - **Phase E — visual polish**: shipped foundation; additional progress/persistence polish is future work.
 - **Tests needed**:
   - Browser smoke is mandatory for this refactor; static tests are not enough because previous Builder regressions passed static checks.
   - Browser smoke for describe → proposal → Apply → validate → generate → validate app → start backend/frontend → open frontend path, using existing safe local-run controls.
@@ -275,9 +276,9 @@ agentforge serve-builder
 
 In live mode the LLM only proposes a bounded model spec (entities + fields). The deterministic scaffolding (starter Blueprint, imports/providers, dashboard, UI composition) is still applied, the result is still validated by `DomainPack.model_validate`, and the user still has to click **Apply**. If the live call fails or the spec is invalid, the assistant falls back to scripted and reports the fallback in the response (`turn_mode` and `fallback_reason`).
 
-Remaining un-shipped phases:
+Remaining un-shipped work:
 
-- Phase 8 (Agent-first Builder shell refactor) — next recommended product slice.
+- Builder UX persistence/progress polish after the shipped Agent-first Builder shell.
 - Phase 9 (GitHub repo creation) — deferred indefinitely; out of scope for Builder Assistant v0.
 
-Suggested next implementation prompt: implement Phase A only by refactoring the Builder into a persistent assistant shell, keeping all current endpoints/actions and generated app behavior unchanged, then add browser/static smoke coverage for assistant persistence and action reachability.
+Suggested next implementation prompt: focus on Builder UX persistence/progress polish only after docs/Scribe reconciliation is complete. Keep all current endpoints/actions and generated app behavior unchanged unless a separate implementation spec explicitly changes scope.

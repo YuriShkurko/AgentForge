@@ -1,13 +1,13 @@
 # AgentForge Blueprint Builder
 
-The Blueprint Builder is the local product front door for AgentForge. The v1.0 UX is intentionally no-key and demo-first: describe what you want to build, review a plain-language plan, then copy/save the App Blueprint and run the CLI.
+The Blueprint Builder is the local product front door for AgentForge. The current UX is intentionally no-key and demo-first: describe what you want to build, review and apply a plain-language plan, then validate, generate, check, start, and open a local app from the Builder.
 
 The main promise is visible in the UI: **no API keys, no cloud account, and no external provider setup are required for the local demo path.**
 
-The long-term direction is an agent-chat builder. For now, the UI is a compact app-like workspace with one active step visible at a time and a persistent Live app plan:
+The UI is now an agent-first workspace with a main assistant canvas, Plan / Build / Run flow, compact right rail HUD, and Advanced surfaces for YAML, CLI commands, and logs:
 
 ```text
-Start → describe idea → review plan → generate locally with CLI
+Describe idea -> review plan -> validate Blueprint -> generate locally -> run checks -> start app -> open app
 ```
 
 ## Modes
@@ -39,7 +39,7 @@ Then open the local URL and describe the app you want to build.
 
 ## Optional live Builder Assistant mode
 
-After an assistant proposal is applied, the Review step also exposes a **Local Control Room** when running through `agentforge serve-builder`. It can validate the active in-memory Blueprint, generate the app under `.tmp/builder-runs/<safe-run-id>/app`, run the generated app's fixed `make validate` target, and show status, exit code, generated path, equivalent commands, and stdout/stderr logs. Static browser mode shows these controls as unavailable. The control room does not accept arbitrary shell commands or output paths, and it does not create GitHub repos, deploy, or start/stop generated backend/frontend servers.
+After an assistant proposal is applied, the Plan / Build / Run workspace exposes local run controls when running through `agentforge serve-builder`. It can validate the active in-memory Blueprint, generate the app under `.tmp/builder-runs/<safe-run-id>/app`, run the generated app's fixed `make validate` target, start/stop the generated backend/frontend with allowlisted `make` targets, open the frontend, and show status, exit code, generated path, equivalent commands, and stdout/stderr logs. Static browser mode shows these controls as unavailable. The control room does not accept arbitrary shell commands or output paths, and it does not create GitHub repos or deploy.
 
 The Builder Assistant is scripted by default and does not require an API key, network access, GitHub access, deployment credentials, or OAuth. Live LLM assistance is strictly opt-in for local development:
 
@@ -97,7 +97,7 @@ The Builder treats generated outcomes as the main review surface before raw YAML
 
 Module IDs, planned gaps, deterministic configuration, exact command blocks, and raw YAML remain available behind advanced disclosure. The right-side **Live app plan** stays visible on desktop and groups capabilities as app foundation, AI workflow, product surfaces, and validation so it feels like an active plan instead of metadata.
 
-The CLI remains the source of truth:
+The Builder uses the same schema and generator path as the CLI. For CLI-only validation or automation, use:
 
 ```bash
 agentforge plan path/to/domain-pack.yaml

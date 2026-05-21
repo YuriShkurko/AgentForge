@@ -1,251 +1,133 @@
 # AgentForge
 
-AgentForge is a local-first planner and generator for agentic product demos. Start with a plain-English app idea, draft and validate an App Blueprint, then generate a runnable FastAPI + React app with deterministic tests, sample data, scripted agent chat, and persisted workspace surfaces.
+AgentForge is a local-first Builder that turns a plain-English app idea into a runnable FastAPI + React demo on your machine, with an agent-first planning workspace, deterministic generation, and safe local controls for validating, generating, checking, starting, and opening the app.
 
-AgentForge also helps with existing repositories: it can analyze a repo, plan possible extensions, prepare safe patch bundles, and produce deployment readiness guidance without mutating the target repo by default.
+## Who It Is For
 
-## Try this first
+- Developers prototyping internal tools or agentic product demos.
+- Builders who want to turn a workflow idea into a local full-stack demo without setting up cloud infrastructure.
+- People evaluating local AI-assisted app generation with explicit review, deterministic outputs, and no deployment by default.
+
+## Current Capabilities
+
+- Builder Agent Workspace with a main assistant canvas, Plan / Build / Run flow, compact right-rail HUD, and Advanced YAML/CLI/log surfaces.
+- Scripted planner by default, with optional live OpenAI planning behind environment flags.
+- Model-driven Blueprint proposals from plain-English ideas, including bounded entities, fields, imports, providers, pages, workflow actions, seed data, and UI hints.
+- Explicit Apply / Reject review before a proposal changes the in-memory Builder draft.
+- Blueprint validation through the same Python schema used by the CLI.
+- Local app generation into sandboxed run directories.
+- Generated app checks through the fixed `make validate` target.
+- One-click Builder actions to start backend/frontend services and open the generated app.
+- Deterministic generated app output with stable naming, domain-aware copy, seed data, tests, and local validation commands.
+- Local safety boundaries: no arbitrary shell, no GitHub automation, no deployment, no hidden file mutation, and no live LLM in the default path.
+
+## Quickstart
+
+Assumptions: Python 3.12+, Node 18+, `pip`, `npm`, and a shell that can run the repo `Makefile` targets. Install the generator package from the repository root:
 
 ```bash
 pip install -e generator/
 agentforge serve-builder
 ```
 
-Open the printed local URL, choose **Start from an app idea**, draft a plan, then use the generated CLI commands. No API keys, cloud account, live LLM, or deployment target is required for the default demo path.
-
-## Why it is safe to try
-
-AgentForge is designed for local validation before any risky action:
-
-- The Builder and scripted planner run locally.
-- Validation does **not** require live LLM/API access.
-- Existing-repo analysis and planning do **not** modify repos by default.
-- Patch apply mode is explicit and limited to low-risk docs, blueprint, and checklist files.
-- The deployment planner creates guidance only; it does **not** deploy infrastructure.
-- Optional live provider modes are separate from the default scripted/local path.
-
-## How it works
+Open the local URL printed by `agentforge serve-builder`. Describe an app in the Builder, review the proposed plan, click **Apply**, then use the Builder's Plan / Build / Run actions:
 
 ```text
-New app idea
-  → draft / validate App Blueprint
-  → generate local FastAPI + React app
-  → run a generated local workflow
-  → use scripted agent chat and workspace
-
-Existing repo
-  → analyze repo
-  → plan extension
-  → prepare safe patch bundle
-  → plan deployment readiness
+Validate Blueprint -> Generate app locally -> Run checks -> Start app -> Open app
 ```
 
-For the generated-app path:
+The default path is fully local and scripted. To opt into live planner assistance for local Builder development only:
+
+```bash
+export AGENTFORGE_ASSISTANT_PROVIDER=openai
+export OPENAI_API_KEY=...
+# optional
+export AGENTFORGE_ASSISTANT_LLM_MODEL=gpt-4o-mini
+agentforge serve-builder
+```
+
+Live mode only helps produce a bounded planning spec. The deterministic Builder still creates and validates the Blueprint, and you still choose Apply or Reject before anything changes.
+
+## Builder Flow
+
+The Builder starts with an assistant prompt: describe the app you want, or answer the assistant's clarifying questions when the idea is too vague. The planner returns a human-readable proposal with the app shape, data model, imports/providers when relevant, workflow actions, assumptions, warnings, and changed fields.
+
+Review happens before mutation. **Apply** installs the proposal into the in-memory Builder draft after validation; **Reject** leaves the draft untouched. From there, the Plan / Build / Run workspace guides the local sequence: validate the Blueprint, generate the app, run generated checks, start services, and open the frontend.
+
+Advanced surfaces remain available for developers. YAML, equivalent CLI commands, raw logs, planner diagnostics, generated paths, and detailed run output live behind Advanced instead of blocking the main flow. The right rail is a compact HUD for mode, next step, app summary, service status, and recent history.
+
+## Generated App Flow
+
+Generated apps are local FastAPI + React demos. A model-driven Blueprint can define bounded entities, fields, pages, workflow actions, CSV/JSON imports, optional read-only providers, seed data, and UI presentation hints. The generator emits a backend, frontend, `Makefile`, generated tests, `app-model.json`, and run instructions.
+
+The backend uses FastAPI, SQLite persistence, generated SQLAlchemy/Pydantic models, CRUD routes, import/workflow endpoints, and optional read-only provider sync paths. The frontend uses React with generated dashboard, entity, form, import/provider, and workflow surfaces. Seed data lets the app show a meaningful local demo immediately.
+
+Generated apps are intentionally demo-oriented. Static demo families include scripted agent chat and workspace widgets; the newer model-driven path focuses on CRUD/workflow/import/provider surfaces and does not yet ship generated-app runtime agents.
+
+## Safety Boundaries
+
+- No deployment by default.
+- No GitHub repo creation, pushing, OAuth, or remote automation.
+- No arbitrary shell from the Builder.
+- Local Builder generation stays under `.tmp/builder-runs/<safe-run-id>/app`.
+- Builder-run commands are allowlisted: `make validate`, `make run-backend`, and `make run-frontend`.
+- Optional live LLM use is only for planning and is off by default.
+- Generated app subprocesses get a secret-stripped environment.
+- Existing-repo tools are planning-first and do not mutate target repos by default.
+- Generated apps are local demos, not production-ready deployed services.
+
+## Architecture Overview
 
 ```text
-App Blueprint YAML + controlled customization + Application Template = Generated App
+User
+  -> Builder UI
+  -> Planner Assistant
+  -> Blueprint / DomainPack
+  -> Local-run Server
+  -> Generator
+  -> Generated App
 ```
 
-## Screenshot walkthrough
+The Builder UI in `builder/` is a local browser workspace. The planner server in `generator/agentforge/planner/` serves scripted planning, optional live planning, proposal validation, and local-run endpoints. Blueprint data is validated through `DomainPack` models in `generator/agentforge/pack.py`. The generator turns validated packs into deterministic FastAPI + React file trees. Generated apps run locally from `.tmp/builder-runs/` or from explicit CLI output paths.
 
-The screenshots show the Builder and two concrete generated app families AgentForge can produce today. They are deterministic local demos, not a claim of arbitrary app generation.
+## Development And Testing
 
-Builder flow:
-
-| Step | What to look for |
-| --- | --- |
-| ![Builder idea entry screen](docs/assets/screenshots/builder-start.png) | Start with one app idea in the local Builder. |
-| ![Drafted Blueprint and Live app plan](docs/assets/screenshots/builder-plan.png) | Review the drafted plan, controlled customization fields, assumptions, warnings, and persistent Live app plan before raw YAML. |
-| ![Generate commands in the Builder](docs/assets/screenshots/builder-commands.png) | Copy the exact local CLI commands; the CLI remains the source of truth for validation and generation. |
-
-Scoring and triage generated app:
-
-| Step | What to look for |
-| --- | --- |
-| ![Generated app scoring and triage](docs/assets/screenshots/generated-scoring.png) | Ingest/import records, score them, preview notifications, and triage results. |
-| ![Agent chat pins a workspace widget](docs/assets/screenshots/generated-agent-workspace.png) | Use the scripted local agent to work with scored records and pin a workspace widget. |
-| ![Workspace widget persists after refresh](docs/assets/screenshots/generated-persistence.png) | Refresh to confirm persisted chat/workspace state and action history. |
-
-Project and task workspace generated app:
-
-| Step | What to look for |
-| --- | --- |
-| ![Project workspace overview dashboard](docs/assets/screenshots/generated-project-overview.png) | Seed projects and tasks, then review the dashboard counts and project cards. |
-| ![Project workspace task status updates](docs/assets/screenshots/generated-project-tasks.png) | Advance task statuses and see project/task state update locally. |
-| ![Project workspace notes and activity](docs/assets/screenshots/generated-project-activity.png) | Add operator notes and review the generated activity feed. |
-| ![Project workspace agent chat and workspace](docs/assets/screenshots/generated-project-agent-workspace.png) | Ask the scripted agent to pin a task list into the workspace. |
-| ![Project workspace pinned widgets after refresh](docs/assets/screenshots/generated-project-persistence.png) | Refresh to confirm pinned workspace widgets persist. |
-
-## Golden demo path
-
-1. Open the local Builder.
-2. Draft an App Blueprint from an app idea.
-3. Validate and plan the Blueprint.
-4. Generate the app.
-5. Run the generated app.
-6. Ingest or import records, score them, and triage results.
-7. Use the scripted agent chat.
-8. Pin an agent result into the workspace.
-9. Refresh and show persisted chat, widgets, and triage history.
-
-Use the Project Workspace screenshots as the alternate generated-app proof point after the scoring/triage path: seed projects/tasks, update task status, add a note, pin the task list from the scripted agent, and refresh to show persistence.
-
-Follow the full walkthrough in [docs/DEMO_GUIDE.md](docs/DEMO_GUIDE.md).
-
-## Secondary path: existing repos
-
-If you already have an app, AgentForge can produce safe planning artifacts:
+Useful validation commands from the repository root:
 
 ```bash
-agentforge analyze-repo path/to/repo --format md --output repo-analysis.md
-agentforge plan-extension path/to/repo --format md --output extension-plan.md
-agentforge prepare-extension path/to/repo --dry-run
-agentforge plan-deployment path/to/repo --format md --output deployment-plan.md
+python -m pytest tests/generator/ -v
+python -m pytest tests/generator/ -q --ignore=*_browser.py
+python -m pytest tests/generator/test_builder_assistant_browser.py tests/generator/test_builder_local_run_browser.py -q
+node --check builder/app.mjs
+node --check builder/blueprint-builder.mjs
 ```
 
-This path is analysis/planning-first. By default it does not mutate the target repository, deploy, install packages, run cloud CLIs, or call live LLMs/APIs.
-
-## Command Map
-
-| Intent | Command | What it does | Writes files? | Can modify an existing repo? | Safety notes |
-| --- | --- | --- | --- | --- | --- |
-| Create new apps | `agentforge serve-builder` | Runs the local Builder/planner server | No target app writes | No | Local deterministic planner; no live LLM/API |
-| Create new apps | `agentforge draft-blueprint` | Drafts a Blueprint from an idea | Only with `--out` | No | Validates against generator schema |
-| Create new apps | `agentforge init-blueprint` | Creates a starter Blueprint | Yes, new Blueprint path | No | Blueprint-only starter |
-| Create new apps | `agentforge plan` | Validates a Blueprint and previews generation | No | No | Source of truth before generation |
-| Create new apps | `agentforge generate` | Generates a FastAPI + React app from a Blueprint | Yes, generated app output | No existing repo mutation by default | Use `--force` only when intentionally replacing generated output |
-| Understand existing repos | `agentforge analyze-repo` | Produces a local compatibility report | Only with `--output` | No | Analysis-only; skips local/vendor/generated dirs |
-| Understand existing repos | `agentforge plan-extension` | Plans possible AgentForge module additions | Only with `--output` | No | Advisory; no patches applied |
-| Understand existing repos | `agentforge prepare-extension` | Creates or previews a safe patch/planning bundle | Bundle mode writes output dir; dry-run writes nothing | Only in explicit apply mode | Apply is limited to low-risk docs/blueprint/checklist files |
-| Understand existing repos | `agentforge plan-deployment` | Produces deployment readiness guidance | Only with `--output` / docs bundle | No by default | Does not deploy/provision/store secrets |
-| Safety / planning | `prepare-extension --dry-run` | Shows planned writes and safety checks | No | No | Recommended before any apply |
-| Safety / planning | `prepare-extension --apply --yes` | Applies approved low-risk files | Yes | Yes, limited | Refuses risky runtime/package/router/CI edits |
-| Safety / planning | `plan-deployment` | Builds a deployment plan/checklist | Optional report/docs output | No | Planning-only |
-
-See [docs/COMMAND_REFERENCE.md](docs/COMMAND_REFERENCE.md) for examples and detailed write behavior.
-
-## What AgentForge generates today
-
-AgentForge currently includes multiple deterministic generated app examples:
-
-- `hybrid-scoring-demo` — fixture ingestion, deterministic scoring, notification preview, triage actions, scripted agent chat, and workspace widgets.
-- `project-workspace-demo` — seeded projects/tasks, status and priority updates, notes/activity, scripted agent tools, and workspace widgets.
-
-Both fixed app families are local-first FastAPI + React apps with backend tests and frontend build/lint validation. Neither requires live LLM/API access for the default path.
-
-Both generated app families support a small controlled customization layer for app copy, entity labels, workflow wording, agent starter prompts, workspace labels, and sample-data wording. This makes generated apps feel user-shaped within the supported archetypes without claiming arbitrary app generation.
-
-AgentForge also includes an experimental model-driven generation path. Instead of selecting a fixed app family, a domain pack can define bounded entities, fields, pages, actions, and seed data. The same generic generator can produce different FastAPI + React apps, such as a Client Onboarding Workspace or Vendor Risk Tracker. Generated model-driven apps include SQLite persistence, entity CRUD routes, basic workflow/action endpoints, seed data, generated tests, and a root Makefile with `make validate`. Provider Runtime v0 is available for bounded read-only `github_issues` and `http_json` sync demos that feed the shared importer pipeline. This path remains intentionally limited; visual model editing, richer relations, write-back integrations, scheduling, and production hardening are future work.
-
-Try the model-driven examples:
+Generated apps include their own validation target:
 
 ```bash
-agentforge generate domain-packs/client-onboarding-workspace/domain-pack.yaml --output .tmp/client-onboarding --force
-cd .tmp/client-onboarding
+cd .tmp/builder-runs/<safe-run-id>/app
 make validate
-cd -
-agentforge generate domain-packs/vendor-risk-tracker/domain-pack.yaml --output .tmp/vendor-risk --force
-cd .tmp/vendor-risk
-make validate
-```
-
-Generated scoring snapshot:
-
-```text
-examples/hybrid-scoring-demo/
-```
-
-Generate either app from its Blueprint:
-
-```bash
-agentforge generate domain-packs/hybrid-scoring-demo/domain-pack.yaml --force
-agentforge generate domain-packs/project-workspace-demo/domain-pack.yaml --output .tmp/project-workspace-demo --force
-```
-
-## Quickstart without the Builder
-
-```bash
-pip install -e generator/
-agentforge plan domain-packs/hybrid-scoring-demo/domain-pack.yaml
-agentforge generate domain-packs/hybrid-scoring-demo/domain-pack.yaml --force
-agentforge plan domain-packs/project-workspace-demo/domain-pack.yaml
-agentforge generate domain-packs/project-workspace-demo/domain-pack.yaml --output .tmp/project-workspace-demo --force
-make validate
-```
-
-Run the generated stack:
-
-```bash
 make run-backend
 make run-frontend
 ```
 
-Open the frontend at `http://localhost:5173` and the API docs at `http://localhost:8000/docs`.
+The root `make validate` target validates the committed hybrid-scoring demo path. Scribe is the work-graph source of truth for AgentForge planning and reconciliation; run the local Scribe lint/check before handoff when Scribe is available.
 
-## Validation and release readiness
+## Roadmap And Limitations
 
-Local validation targets:
-
-```bash
-python -m pytest tests/generator/ -v
-make validate
-```
-
-`make validate` runs generator tests, generated backend tests, frontend build, and frontend lint. Playwright E2E is available with a live stack:
-
-```bash
-make run-e2e
-```
-
-CI status:
-
-- No `.github/workflows/` workflow is currently present in this repository.
-- A CI badge should only be added after reliable CI exists and passes.
-- A green badge is valuable for a portfolio-ready project, but it should not be faked.
+- Generated-app runtime agents are not shipped for the model-driven path yet.
+- Generated apps are improving, but they are still local demos rather than production systems.
+- Builder UX persistence and progress polish are next; generated-app intelligence v2 is future work.
+- The README reflects the shipped local product, not future deployment automation.
+- Broad arbitrary app generation, cloud provisioning, GitHub automation, hosted SaaS behavior, and production deployment remain out of scope for the current local product.
 
 ## Docs
-
-README is the guided landing page. Detailed docs live here:
 
 - [Docs Index](docs/README.md)
 - [Getting Started](docs/GETTING_STARTED.md)
 - [Demo Guide](docs/DEMO_GUIDE.md)
-- [GitHub Issues Real-Data Demo](docs/GITHUB_ISSUES_PROVIDER_DEMO.md)
-- [HTTP JSON Provider Demo](docs/HTTP_JSON_PROVIDER_DEMO.md)
 - [Command Reference](docs/COMMAND_REFERENCE.md)
 - [Safety Model](docs/SAFETY_MODEL.md)
 - [App Blueprint Specification](docs/DOMAIN_PACK_SPEC.md)
 - [AgentForge v0 Architecture](docs/AGENTFORGE_V0_ARCHITECTURE.md)
-- [Archetype Model](docs/ARCHETYPE_MODEL.md)
-- [Roadmap](docs/AGENTFORGE_ROADMAP.md)
-- [Repo Analyzer](docs/REPO_ANALYZER.md)
-- [Repo Extension Planner](docs/REPO_EXTENSION_PLANNER.md)
-- [Safe Patch Application](docs/SAFE_PATCH_APPLICATION.md)
-- [Deployment Planner](docs/DEPLOYMENT_PLANNER.md)
 - [Blueprint Builder README](builder/README.md)
-
-## What is not built yet
-
-AgentForge is deliberately constrained. It does not yet provide:
-
-- live LLM/API usage as the default path;
-- broad arbitrary app generation;
-- invasive repository conversion;
-- autonomous code modification;
-- real notification delivery;
-- production deployment automation;
-- cloud resource provisioning;
-- mature multi-template support.
-
-## Repository layout
-
-```text
-AgentForge/
-  builder/                       Local Blueprint Builder UI
-  docs/                          Guides, safety model, architecture, planner docs
-  domain-packs/                  App Blueprints
-  generator/                     Python package for the agentforge CLI
-  templates/                     Application Templates
-  examples/hybrid-scoring-demo/  Committed generated demo app
-  tests/generator/               Generator and builder tests
-```
