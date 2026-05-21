@@ -141,10 +141,10 @@ def test_builder_html_front_door_copy_present():
     assert "Customize app details" in html
     assert "customize-panel" in html
     assert "reset-customization" in html
-    assert "Start from an app idea" in html
-    assert "Understand an existing repo" in html
+    assert "Send to assistant" in html
+    assert "analyze an existing repo" in html
     assert "Blueprint Source" in html
-    assert "Live app plan" in html
+    assert "Live plan" in html
     assert "./assets/agentforge-mark.png" in html
     assert "./assets/favicon.png" in html
     assert "agentforge-wordmark.png" not in html

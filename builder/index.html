@@ -9,60 +9,84 @@
   </head>
   <body>
     <main class="shell">
-      <section class="builder wizard-shell">
+      <section class="builder wizard-shell" id="builder-shell" data-canvas-state="empty">
         <header class="topbar app-header">
           <img class="brand-mark" src="./assets/agentforge-mark.png" alt="AgentForge" />
           <div>
             <p class="eyebrow">AgentForge Builder</p>
-            <p class="app-header-title">Local app planning workspace</p>
+            <p class="app-header-title">Agent workspace</p>
           </div>
           <div class="status-pill" id="status-pill">Valid draft</div>
         </header>
 
         <div class="wizard-layout">
           <div class="wizard-main">
-            <nav class="flow-rail" aria-label="Builder steps">
-              <button type="button" data-step-target="start"><span>1</span>Start</button>
-              <button type="button" data-step-target="new-app"><span>2</span>Describe</button>
-              <button type="button" data-step-target="review"><span>3</span>Review &amp; Build</button>
-              <button type="button" data-step-target="generate"><span>4</span>Export / Next Steps</button>
-            </nav>
+            <div class="canvas-state-strip" aria-label="Builder canvas state">
+              <span class="canvas-state-badge" id="canvas-state-badge" data-state="empty">
+                <span class="canvas-state-dot" aria-hidden="true"></span>
+                <span class="canvas-state-label" id="canvas-state-label">Ready</span>
+              </span>
+              <span class="canvas-state-detail" id="canvas-state-detail">Describe an app idea to begin.</span>
+            </div>
+            <div id="canvas-thinking-overlay" class="canvas-thinking-overlay" role="status" aria-live="polite" hidden>
+              <div class="canvas-thinking-indicator" aria-hidden="true">
+                <span></span><span></span><span></span>
+              </div>
+              <h2 class="canvas-thinking-headline">Drafting your app plan…</h2>
+              <p class="canvas-thinking-subline">Finding entities, pages, and build steps.</p>
+              <p class="canvas-thinking-echo" id="canvas-thinking-echo" hidden></p>
+            </div>
 
-            <section class="panel wizard-step entry-step" data-step="start" aria-labelledby="start-heading">
-              <div class="entry-hero">
-                <p class="eyebrow">No-key local demo path</p>
+            <section class="panel wizard-step entry-step compact-entry-step" data-step="start" aria-labelledby="start-heading">
+              <div class="entry-hero compact-entry-hero">
                 <h1 id="start-heading">What do you want to build?</h1>
-                <p class="lede">Start from one app idea. AgentForge turns it into a local FastAPI + React plan with sample data, scripted agent chat, workspace, and validation commands.</p>
+                <p class="lede compact-lede">Describe one app idea. AgentForge drafts a local FastAPI + React demo you can validate and run.</p>
               </div>
-              <div class="path-grid">
-                <button class="path-card primary" type="button" data-step-target="new-app">
-                  <span class="path-kicker">Primary</span>
-                  <strong>Start from an app idea</strong>
-                  <small>Describe what you want to build. AgentForge drafts a local demo plan and gives you exact commands to generate, run, and test it.</small>
-                </button>
-                <button class="path-card secondary" type="button" data-step-target="repo">
+              <form id="hero-composer" class="hero-composer main-canvas-composer" autocomplete="off" aria-label="Send an app idea to the assistant">
+                <label class="visually-hidden" for="hero-composer-input">App idea</label>
+                <textarea id="hero-composer-input" rows="2" placeholder="Score incoming support tickets and help an operator triage the most urgent requests."></textarea>
+                <div class="hero-composer-actions">
+                  <button id="hero-composer-send" type="submit" class="primary-button">Send to assistant</button>
+                  <span id="hero-composer-thinking" class="composer-thinking" role="status" aria-live="polite" hidden>Drafting plan…</span>
+                </div>
+                <p class="hero-composer-helper">Press Send and the assistant drafts a plan you can review in the main canvas.</p>
+              </form>
+              <div class="start-secondary-row">
+                <button class="path-card secondary compact-path-card" type="button" data-step-target="repo">
                   <span class="path-kicker">Secondary</span>
-                  <strong>Understand an existing repo</strong>
-                  <small>Run safe CLI analysis and advisory planning. No repo mutation, deployment, API keys, or live LLM calls.</small>
+                  <strong>Or analyze an existing repo →</strong>
                 </button>
-              </div>
-              <div class="trust-row compact-trust" aria-label="Safety defaults">
-                <span>No repo mutation by default</span>
-                <span>No deployment</span>
-                <span>No money spent</span>
-                <span>No live LLM required</span>
+                <details class="inline-advanced compact-trust-details">
+                  <summary>Safety defaults</summary>
+                  <div class="trust-row compact-trust" aria-label="Safety defaults">
+                    <span>No repo mutation by default</span>
+                    <span>No deployment</span>
+                    <span>No money spent</span>
+                    <span>No live LLM required</span>
+                  </div>
+                </details>
               </div>
             </section>
 
             <section id="new-app-flow" class="panel planner-panel wizard-step" data-step="new-app" aria-labelledby="describe-heading">
-              <div class="section-head roomy">
-                <p class="step-label">Step 2</p>
-                <h2 id="describe-heading">Describe the app idea</h2>
-                <p id="planner-status">Static mode. Start `agentforge serve-builder` to enable scripted drafting.</p>
+              <div class="section-head compact-section-head">
+                <h2 id="describe-heading" class="canvas-region-heading">Describe the app idea</h2>
+                <p id="planner-status" class="planner-status-line">Static mode. Start the Builder server to enable drafting.</p>
               </div>
-              <div class="assistant-shell-note" aria-live="polite">
-                <strong>Assistant stays open.</strong> Use the persistent Builder Assistant panel beside the workspace while you move through Start, Describe, Review &amp; Build, and Export / Next Steps.
-              </div>
+              <section class="main-canvas-conversation" aria-label="Assistant conversation main canvas">
+                <form id="assistant-form" class="assistant-form main-canvas-composer" autocomplete="off">
+                  <label class="visually-hidden" for="assistant-input">Message the assistant</label>
+                  <textarea id="assistant-input" rows="3" placeholder="Describe what you want to build, or answer the assistant's last question."></textarea>
+                  <div class="actions main-composer-actions">
+                    <button id="assistant-send" class="primary-button" type="submit" disabled>Send to assistant</button>
+                    <button id="assistant-reset" class="quiet-button" type="button">Reset chat</button>
+                    <span id="assistant-thinking" class="composer-thinking" role="status" aria-live="polite" hidden>Drafting plan…</span>
+                  </div>
+                </form>
+                <div id="assistant-questions" class="assistant-questions hidden" aria-label="Clarifying questions"></div>
+                <div id="assistant-guidance" class="assistant-guidance hidden" role="status" aria-live="polite" aria-label="Validation guidance"></div>
+                <div id="assistant-proposal" class="assistant-proposal main-canvas-proposal hidden" aria-label="Proposed Blueprint preview"></div>
+              </section>
               <details class="inline-advanced classic-draft-panel">
                 <summary>Use classic text-only draft</summary>
                 <p class="helper-copy">Prefer the older one-shot planner? Use these controls instead of the assistant conversation.</p>
@@ -87,47 +111,57 @@
 
             <section id="review-flow" class="panel review-panel wizard-step" data-step="review" aria-labelledby="review-heading">
               <div class="section-head roomy">
-                <p class="step-label">Step 3</p>
-                <h2 id="review-heading">Review &amp; build the app plan</h2>
-                <p>Start with the plain-language summary, then optionally validate and generate a sandboxed local app when the Builder server is running.</p>
+                <h2 id="review-heading" class="canvas-region-heading">Plan, build, and run your local demo</h2>
               </div>
               <div class="plan-build-run-workspace" aria-label="Plan Build Run workspace">
                 <section class="workspace-card plan-card" aria-labelledby="plan-card-heading">
                   <div class="workspace-card-head">
-                    <p class="eyebrow">Plan</p>
-                    <h3 id="plan-card-heading">Review the assistant proposal and live app plan</h3>
-                    <p>Use the persistent assistant for proposal, Apply/Reject, and validation guidance. This card shows the active Live App Plan after Apply.</p>
+                    <p class="eyebrow"><span class="workspace-step-number">1</span> Plan</p>
+                    <h3 id="plan-card-heading">Plan summary</h3>
+                    <div class="compact-status-row" aria-label="Plan statuses">
+                      <span id="plan-ready-chip" class="status-chip neutral">Plan needed</span>
+                      <span id="blueprint-valid-chip" class="status-chip neutral">Blueprint pending</span>
+                    </div>
                   </div>
               <div id="draft-panel" class="planner-output draft-review plan-summary-card">
-                <h3>Plan summary</h3>
-                <p id="draft-summary">Draft from an idea to see what AgentForge understood, what it will generate, and any assumptions or warnings.</p>
+                <p id="draft-summary" class="plan-summary-human">Describe an app idea and AgentForge will turn it into a plain-language plan here before anything is generated.</p>
                 <div id="draft-chips" class="chip-row"></div>
-                <div class="result-grid">
-                  <div>
-                    <h4>Assumptions</h4>
-                    <ul id="planner-assumptions"><li>None yet.</li></ul>
+                <details class="plan-summary-extras" id="plan-summary-extras">
+                  <summary>Advanced plan details</summary>
+                  <dl class="plan-summary-list" aria-label="Plan technical metadata">
+                    <div><dt>App</dt><dd id="plan-summary-app">—</dd></div>
+                    <div><dt>Type</dt><dd id="plan-summary-type">—</dd></div>
+                    <div><dt>Entities</dt><dd id="plan-summary-entities">—</dd></div>
+                    <div><dt>Imports / Providers</dt><dd id="plan-summary-providers">—</dd></div>
+                    <div><dt>Status</dt><dd id="plan-summary-status">Ready for an app idea</dd></div>
+                  </dl>
+                  <div class="result-grid" aria-label="Assumptions and warnings">
+                    <div>
+                      <h4>Assumptions</h4>
+                      <ul id="planner-assumptions"><li>None yet.</li></ul>
+                    </div>
+                    <div>
+                      <h4>Warnings</h4>
+                      <ul id="planner-warnings"><li>None yet.</li></ul>
+                    </div>
                   </div>
-                  <div>
-                    <h4>Warnings</h4>
-                    <ul id="planner-warnings"><li>None yet.</li></ul>
-                  </div>
-                </div>
+                </details>
               </div>
-              <section id="customize-panel" class="customize-panel" aria-labelledby="customize-heading">
-                <div class="section-head">
+              <details class="customize-details" id="customize-details">
+                <summary>Customize app details</summary>
+                <section id="customize-panel" class="customize-panel" aria-labelledby="customize-heading">
                   <p class="eyebrow" id="customize-family">Detected app family: Scoring / triage workflow</p>
-                  <h2 id="customize-heading">Customize app details</h2>
-                  <p>Adjust safe labels, starter prompts, and sample/workspace wording before generation. This does not add new app types, schemas, routes, integrations, or backend behavior.</p>
-                </div>
-                <div id="customize-fields" class="customize-grid"></div>
-                <div class="actions">
-                  <button id="reset-customization" class="quiet-button" type="button">Reset app details</button>
-                </div>
-              </section>
+                  <h2 id="customize-heading" class="customize-heading">Customize</h2>
+                  <div id="customize-fields" class="customize-grid"></div>
+                  <div class="actions">
+                    <button id="reset-customization" class="quiet-button" type="button">Reset app details</button>
+                  </div>
+                </section>
+              </details>
               <section class="build-summary live-plan plan-card-live-plan" aria-labelledby="build-summary-heading">
                 <div class="live-plan-head">
-                  <p class="eyebrow">Live app plan</p>
-                  <h2 id="build-summary-heading">Local demo plan</h2>
+                  <p class="eyebrow">Live plan</p>
+                  <h2 id="build-summary-heading" class="live-plan-heading">Local demo plan</h2>
                   <p id="summary-status" class="plan-status">Ready to draft</p>
                 </div>
                 <div class="plan-snapshot">
@@ -147,32 +181,64 @@
               </section>
                 </section>
               <section id="local-run-panel" class="local-run-panel workspace-card build-card" aria-labelledby="local-run-heading" data-state="static">
-                <div class="section-head">
-                  <p class="eyebrow">Build</p>
-                  <h2 id="local-run-heading">Validate and generate locally</h2>
-                  <p id="local-run-status">Static browser mode. Start `agentforge serve-builder` and apply an assistant proposal to enable local validation.</p>
+                <div class="workspace-card-head">
+                  <p class="eyebrow"><span class="workspace-step-number">2</span> Build</p>
+                  <h2 id="local-run-heading" class="build-card-heading">Build</h2>
+                  <div class="compact-status-row" aria-label="Build statuses">
+                    <span id="build-blueprint-chip" class="status-chip neutral">Blueprint pending</span>
+                    <span id="build-generated-chip" class="status-chip neutral">Not generated</span>
+                    <span id="build-checks-chip" class="status-chip neutral">Checks pending</span>
+                  </div>
+                  <p id="local-run-status" class="local-run-status-line">Static mode. Start the Builder server and apply a plan.</p>
                 </div>
-                <div class="local-run-actions actions build-actions" aria-label="Build actions">
-                  <button id="local-run-validate-blueprint" type="button">Validate active Blueprint</button>
-                  <button id="local-run-generate" type="button">Generate local app</button>
-                  <button id="local-run-validate-app" type="button">Run make validate</button>
+                <div class="next-action-row">
+                  <div class="next-action-meta"><span>Next step</span><strong id="build-next-action">Apply a plan</strong></div>
+                  <button id="build-primary-action" type="button" class="primary-button next-action-button" disabled>Apply a plan</button>
                 </div>
+                <details class="inline-advanced secondary-build-actions-details">
+                  <summary>All build actions</summary>
+                  <div class="local-run-actions actions build-actions" aria-label="Build actions">
+                    <button id="local-run-validate-blueprint" type="button" class="quiet-button">Validate Blueprint</button>
+                    <button id="local-run-generate" type="button" class="quiet-button">Generate app locally</button>
+                    <button id="local-run-validate-app" type="button" class="quiet-button">Run app checks</button>
+                  </div>
+                </details>
                 <div id="local-run-results" class="local-run-results" aria-live="polite"></div>
                 <section class="workspace-card run-card" aria-labelledby="run-card-heading">
                   <div class="workspace-card-head">
-                    <p class="eyebrow">Run</p>
-                    <h3 id="run-card-heading">Start or stop the generated app</h3>
-                    <p>Use the existing backend/frontend service controls after a local app has been generated.</p>
+                    <p class="eyebrow"><span class="workspace-step-number">3</span> Run</p>
+                    <h3 id="run-card-heading" class="run-card-heading">Run</h3>
                   </div>
-                  <div class="local-run-actions actions app-process-actions" aria-label="Generated app server controls">
-                    <button id="local-run-start-backend" type="button">Start backend</button>
-                    <button id="local-run-stop-backend" type="button">Stop backend</button>
-                    <button id="local-run-start-frontend" type="button">Start frontend</button>
-                    <button id="local-run-stop-frontend" type="button">Stop frontend</button>
+                  <div class="run-service-rows" aria-label="Generated app services">
+                    <div class="service-row" data-service="backend" data-status="stopped">
+                      <div class="service-row-info">
+                        <strong>Backend API</strong>
+                        <span id="backend-status-chip" class="status-chip neutral">Backend stopped</span>
+                        <span class="service-row-meta" id="backend-meta" hidden></span>
+                      </div>
+                      <div class="service-row-actions" aria-label="Backend service controls">
+                        <button id="local-run-start-backend" type="button" class="primary-button service-row-primary">Start backend</button>
+                        <button id="local-run-stop-backend" type="button" class="quiet-button service-row-stop" hidden>Stop</button>
+                      </div>
+                    </div>
+                    <div class="service-row" data-service="frontend" data-status="stopped">
+                      <div class="service-row-info">
+                        <strong>Frontend app</strong>
+                        <span id="frontend-status-chip" class="status-chip neutral">Frontend stopped</span>
+                        <a id="frontend-open-link" class="service-row-link" href="#" target="_blank" rel="noreferrer" hidden>Open in browser</a>
+                      </div>
+                      <div class="service-row-actions" aria-label="Frontend service controls">
+                        <button id="local-run-start-frontend" type="button" class="primary-button service-row-primary">Start frontend</button>
+                        <button id="local-run-stop-frontend" type="button" class="quiet-button service-row-stop" hidden>Stop</button>
+                      </div>
+                    </div>
                   </div>
-                  <div id="local-run-process-status" class="local-run-process-status" aria-live="polite"></div>
+                  <div id="local-run-process-status" class="local-run-process-status" aria-live="polite" hidden></div>
                 </section>
-                <p class="helper-copy">Runs are sandboxed under `.tmp/builder-runs/&lt;safe-run-id&gt;/`. Start/Stop uses only the generated app's fixed Makefile targets. No GitHub, deployment, arbitrary shell commands, or output path selection is available here.</p>
+                <details class="inline-advanced safety-details">
+                  <summary>Safety details</summary>
+                  <p class="helper-copy">Runs are sandboxed under `.tmp/builder-runs/&lt;safe-run-id&gt;/`. Start/Stop uses only the generated app's fixed Makefile targets. No GitHub, deployment, arbitrary shell commands, or output path selection is available here.</p>
+                </details>
               </section>
               </div>
               <details class="advanced-drawer" id="advanced-drawer">
@@ -262,9 +328,8 @@
 
             <section id="generate-flow" class="panel generation-panel wizard-step" data-step="generate" aria-labelledby="generate-heading">
               <div class="section-head roomy">
-                <p class="step-label">Step 4</p>
-                <h2 id="generate-heading">Export / next steps</h2>
-                <p>Use the local run summary if you generated in Step 3, or keep the manual YAML + CLI path. The CLI remains the source of truth.</p>
+                <h2 id="generate-heading" class="canvas-region-heading">Export / next steps</h2>
+                <p>Use the local summary, or open Advanced for YAML and CLI.</p>
               </div>
               <section id="export-summary" class="export-summary" aria-live="polite"></section>
               <details class="advanced-drawer export-advanced-drawer">
@@ -291,7 +356,7 @@
                 <div id="generation-preview" class="generation-preview"></div>
               </details>
               <div class="test-path">
-                <h3>How to test the generated demo</h3>
+                <h3>Test the generated demo</h3>
                 <ol>
                   <li>Run backend and frontend locally.</li>
                   <li>Click ingest to load included sample records.</li>
@@ -308,8 +373,7 @@
 
             <section id="existing-repo-flow" class="panel repo-panel wizard-step" data-step="repo" aria-labelledby="repo-heading">
               <div class="section-head roomy">
-                <p class="step-label">Secondary flow</p>
-                <h2 id="repo-heading">Understand an existing repo</h2>
+                <h2 id="repo-heading" class="canvas-region-heading">Understand an existing repo</h2>
                 <p>These CLI steps inspect and recommend. They do not modify the analyzed repo by default.</p>
               </div>
               <div class="repo-steps">
@@ -342,26 +406,27 @@
             </section>
           </div>
 
-          <aside class="builder-side-panel" aria-label="Persistent Builder assistant">
-            <section class="assistant-panel assistant-primary-path persistent-assistant-panel" id="assistant-panel" aria-labelledby="assistant-heading" data-state="static">
-              <div class="section-head">
-                <p class="eyebrow" id="assistant-mode-label">Assistant-first path · local scripted by default</p>
-                <h3 id="assistant-heading">Builder Assistant</h3>
-                <p id="assistant-status" class="assistant-status">Static mode. Start `agentforge serve-builder` to enable the local scripted assistant.</p>
+          <aside class="builder-side-panel" data-variant="compact" aria-label="Persistent Builder assistant">
+            <section class="assistant-panel assistant-primary-path persistent-assistant-panel compact-assistant-panel compact-side-panel" id="assistant-panel" aria-labelledby="assistant-heading" data-state="static">
+              <div class="section-head assistant-head compact-assistant-head">
+                <p class="eyebrow" id="assistant-mode-label">Assistant · local scripted</p>
+                <h3 id="assistant-heading" class="visually-hidden">Builder Assistant</h3>
+                <p id="assistant-status" class="assistant-status">Static mode. Start the Builder server.</p>
               </div>
-              <div id="assistant-log" class="assistant-log" role="log" aria-live="polite" aria-label="Assistant conversation"></div>
-              <div id="assistant-questions" class="assistant-questions hidden" aria-label="Clarifying questions"></div>
-              <div id="assistant-proposal" class="assistant-proposal hidden" aria-label="Proposed Blueprint preview"></div>
-              <div id="assistant-guidance" class="assistant-guidance hidden" role="status" aria-live="polite" aria-label="Validation guidance"></div>
-              <form id="assistant-form" class="assistant-form" autocomplete="off">
-                <label class="assistant-input-label" for="assistant-input">Message the assistant</label>
-                <textarea id="assistant-input" rows="2" placeholder="Describe what you want to build, or answer the assistant's last question."></textarea>
-                <div class="actions">
-                  <button id="assistant-send" class="primary-button" type="submit" disabled>Send</button>
-                  <button id="assistant-reset" class="quiet-button" type="button">Reset chat</button>
-                </div>
-              </form>
-              <p class="assistant-footnote">Assistant proposals are reviewed before Apply. Apply and review plan installs only the validated in-memory Builder draft; Reject keeps the current draft unchanged.</p>
+              <section id="assistant-next-step" class="assistant-next-step" aria-label="Current guidance" aria-live="polite">
+                <p class="eyebrow assistant-next-step-eyebrow">Current guidance</p>
+                <p class="assistant-next-step-label" id="assistant-next-step-label">Describe the app you want to build.</p>
+                <p class="assistant-next-step-detail" id="assistant-next-step-detail" hidden></p>
+              </section>
+              <a id="assistant-proposal-pointer" class="assistant-proposal-pointer" href="#assistant-proposal" hidden>Plan ready — review in main area ↑</a>
+              <details class="assistant-history-details" id="assistant-history">
+                <summary class="assistant-history-summary">Conversation history</summary>
+                <div id="assistant-log" class="assistant-log" role="log" aria-live="polite" aria-label="Assistant conversation"></div>
+              </details>
+              <details class="inline-advanced assistant-safety-details">
+                <summary>Apply safety</summary>
+                <p class="assistant-footnote">Assistant proposals are reviewed before Apply. Apply installs only the validated in-memory Builder draft; Reject keeps the current draft unchanged.</p>
+              </details>
             </section>
           </aside>
         </div>

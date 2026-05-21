@@ -28,16 +28,17 @@ def _extract_function(script: str, name: str) -> str | None:
 
 def test_step_labels_reframe_review_build_and_export_next_steps():
     html = _read("index.html")
-    nav = html[html.index('<nav class="flow-rail"'):html.index('</nav>')]
     step4_block = html[html.index('id="generate-flow"'):html.index('id="existing-repo-flow"')]
 
-    assert "Review &amp; Build" in nav
-    assert "Export / Next Steps" in nav
-    assert "Review" in nav
-    assert ">Generate<" not in nav
-    assert "Review &amp; build the app plan" in html
+    # Slice A removes the 4-step wizard nav. Canvas region headings carry the labels now.
+    assert '<nav class="flow-rail"' not in html
+    assert "Plan, build, and run your local demo" in html
     assert "Export / next steps" in step4_block
     assert "Generate and run locally" not in step4_block
+    # Visible "Step N" labels are removed in favour of the canvas state badge.
+    assert "<p class=\"step-label\">Step 2</p>" not in html
+    assert "<p class=\"step-label\">Step 3</p>" not in html
+    assert "<p class=\"step-label\">Step 4</p>" not in html
 
 
 def test_review_step_contains_local_control_room_panel():
@@ -57,7 +58,8 @@ def test_review_step_contains_local_control_room_panel():
     assert 'id="local-run-log"' in review_block
     assert 'class="local-run-panel workspace-card build-card"' in review_block
     assert 'class="workspace-card run-card"' in review_block
-    assert "Static browser mode" in review_block
+    assert "Static mode. Start the Builder server" in review_block
+    assert "Safety details" in review_block
     assert "No GitHub, deployment, arbitrary shell commands" in review_block
     assert "fixed Makefile targets" in review_block
 
@@ -84,7 +86,7 @@ def test_static_mode_disables_local_control_room_until_planner_and_blueprint():
     assert fn is not None
     assert "plannerAvailable" in fn
     assert "hasBlueprint" in fn
-    assert "Static browser mode" in fn
+    assert "Static mode. Start the Builder server" in fn
     assert "Apply an assistant proposal" in fn
     assert "localRunValidateBlueprintButton.disabled = !canUseServer" in fn
     assert "localRunGenerateButton.disabled = !canUseServer" in fn
@@ -109,8 +111,10 @@ def test_service_status_urls_logs_and_handlers_render():
     render_result = _extract_function(script, "renderLocalRunResult")
 
     assert render_status is not None
-    assert "Generated app servers" in render_status
-    assert "URL appears after Start" in render_status
+    assert "App services" in render_status
+    assert "Start to get link" in render_status
+    assert "Generated app servers" not in render_status
+    assert "URL appears after Start" not in render_status
     assert control_service is not None
     assert 'localRunRequest(action, { run_id: localRunState.runId, service })' in control_service
     assert "localRunStartBackendButton?.addEventListener" in script
@@ -172,6 +176,8 @@ def test_local_run_results_render_status_path_logs_and_commands():
     assert "timed_out" in fn
     assert "truncated" in fn
     assert "renderExportSummary" in fn
+    assert "const hasExitCode = result.exit_code !== undefined && result.exit_code !== null" in fn
+    assert "${hasExitCode ? ` · exit ${result.exit_code}` : \"\"}" in fn
 
 
 def test_local_run_results_append_assistant_activity_narration():
@@ -202,11 +208,12 @@ def test_no_duplicate_conflicting_generate_step_messaging():
     html = _read("index.html")
     step4_block = html[html.index('id="generate-flow"'):html.index('id="existing-repo-flow"')]
 
-    assert ">Generate<" not in html[html.index('<nav class="flow-rail"'):html.index('</nav>')]
+    # Slice A removed the wizard nav; the assertion just confirms the legacy "Generate" tab is gone for good.
+    assert '<nav class="flow-rail"' not in html
     assert "Generate and run locally" not in step4_block
     assert "Manual CLI commands" in step4_block
     assert "Advanced: YAML, CLI, logs" in step4_block
-    assert "The CLI remains the source of truth" in step4_block
+    assert "Use the local summary, or open Advanced for YAML and CLI" in step4_block
 
 
 def test_styles_define_local_run_panel():
@@ -215,6 +222,7 @@ def test_styles_define_local_run_panel():
     for selector in (
         ".plan-build-run-workspace",
         ".workspace-card",
+        ".workspace-step-number",
         ".advanced-drawer",
         ".export-advanced-drawer",
         ".plan-card",
@@ -223,7 +231,12 @@ def test_styles_define_local_run_panel():
         ".local-run-panel",
         ".export-summary",
         ".export-card",
+        ".local-run-empty-state",
         ".local-run-result",
+        ".local-run-result.pending",
+        ".compact-status-row",
+        ".status-chip",
+        ".next-action-row",
         ".local-run-process-status",
         ".service-status",
         ".service-status.starting",

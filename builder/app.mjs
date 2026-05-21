@@ -56,6 +56,42 @@ const generationPreview = document.querySelector("#generation-preview");
 const summaryName = document.querySelector("#summary-name");
 const summaryArchetype = document.querySelector("#summary-archetype");
 const summaryStatus = document.querySelector("#summary-status");
+const planReadyChip = document.querySelector("#plan-ready-chip");
+const blueprintValidChip = document.querySelector("#blueprint-valid-chip");
+const buildBlueprintChip = document.querySelector("#build-blueprint-chip");
+const buildGeneratedChip = document.querySelector("#build-generated-chip");
+const buildChecksChip = document.querySelector("#build-checks-chip");
+const buildNextAction = document.querySelector("#build-next-action");
+const buildPrimaryAction = document.querySelector("#build-primary-action");
+const backendStatusChip = document.querySelector("#backend-status-chip");
+const frontendStatusChip = document.querySelector("#frontend-status-chip");
+const planSummaryApp = document.querySelector("#plan-summary-app");
+const planSummaryType = document.querySelector("#plan-summary-type");
+const planSummaryEntities = document.querySelector("#plan-summary-entities");
+const planSummaryProviders = document.querySelector("#plan-summary-providers");
+const planSummaryStatus = document.querySelector("#plan-summary-status");
+const planSummaryExtras = document.querySelector("#plan-summary-extras");
+const assistantHistoryDetails = document.querySelector("#assistant-history");
+const assistantNextStepLabel = document.querySelector("#assistant-next-step-label");
+const assistantNextStepDetail = document.querySelector("#assistant-next-step-detail");
+const assistantProposalPointer = document.querySelector("#assistant-proposal-pointer");
+const assistantThinking = document.querySelector("#assistant-thinking");
+const heroComposer = document.querySelector("#hero-composer");
+const heroComposerInput = document.querySelector("#hero-composer-input");
+const heroComposerSend = document.querySelector("#hero-composer-send");
+const heroComposerThinking = document.querySelector("#hero-composer-thinking");
+const frontendOpenLink = document.querySelector("#frontend-open-link");
+const backendMeta = document.querySelector("#backend-meta");
+const serviceRows = {
+  backend: document.querySelector('.service-row[data-service="backend"]'),
+  frontend: document.querySelector('.service-row[data-service="frontend"]'),
+};
+const builderShell = document.querySelector("#builder-shell");
+const canvasStateBadge = document.querySelector("#canvas-state-badge");
+const canvasStateLabel = document.querySelector("#canvas-state-label");
+const canvasStateDetail = document.querySelector("#canvas-state-detail");
+const canvasThinkingOverlay = document.querySelector("#canvas-thinking-overlay");
+const canvasThinkingEcho = document.querySelector("#canvas-thinking-echo");
 const summaryCapabilityGroups = document.querySelector("#summary-capability-groups");
 const summaryCommands = document.querySelector("#summary-commands");
 const customizePanel = document.querySelector("#customize-panel");
@@ -104,6 +140,9 @@ let assistantLiveProvider = false;
 let localRunBusy = false;
 let localRunServicePollTimer = null;
 let localRunState = { runId: null, generatedPath: null, steps: [], services: { backend: null, frontend: null } };
+let assistantSubmissionInFlight = false;
+let activeBuildOp = null;
+let lastUserPrompt = "";
 
 function state() {
   return {
@@ -270,9 +309,11 @@ function updatePreview() {
 
 function renderBuildSummary(current, preview, issues, activeBlueprint = plannerBlueprint) {
   const modelSummary = modelDrivenSummary(activeBlueprint);
-  summaryName.textContent = activeBlueprint?.display_name || current.displayName || current.name || "Untitled app";
+  summaryName.textContent = displayTitleForBlueprint(activeBlueprint, current.displayName || current.name || "Untitled app");
   summaryArchetype.textContent = modelSummary ? "Model-driven CRUD/workflow app" : plainArchetype(preview.archetype);
-  summaryStatus.textContent = issues.length ? `${issues.length} issue${issues.length === 1 ? "" : "s"} to resolve` : plannerBlueprint ? "Plan drafted — ready to review" : "Ready for an app idea";
+  summaryStatus.textContent = issues.length ? `${issues.length} issue${issues.length === 1 ? "" : "s"} to resolve` : plannerBlueprint ? "Plan ready" : "Ready for an app idea";
+  renderPlanStatusChips(issues);
+  renderPlanSummaryList(current, preview, issues, activeBlueprint);
   const groups = modelSummary ? modelDrivenCapabilityGroups(modelSummary) : capabilityGroups(preview);
   summaryCapabilityGroups.innerHTML = groups
     .map((group) => `
@@ -287,6 +328,35 @@ function renderBuildSummary(current, preview, issues, activeBlueprint = plannerB
 
 function plainArchetype(label) {
   return String(label || "Local app").replace("Pipeline", "app").replace("App", "app").replaceAll("_", " ");
+}
+
+function titleCaseWords(value) {
+  return String(value || "")
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase()
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function cleanAppDisplayTitle(value, fallback = "Local App") {
+  let title = String(value || "").replace(/[_-]+/g, " ").replace(/\s+/g, " ").trim();
+  title = title
+    .replace(/^(?:please\s+)?(?:i|we)\s+(?:want|need|would like)(?:\s+to)?\s+/i, "")
+    .replace(/^(?:please\s+)?(?:build|create|make|generate)\s+(?:me\s+|us\s+)?(?:an?\s+)?/i, "")
+    .replace(/^(?:an?\s+)?(?:app|workspace|dashboard|tool)\s+(?:to|for)\s+/i, "")
+    .replace(/^(?:to\s+)?(?:manage|track|organize|monitor)\s+(?:my|our|the)?\s*/i, "")
+    .trim();
+  title = title.replace(/\bfinances\b/gi, "finance");
+  const fallbackTitle = titleCaseWords(fallback || "Local App");
+  title = titleCaseWords(title) || fallbackTitle;
+  if (/\bfinance\b/i.test(title) && !/\b(manager|workspace|dashboard|app|tool)\b/i.test(title)) return `${title} Manager`;
+  if (!/\b(workspace|manager|dashboard|app|tool|tracker|portal|console)\b/i.test(title)) return `${title} Workspace`;
+  return title;
+}
+
+function displayTitleForBlueprint(blueprint, fallback = "Local App") {
+  return cleanAppDisplayTitle(blueprint?.display_name || blueprint?.name || fallback, fallback);
 }
 
 function plainCapabilityLabel(value) {
@@ -510,21 +580,235 @@ function updateAssistantModeLabel(turnMode = null, fallbackReason = null) {
   if (label) label.textContent = `Assistant-first path · ${assistantModeText(turnMode, fallbackReason)}`;
 }
 
+function setStatusChip(element, label, tone = "neutral") {
+  if (!element) return;
+  element.textContent = label;
+  element.className = `status-chip ${tone}`;
+}
+
+function renderPlanStatusChips(issues = []) {
+  const hasPlan = Boolean(plannerBlueprint);
+  setStatusChip(planReadyChip, hasPlan ? "Plan ready" : "Plan needed", hasPlan ? "success" : "neutral");
+  setStatusChip(blueprintValidChip, hasPlan && issues.length === 0 ? "Blueprint valid" : hasPlan ? "Blueprint needs review" : "Blueprint pending", hasPlan && issues.length === 0 ? "success" : hasPlan ? "warning" : "neutral");
+  setStatusChip(buildBlueprintChip, hasPlan && issues.length === 0 ? "Blueprint valid" : hasPlan ? "Blueprint needs review" : "Blueprint pending", hasPlan && issues.length === 0 ? "success" : hasPlan ? "warning" : "neutral");
+}
+
+function readableList(items, empty = "nothing yet") {
+  const values = (items || []).filter(Boolean);
+  if (values.length === 0) return empty;
+  if (values.length === 1) return values[0];
+  return `${values.slice(0, -1).join(", ")}, and ${values[values.length - 1]}`;
+}
+
+function planSummarySentence(current, preview, activeBlueprint = plannerBlueprint) {
+  const modelSummary = modelDrivenSummary(activeBlueprint);
+  const appLabel = displayTitleForBlueprint(activeBlueprint, current.displayName || current.name || "this local app");
+  if (modelSummary) {
+    const entities = readableList(modelSummary.entities.map((entity) => entity.label_plural || entity.name), "no entities yet");
+    const dataSources = modelSummary.imports.length || modelSummary.providers.length
+      ? ` It will use ${readableList([
+        modelSummary.imports.length ? `imports for ${modelSummary.importLabel}` : "",
+        modelSummary.providers.length ? `providers for ${modelSummary.providerLabel}` : "",
+      ], "local sample data")}.`
+      : " No imports or providers are configured yet.";
+    return `AgentForge will build ${appLabel} as a local model-driven workspace with ${entities}.${dataSources}`;
+  }
+  if (activeBlueprint) {
+    return `AgentForge will build ${appLabel} as a ${plainArchetype(preview.archetype)} with the selected local demo capabilities. No external providers are required.`;
+  }
+  return "Describe an app idea and AgentForge will turn it into a plain-language plan here before anything is generated.";
+}
+
+function renderPlanSummaryList(current, preview, issues, activeBlueprint = plannerBlueprint) {
+  if (!planSummaryApp) return;
+  const modelSummary = modelDrivenSummary(activeBlueprint);
+  const appLabel = displayTitleForBlueprint(activeBlueprint, current.displayName || current.name || "—");
+  const typeLabel = modelSummary ? "Model-driven CRUD/workflow app" : plainArchetype(preview.archetype);
+  const entityLabel = modelSummary
+    ? `${modelSummary.entities.length} entities · ${modelSummary.entityLabel}`
+    : activeBlueprint
+      ? "Driven by selected feature modules"
+      : "—";
+  const importLabel = modelSummary
+    ? `Imports: ${modelSummary.importLabel} · Providers: ${modelSummary.providerLabel}`
+    : activeBlueprint
+      ? "Local sample data only"
+      : "—";
+  const statusLabel = issues.length
+    ? `${issues.length} issue${issues.length === 1 ? "" : "s"} to resolve`
+    : activeBlueprint
+      ? "Plan ready — validate the Blueprint next"
+      : "Ready for an app idea";
+  if (draftSummary) {
+    draftSummary.hidden = false;
+    draftSummary.textContent = planSummarySentence(current, preview, activeBlueprint);
+  }
+  planSummaryApp.textContent = appLabel;
+  planSummaryType.textContent = typeLabel;
+  planSummaryEntities.textContent = entityLabel;
+  planSummaryProviders.textContent = importLabel;
+  planSummaryStatus.textContent = statusLabel;
+}
+
+function computeBuildState() {
+  const validateBlueprint = localRunState.steps.find((step) => step.step === "validate-blueprint");
+  const generated = localRunState.steps.find((step) => step.step === "generate") || (localRunState.runId ? { ok: true } : null);
+  const appChecks = localRunState.steps.find((step) => step.step === "validate-app");
+  return {
+    validateBlueprint,
+    generated,
+    appChecks,
+    backendStatus: localRunState.services.backend?.status || "stopped",
+    frontendStatus: localRunState.services.frontend?.status || "stopped",
+    frontendUrl: localRunState.services.frontend?.url || "",
+    backendUrl: localRunState.services.backend?.url || "",
+  };
+}
+
+function computeNextStep() {
+  const build = computeBuildState();
+  const pendingProposal = Boolean(assistantSessionState?.proposal && assistantSessionState.proposal.blueprint);
+  if (!plannerAvailable) {
+    return { id: "start-server", label: "Start Builder server", detail: "Run `agentforge serve-builder` from the AgentForge workspace.", action: null };
+  }
+  if (pendingProposal) {
+    return { id: "review-proposal", label: "Review the proposed Blueprint", detail: "Apply to install the validated draft, or Reject to keep your current one.", action: null };
+  }
+  if (!plannerBlueprint) {
+    return { id: "describe-app", label: "Describe the app you want to build", detail: "Send a message to the assistant on the right to start a plan.", action: null };
+  }
+  if (!build.validateBlueprint) {
+    return { id: "validate-blueprint", label: "Validate Blueprint", detail: "Run a schema validation pass on the applied Blueprint before generating files.", action: validateLocalRunBlueprint };
+  }
+  if (!build.validateBlueprint.ok) {
+    return { id: "review-validation", label: "Fix Blueprint validation errors", detail: "Open the build result below for details, then update the plan.", action: null };
+  }
+  if (!build.generated) {
+    return { id: "generate", label: "Generate app locally", detail: "Materialize the validated Blueprint into a sandboxed local app.", action: generateLocalRunApp };
+  }
+  if (!build.generated.ok) {
+    return { id: "review-generate", label: "Review generate log", detail: "Open the build result and Advanced logs to diagnose, then retry.", action: generateLocalRunApp };
+  }
+  if (!build.appChecks) {
+    return { id: "run-checks", label: "Run app checks", detail: "Execute the generated app's `make validate` target.", action: validateLocalRunApp };
+  }
+  if (!build.appChecks.ok) {
+    return { id: "review-checks", label: "Review check log", detail: "Open the build result and Advanced logs to diagnose, then re-run checks.", action: validateLocalRunApp };
+  }
+  if (build.backendStatus !== "running") {
+    return { id: "start-backend", label: "Start backend", detail: "Boot the generated FastAPI server.", action: () => controlLocalRunService("backend", "start-service") };
+  }
+  if (build.frontendStatus !== "running") {
+    return { id: "start-frontend", label: "Start frontend", detail: "Boot the generated React app.", action: () => controlLocalRunService("frontend", "start-service") };
+  }
+  if (build.frontendUrl) {
+    return { id: "open-app", label: "Open app", detail: `Open ${build.frontendUrl} in your browser.`, action: () => window.open(build.frontendUrl, "_blank", "noreferrer") };
+  }
+  return { id: "ready", label: "App is running", detail: "Backend and frontend are healthy.", action: null };
+}
+
+function renderBuildRunStatusChips() {
+  const { generated, appChecks, backendStatus, frontendStatus, frontendUrl, backendUrl } = computeBuildState();
+  setStatusChip(buildGeneratedChip, generated ? (generated.ok ? "Generated" : "Generate failed") : "Not generated", generated ? (generated.ok ? "success" : "error") : "neutral");
+  setStatusChip(buildChecksChip, appChecks ? (appChecks.ok ? "Checks passed" : "Checks failed") : "Checks pending", appChecks ? (appChecks.ok ? "success" : "error") : "neutral");
+  setStatusChip(backendStatusChip, `Backend ${backendStatus}`, backendStatus === "running" ? "success" : backendStatus === "starting" ? "warning" : ["failed", "error"].includes(backendStatus) ? "error" : "neutral");
+  setStatusChip(frontendStatusChip, `Frontend ${frontendStatus}`, frontendStatus === "running" ? "success" : frontendStatus === "starting" ? "warning" : ["failed", "error"].includes(frontendStatus) ? "error" : "neutral");
+  updateServiceRow("backend", backendStatus, backendUrl);
+  updateServiceRow("frontend", frontendStatus, frontendUrl);
+  const next = computeNextStep();
+  if (buildNextAction) buildNextAction.textContent = next.label;
+  updateBuildPrimaryAction(next);
+  renderAssistantNextStep(next);
+  applyCanvasState();
+}
+
+function updateServiceRow(service, status, url = "") {
+  const row = serviceRows[service];
+  if (!row) return;
+  row.dataset.status = status;
+  const stopButton = row.querySelector(".service-row-stop");
+  const startButton = row.querySelector(".service-row-primary");
+  const running = status === "running";
+  const transitional = status === "starting" || status === "stopping";
+  if (stopButton) stopButton.hidden = !running && !transitional;
+  if (startButton) {
+    startButton.hidden = running || transitional;
+    startButton.textContent = status === "failed" || status === "error" ? `Retry ${service}` : `Start ${service}`;
+  }
+  if (service === "frontend" && frontendOpenLink) {
+    if (running && url) {
+      frontendOpenLink.hidden = false;
+      frontendOpenLink.href = url;
+      frontendOpenLink.textContent = `Open ${url}`;
+    } else {
+      frontendOpenLink.hidden = true;
+      frontendOpenLink.removeAttribute("href");
+    }
+  }
+  if (service === "backend" && backendMeta) {
+    if (running && url) {
+      backendMeta.hidden = false;
+      backendMeta.textContent = url;
+    } else {
+      backendMeta.hidden = true;
+      backendMeta.textContent = "";
+    }
+  }
+}
+
+function updateBuildPrimaryAction(next = computeNextStep()) {
+  if (!buildPrimaryAction) return;
+  buildPrimaryAction.textContent = next.label;
+  const hasAction = typeof next.action === "function";
+  buildPrimaryAction.disabled = !hasAction || localRunBusy;
+  buildPrimaryAction.dataset.nextId = next.id;
+}
+
+function renderAssistantNextStep(next = computeNextStep()) {
+  if (!assistantNextStepLabel) return;
+  assistantNextStepLabel.textContent = next.label;
+  if (assistantNextStepDetail) {
+    if (next.detail) {
+      assistantNextStepDetail.hidden = false;
+      assistantNextStepDetail.textContent = next.detail;
+    } else {
+      assistantNextStepDetail.hidden = true;
+      assistantNextStepDetail.textContent = "";
+    }
+  }
+}
+
+function setAssistantApplied(applied) {
+  if (!assistantPanel) return;
+  if (applied) {
+    assistantPanel.dataset.applied = "true";
+    if (assistantHistoryDetails) assistantHistoryDetails.open = false;
+  } else {
+    delete assistantPanel.dataset.applied;
+    if (assistantHistoryDetails) assistantHistoryDetails.open = true;
+  }
+}
+
 function updateAssistantAvailability() {
   if (!assistantPanel) return;
   assistantPanel.dataset.state = plannerAvailable ? "ready" : "static";
   updateAssistantModeLabel();
   if (plannerAvailable) {
     assistantStatus.textContent = assistantSessionState
-      ? `${assistantModeText()} assistant connected. Continue the conversation or reset to start over.`
-      : `${assistantModeText()} assistant connected. Send your app idea to start a guided plan.`;
+      ? `${assistantModeText()} connected. Continue, or reset to start over.`
+      : `${assistantModeText()} connected. Send your app idea to start.`;
     assistantSendButton.disabled = assistantBusy;
     assistantInput.disabled = false;
+    if (heroComposerSend) heroComposerSend.disabled = assistantBusy;
+    if (heroComposerInput) heroComposerInput.disabled = false;
   } else {
-    assistantStatus.textContent = "Static mode. Start `agentforge serve-builder` to chat with the local scripted assistant.";
+    assistantStatus.textContent = "Static mode. Start the Builder server.";
     assistantSendButton.disabled = true;
     assistantInput.disabled = true;
+    if (heroComposerSend) heroComposerSend.disabled = true;
+    if (heroComposerInput) heroComposerInput.disabled = true;
   }
+  applyCanvasState();
 }
 
 function updateLocalRunAvailability() {
@@ -537,14 +821,23 @@ function updateLocalRunAvailability() {
   localRunValidateAppButton.disabled = !canUseServer || !localRunState.runId;
   updateServiceButtons(canUseServer);
   renderServiceStatus();
+  renderBuildRunStatusChips();
   if (localRunBusy) return;
   if (!plannerAvailable) {
-    localRunStatus.textContent = "Static browser mode. Start `agentforge serve-builder` to enable local validate/generate controls.";
+    localRunStatus.textContent = "Static mode. Start the Builder server to enable Build actions.";
+    renderLocalRunEmptyState("Start the Builder server, then apply an assistant proposal to unlock Build actions.");
   } else if (!hasBlueprint) {
-    localRunStatus.textContent = "Apply an assistant proposal or draft a plan before using the Local Control Room.";
+    localRunStatus.textContent = "Apply an assistant proposal before Build actions.";
+    renderLocalRunEmptyState("Apply a proposal first. Build actions stay disabled until there is an active Blueprint.");
   } else if (!localRunState.runId && localRunState.steps.length === 0) {
-    localRunStatus.textContent = "Ready. Validate the active Blueprint, then generate a sandboxed local app.";
+    localRunStatus.textContent = "Ready for validation and generation.";
+    renderLocalRunEmptyState("No build results yet. Start with Validate Blueprint, then Generate app locally.");
   }
+}
+
+function renderLocalRunEmptyState(message) {
+  if (!localRunResults || localRunResults.children.length > 0) return;
+  localRunResults.innerHTML = `<article class="local-run-empty-state"><strong>Build status</strong><p>${escapeHtml(message)}</p></article>`;
 }
 
 async function localRunRequest(action, payload) {
@@ -558,14 +851,22 @@ async function localRunRequest(action, payload) {
   return result;
 }
 
-function setLocalRunBusy(message) {
+function setLocalRunBusy(message, op = null) {
   localRunBusy = true;
+  activeBuildOp = op;
+  localRunPanel?.setAttribute("aria-busy", "true");
   localRunStatus.textContent = message;
+  if (localRunResults) {
+    localRunResults.innerHTML = `<article class="local-run-result pending"><h3>${escapeHtml(message)}</h3><p class="helper-copy">Keep this tab open. The assistant will summarize the result when the action finishes.</p></article>`;
+  }
   updateLocalRunAvailability();
+  applyCanvasState();
 }
 
 function finishLocalRun(result) {
   localRunBusy = false;
+  activeBuildOp = null;
+  localRunPanel?.setAttribute("aria-busy", "false");
   if (result.run_id) localRunState.runId = result.run_id;
   if (result.generated_path) localRunState.generatedPath = result.generated_path;
   if (result.service) localRunState.services[result.service] = result;
@@ -641,11 +942,13 @@ function renderLocalRunResult(result) {
   const commandItems = (result.commands || []).map((command) => `<li><code>${escapeHtml(command)}</code></li>`).join("");
   const label = localRunStepLabel(result.step, result.service);
   const urlLine = result.url ? `<p><strong>URL:</strong> <a href="${escapeHtml(result.url)}" target="_blank" rel="noreferrer">${escapeHtml(result.url)}</a></p>` : "";
-  localRunStatus.textContent = `${label} ${statusLabel}. Exit code ${result.exit_code ?? "n/a"}.`;
+  const hasExitCode = result.exit_code !== undefined && result.exit_code !== null;
+  const exitLine = hasExitCode ? `<p><strong>Exit code:</strong> ${escapeHtml(result.exit_code)}</p>` : "";
+  localRunStatus.textContent = `${compactLocalRunStatus(result, label)}${hasExitCode ? ` · exit ${result.exit_code}` : ""}`;
   localRunResults.innerHTML = `
     <article class="local-run-result ${result.ok ? "success" : "error"}">
       <h3>${escapeHtml(label)}: ${escapeHtml(result.status || statusLabel)}</h3>
-      <p><strong>Exit code:</strong> ${escapeHtml(result.exit_code ?? "n/a")}</p>
+      ${exitLine}
       ${pathLine}
       ${urlLine}
       ${result.timed_out ? '<p class="error-text">Command timed out.</p>' : ""}
@@ -667,10 +970,21 @@ function renderLocalRunResult(result) {
   renderExportSummary(getGenerationPreview(state()));
 }
 
+function compactLocalRunStatus(result, label) {
+  if (result.step === "validate-blueprint") return result.ok ? "Blueprint valid" : "Blueprint failed";
+  if (result.step === "generate") return result.ok ? "Generated" : "Generate failed";
+  if (result.step === "validate-app") return result.ok ? "Checks passed" : "Checks failed";
+  if (result.step === "start-service" || result.step === "stop-service" || result.step === "service-status") {
+    const service = plainServiceName(result.service);
+    return `${service} ${result.status || (result.ok ? "updated" : "failed")}`;
+  }
+  return `${label} ${result.ok ? "passed" : "failed"}`;
+}
+
 function localRunStepLabel(step, service = "") {
   if (step === "validate-blueprint") return "Validate Blueprint";
   if (step === "generate") return "Generate app";
-  if (step === "validate-app") return "Run make validate";
+  if (step === "validate-app") return "Run app checks";
   if (step === "start-service") return `Start ${service || "service"}`;
   if (step === "stop-service") return `Stop ${service || "service"}`;
   if (step === "service-status") return `${service || "Service"} status`;
@@ -679,7 +993,7 @@ function localRunStepLabel(step, service = "") {
 
 async function validateLocalRunBlueprint() {
   if (!plannerAvailable || !plannerBlueprint || localRunBusy) return;
-  setLocalRunBusy("Validating active Blueprint...");
+  setLocalRunBusy("Validating active Blueprint...", "validate-blueprint");
   try {
     finishLocalRun(await localRunRequest("validate-blueprint", { blueprint: plannerBlueprint }));
   } catch (error) {
@@ -689,7 +1003,7 @@ async function validateLocalRunBlueprint() {
 
 async function generateLocalRunApp() {
   if (!plannerAvailable || !plannerBlueprint || localRunBusy) return;
-  setLocalRunBusy("Generating sandboxed local app...");
+  setLocalRunBusy("Generating sandboxed local app...", "generate");
   try {
     finishLocalRun(await localRunRequest("generate", { blueprint: plannerBlueprint }));
   } catch (error) {
@@ -699,7 +1013,7 @@ async function generateLocalRunApp() {
 
 async function validateLocalRunApp() {
   if (!plannerAvailable || !plannerBlueprint || !localRunState.runId || localRunBusy) return;
-  setLocalRunBusy("Running make validate in generated app...");
+  setLocalRunBusy("Running make validate in generated app...", "validate-app");
   try {
     finishLocalRun(await localRunRequest("validate-app", { run_id: localRunState.runId }));
   } catch (error) {
@@ -722,16 +1036,17 @@ function renderServiceStatus() {
   const serviceRows = ["backend", "frontend"].map((service) => {
     const result = localRunState.services[service];
     const status = result?.status || "stopped";
-    const url = result?.url ? `<a href="${escapeHtml(result.url)}" target="_blank" rel="noreferrer">${escapeHtml(result.url)}</a>` : "URL appears after Start";
+    const url = result?.url ? `<a href="${escapeHtml(result.url)}" target="_blank" rel="noreferrer">${escapeHtml(result.url)}</a>` : "Start to get link";
     return `<div class="service-status ${escapeHtml(status)}"><strong>${escapeHtml(service)}</strong><span>${escapeHtml(status)}</span><span>${url}</span></div>`;
   }).join("");
-  localRunProcessStatus.innerHTML = `<h3>Generated app servers</h3>${serviceRows}`;
+  localRunProcessStatus.innerHTML = `<h3>App services</h3>${serviceRows}`;
+  renderBuildRunStatusChips();
 }
 
 async function controlLocalRunService(service, action) {
   if (!plannerAvailable || !plannerBlueprint || !localRunState.runId || localRunBusy) return;
   const verb = action === "start-service" ? "Starting" : "Stopping";
-  setLocalRunBusy(`${verb} ${service}...`);
+  setLocalRunBusy(`${verb} ${service}...`, action);
   try {
     finishLocalRun(await localRunRequest(action, { run_id: localRunState.runId, service }));
   } catch (error) {
@@ -872,13 +1187,23 @@ function collectAnswers() {
 function renderDraftResult(result) {
   const modules = result.suggested_modules || [];
   const archetype = result.blueprint?.app_archetype || form.archetype.value;
-  draftSummary.textContent = `${result.status}: AgentForge drafted a local app plan. Review the app type, included capabilities, assumptions, and next commands before generating.`;
+  if (draftSummary && !result.blueprint) {
+    draftSummary.hidden = false;
+    draftSummary.textContent = "Draft from an idea or chat with the assistant to fill this in.";
+  }
   draftChips.innerHTML = [plainArchetype(archetype), ...modules.map(plainCapabilityLabel)]
     .slice(0, 7)
     .map((item) => `<span class="capability-token">${escapeHtml(item)}</span>`)
     .join("");
-  renderList(plannerAssumptions, result.assumptions || []);
-  renderList(plannerWarnings, result.warnings || []);
+  const assumptions = result.assumptions || [];
+  const warnings = result.warnings || [];
+  renderList(plannerAssumptions, assumptions);
+  renderList(plannerWarnings, warnings);
+  if (planSummaryExtras) {
+    const hasAdvancedPlanDetails = Boolean(result.blueprint) || assumptions.length > 0 || warnings.length > 0;
+    planSummaryExtras.hidden = !hasAdvancedPlanDetails;
+    if (warnings.length > 0) planSummaryExtras.open = true;
+  }
 }
 
 function renderList(target, items) {
@@ -985,6 +1310,7 @@ function resetLocalRunState() {
   if (localRunServicePollTimer) window.clearTimeout(localRunServicePollTimer);
   localRunServicePollTimer = null;
   localRunState = { runId: null, generatedPath: null, steps: [], services: { backend: null, frontend: null } };
+  localRunPanel?.setAttribute("aria-busy", "false");
   if (localRunResults) localRunResults.innerHTML = "";
   if (localRunLog) localRunLog.textContent = "Local run logs will appear here after you click a control room action.";
   renderServiceStatus();
@@ -1138,42 +1464,50 @@ function renderAssistantProposal(proposal) {
   if (!proposal || !proposal.blueprint) {
     assistantProposal.classList.add("hidden");
     assistantProposal.innerHTML = "";
+    setProposalPointer(false);
+    applyCanvasState();
     return;
   }
+  setAssistantApplied(false);
+  setProposalPointer(true);
   const changesList = proposal.changes || [];
   const changes = changesList.map((change) => {
     const op = String(change.operation || "replace");
     return `<li class="assistant-change assistant-change-${escapeHtml(op)}"><span class="assistant-change-op">${escapeHtml(op)}</span><code>${escapeHtml(change.path)}</code>${change.to && typeof change.to === "string" ? ` <span class="assistant-change-summary">${escapeHtml(change.to)}</span>` : ""}</li>`;
   }).join("");
   const archetype = proposal.blueprint.app_archetype || "model_driven_app";
-  const entities = (proposal.blueprint.model?.entities || []).map((entity) => escapeHtml(entity.name)).join(", ") || "(no entities)";
-  const importEntries = proposal.blueprint.model?.imports || [];
-  const providerEntries = proposal.blueprint.model?.providers || [];
-  const importLabel = importEntries.length
-    ? importEntries.map((entry) => escapeHtml(entry.id || entry.entity || "import")).join(", ")
-    : "(none)";
-  const providerLabel = providerEntries.length
-    ? providerEntries.map((entry) => `${escapeHtml(entry.id || entry.type || "provider")} (${escapeHtml(entry.type || "")})`).join(", ")
-    : "(none)";
+  const appName = displayTitleForBlueprint(proposal.blueprint, "Proposed app");
+  const summary = modelDrivenSummary(proposal.blueprint);
+  const entityNames = summary?.entities.map((entity) => entity.label_plural || entity.name).filter(Boolean) || [];
+  const entities = readableList(entityNames, "no entities yet");
+  const importLabel = summary?.importLabel || "None";
+  const providerLabel = summary?.providerLabel || "None";
+  const dataSourceSentence = importLabel === "None" && providerLabel === "None"
+    ? "No imports or providers are configured yet."
+    : `Imports: ${importLabel}. Providers: ${providerLabel}.`;
+  const entityChips = entityNames.map((name) => `<span class="assistant-proposal-chip">${escapeHtml(name)}</span>`).join("");
   const applyDisabled = assistantBusy || !plannerAvailable ? "disabled" : "";
   assistantProposal.classList.remove("hidden");
   assistantProposal.innerHTML = `
-    <p class="eyebrow">Proposed Blueprint diff</p>
-    <p class="assistant-proposal-summary">${escapeHtml(proposal.summary || "Proposed model-driven Blueprint.")}</p>
-    <ul class="assistant-proposal-meta">
-      <li>App type: <strong>${escapeHtml(archetype)}</strong></li>
-      <li>Entities: <strong>${entities}</strong></li>
-      <li>Imports: <strong>${importLabel}</strong></li>
-      <li>Providers: <strong>${providerLabel}</strong></li>
-      <li>Status: <strong>${escapeHtml(proposal.validation?.status || "draft")}</strong></li>
-    </ul>
-    ${changes ? `<details class="assistant-proposal-changes" open><summary>Changed fields (${changesList.length})</summary><ul class="assistant-change-list">${changes}</ul></details>` : ""}
-    <div class="assistant-proposal-actions actions">
+    <div class="assistant-proposal-head">
+      <p class="eyebrow">Plan ready</p>
+      <h3>${escapeHtml(appName)}</h3>
+      <p class="assistant-proposal-summary">AgentForge will build ${escapeHtml(appName)} as a ${escapeHtml(plainArchetype(archetype))} with ${escapeHtml(entities)}. ${escapeHtml(dataSourceSentence)}</p>
+    </div>
+    <div class="assistant-proposal-facts" aria-label="Proposal summary">
+      <div><span>App type</span><strong>${escapeHtml(plainArchetype(archetype))}</strong></div>
+      <div><span>Entities</span><strong>${entityNames.length || 0}</strong></div>
+      <div><span>Data sources</span><strong>${importLabel === "None" && providerLabel === "None" ? "Local only" : "Configured"}</strong></div>
+    </div>
+    ${entityChips ? `<div class="assistant-proposal-chips" aria-label="Entities">${entityChips}</div>` : ""}
+    ${changes ? `<details class="assistant-proposal-changes"><summary>Technical changes (${changesList.length})</summary><ul class="assistant-change-list">${changes}</ul></details>` : ""}
+    <div class="assistant-proposal-actions actions" aria-label="Proposal actions">
       <button id="assistant-apply" type="button" class="primary-button" ${applyDisabled}>Apply and review plan</button>
       <button id="assistant-reject" type="button" class="quiet-button" ${applyDisabled}>Reject</button>
     </div>
-    <p class="assistant-proposal-note">Apply mutates only the in-memory Builder draft and re-runs schema validation. Reject keeps your current draft unchanged.</p>
+    <p class="assistant-proposal-note">Apply updates only the in-memory Builder draft and re-runs schema validation. Reject keeps your current draft unchanged.</p>
   `;
+  applyCanvasState();
 }
 
 function clearAssistantConversation() {
@@ -1182,6 +1516,10 @@ function clearAssistantConversation() {
   renderAssistantQuestions([], []);
   renderAssistantProposal(null);
   renderAssistantGuidance(null);
+  setAssistantApplied(false);
+  setProposalPointer(false);
+  renderAssistantNextStep();
+  applyCanvasState();
 }
 
 function handleAssistantResponse(result) {
@@ -1190,13 +1528,20 @@ function handleAssistantResponse(result) {
   if (result.fallback_reason) {
     assistantStatus.textContent = `Assistant mode: ${assistantModeText(result.turn_mode, result.fallback_reason)}.`;
   }
-  (result.messages || []).forEach((message) => appendAssistantMessage("assistant", message));
+  const incoming = Array.isArray(result.messages) ? result.messages : [];
+  const filtered = incoming.filter((message) => !isGenericAcknowledgement(message));
+  filtered.forEach((message) => appendAssistantMessage("assistant", message));
+  if (result.proposal && result.proposal.blueprint) {
+    const planMsg = planReadyMessage(result.proposal);
+    if (planMsg) appendAssistantMessage("activity", planMsg);
+  }
   renderAssistantQuestions(result.questions, result.question_details);
   renderAssistantProposal(result.proposal);
   renderAssistantGuidance(result.guidance);
   if (result.errors && result.errors.length) {
     appendAssistantMessage("assistant", result.errors.join(" "));
   }
+  renderAssistantNextStep();
 }
 
 function renderAssistantGuidance(guidance) {
@@ -1226,9 +1571,136 @@ function renderAssistantGuidance(guidance) {
 function setAssistantBusy(busy) {
   assistantBusy = busy;
   if (assistantSendButton) assistantSendButton.disabled = busy || !plannerAvailable;
+  if (heroComposerSend) heroComposerSend.disabled = busy || !plannerAvailable;
+  if (assistantInput) assistantInput.dataset.busy = busy ? "true" : "false";
+  if (heroComposerInput) heroComposerInput.dataset.busy = busy ? "true" : "false";
   assistantProposal?.querySelectorAll("button").forEach((button) => {
     button.disabled = busy || !plannerAvailable;
   });
+}
+
+function setAssistantThinking(thinking) {
+  assistantSubmissionInFlight = Boolean(thinking);
+  if (assistantThinking) assistantThinking.hidden = !thinking;
+  if (heroComposerThinking) heroComposerThinking.hidden = !thinking;
+  if (assistantPanel) {
+    if (thinking) assistantPanel.dataset.thinking = "true";
+    else delete assistantPanel.dataset.thinking;
+  }
+  if (canvasThinkingEcho) {
+    if (thinking && lastUserPrompt) {
+      canvasThinkingEcho.hidden = false;
+      canvasThinkingEcho.textContent = `“${lastUserPrompt}”`;
+    } else {
+      canvasThinkingEcho.hidden = true;
+      canvasThinkingEcho.textContent = "";
+    }
+  }
+  applyCanvasState();
+}
+
+const CANVAS_STATE_COPY = {
+  empty: { label: "Ready", detail: "Describe an app idea to begin." },
+  thinking: { label: "Working", detail: "Drafting your app plan…" },
+  "plan-ready": { label: "Plan ready", detail: "Review the proposed plan in the main canvas." },
+  "plan-applied": { label: "Plan applied", detail: "Validate the Blueprint to continue." },
+  validating: { label: "Working", detail: "Validating Blueprint…" },
+  generating: { label: "Working", detail: "Generating the local app…" },
+  checking: { label: "Working", detail: "Running app checks…" },
+  running: { label: "Running", detail: "Services are starting." },
+  "open-app": { label: "Running", detail: "App is running — open the frontend." },
+  error: { label: "Error", detail: "Something failed — review details below." },
+  static: { label: "Static", detail: "Start the Builder server to enable drafting." },
+};
+
+const CANVAS_STATE_REGION = {
+  empty: "start",
+  thinking: null,
+  "plan-ready": "new-app",
+  "plan-applied": "review",
+  validating: "review",
+  generating: "review",
+  checking: "review",
+  running: "review",
+  "open-app": "review",
+  error: "review",
+  static: "start",
+};
+
+function buildOpToState(op) {
+  if (op === "validate-blueprint") return "validating";
+  if (op === "generate") return "generating";
+  if (op === "validate-app") return "checking";
+  if (op === "start-service" || op === "stop-service") return "running";
+  return null;
+}
+
+function computeCanvasState() {
+  if (assistantSubmissionInFlight) return "thinking";
+  if (!plannerAvailable) return "static";
+  const pendingProposal = Boolean(assistantSessionState?.proposal && assistantSessionState.proposal.blueprint);
+  if (pendingProposal) return "plan-ready";
+  if (!plannerBlueprint) return "empty";
+  if (localRunBusy) {
+    const opState = buildOpToState(activeBuildOp);
+    if (opState) return opState;
+    return "plan-applied";
+  }
+  const build = computeBuildState();
+  const validateFailed = build.validateBlueprint && !build.validateBlueprint.ok;
+  const generateFailed = build.generated && !build.generated.ok;
+  const checksFailed = build.appChecks && !build.appChecks.ok;
+  const serviceFailed = ["failed", "error"].includes(build.backendStatus) || ["failed", "error"].includes(build.frontendStatus);
+  if (validateFailed || generateFailed || checksFailed || serviceFailed) return "error";
+  if (build.backendStatus === "running" && build.frontendStatus === "running" && build.frontendUrl) return "open-app";
+  if (build.backendStatus === "running" || build.frontendStatus === "running") return "running";
+  return "plan-applied";
+}
+
+function applyCanvasState() {
+  if (!builderShell) return;
+  const stateName = computeCanvasState();
+  if (builderShell.dataset.canvasState !== stateName) {
+    builderShell.dataset.canvasState = stateName;
+  }
+  const copy = CANVAS_STATE_COPY[stateName] || CANVAS_STATE_COPY.empty;
+  if (canvasStateBadge) canvasStateBadge.dataset.state = stateName;
+  if (canvasStateLabel) canvasStateLabel.textContent = copy.label;
+  if (canvasStateDetail) canvasStateDetail.textContent = copy.detail;
+  if (canvasThinkingOverlay) canvasThinkingOverlay.hidden = stateName !== "thinking";
+  const region = CANVAS_STATE_REGION[stateName];
+  if (region && region !== activeStep) setActiveStep(region);
+}
+
+const GENERIC_ACK_PATTERNS = [
+  /^i understand (?:that )?you want/i,
+  /^i (?:will|'ll) (?:draft|create|help|put together)/i,
+  /^sure[!,.]/i,
+  /^(?:got it|okay|ok)[!,.]/i,
+  /^happy to help/i,
+  /^let me (?:help|put together|draft)/i,
+  /^thanks for (?:that|sharing|the)/i,
+];
+
+function isGenericAcknowledgement(text) {
+  if (!text) return false;
+  const trimmed = String(text).trim();
+  if (trimmed.length === 0) return false;
+  return GENERIC_ACK_PATTERNS.some((pattern) => pattern.test(trimmed));
+}
+
+function planReadyMessage(proposal) {
+  if (!proposal || !proposal.blueprint) return "";
+  const entities = (proposal.blueprint.model?.entities || [])
+    .map((entity) => entity.label_plural || entity.name)
+    .filter(Boolean);
+  if (entities.length === 0) return "Plan ready for review.";
+  return `Plan ready: ${entities.join(", ")}.`;
+}
+
+function setProposalPointer(visible) {
+  if (!assistantProposalPointer) return;
+  assistantProposalPointer.hidden = !visible;
 }
 
 async function applyAssistantProposal() {
@@ -1275,6 +1747,7 @@ async function applyAssistantProposal() {
     appendAssistantMessage("assistant", `${successParts.join(". ")}. Validation passed; you do not need to click Draft app plan again.`);
     assistantSessionState = { ...assistantSessionState, proposal: null, status: "applied" };
     renderAssistantProposal(null);
+    setAssistantApplied(true);
     updatePreview();
   } catch (error) {
     appendAssistantMessage("assistant", `Apply failed: ${error.message}`);
@@ -1288,28 +1761,37 @@ function rejectAssistantProposal() {
   assistantSessionState = { ...assistantSessionState, proposal: null, status: "rejected" };
   renderAssistantProposal(null);
   renderAssistantGuidance(null);
+  setProposalPointer(false);
   appendAssistantMessage("assistant", "Rejected the proposed Blueprint. The Builder draft is unchanged.");
+  renderAssistantNextStep();
 }
 
-async function submitAssistantMessage() {
+async function submitAssistantMessage(textOverride, sourceInput) {
   if (!plannerAvailable || assistantBusy) return;
-  const text = assistantInput.value.trim();
+  const source = sourceInput || assistantInput;
+  const text = (typeof textOverride === "string" ? textOverride : source?.value || "").trim();
   if (!text) return;
-  assistantBusy = true;
-  assistantSendButton.disabled = true;
+  lastUserPrompt = text;
+  setAssistantBusy(true);
+  setAssistantThinking(true);
   appendAssistantMessage("user", text);
-  assistantInput.value = "";
+  if (source) source.value = "";
+  if (assistantInput && source !== assistantInput) assistantInput.value = "";
   try {
     const result = assistantSessionState
       ? await assistantRequest("message", { state: assistantSessionState, message: text })
       : await assistantRequest("start", { idea: text });
+    setAssistantThinking(false);
     handleAssistantResponse(result);
-    assistantStatus.textContent = `${assistantModeText(result.turn_mode, result.fallback_reason)} assistant connected. Continue the conversation or reset to start over.`;
+    assistantStatus.textContent = `${assistantModeText(result.turn_mode, result.fallback_reason)} connected. Continue, or reset to start over.`;
   } catch (error) {
+    setAssistantThinking(false);
     appendAssistantMessage("assistant", `Assistant error: ${error.message}`);
   } finally {
     setAssistantBusy(false);
-    assistantInput.focus({ preventScroll: true });
+    setAssistantThinking(false);
+    applyCanvasState();
+    (assistantInput || source)?.focus?.({ preventScroll: true });
   }
 }
 
@@ -1320,6 +1802,7 @@ updatePreview();
 setActiveStep(activeStep);
 updateAssistantAvailability();
 updateLocalRunAvailability();
+applyCanvasState();
 checkPlannerStatus();
 
 form.archetype.addEventListener("change", () => {
@@ -1365,6 +1848,10 @@ localRunStartBackendButton?.addEventListener("click", () => controlLocalRunServi
 localRunStopBackendButton?.addEventListener("click", () => controlLocalRunService("backend", "stop-service"));
 localRunStartFrontendButton?.addEventListener("click", () => controlLocalRunService("frontend", "start-service"));
 localRunStopFrontendButton?.addEventListener("click", () => controlLocalRunService("frontend", "stop-service"));
+buildPrimaryAction?.addEventListener("click", () => {
+  const next = computeNextStep();
+  if (typeof next.action === "function") next.action();
+});
 parseAnalyzerButton.addEventListener("click", previewAnalyzerReport);
 parseExtensionPlanButton.addEventListener("click", previewExtensionPlan);
 copyBlueprintSeedButton.addEventListener("click", copyBlueprintSeed);
@@ -1378,6 +1865,10 @@ ideaExamples.addEventListener("click", (event) => {
 assistantForm?.addEventListener("submit", (event) => {
   event.preventDefault();
   submitAssistantMessage();
+});
+heroComposer?.addEventListener("submit", (event) => {
+  event.preventDefault();
+  submitAssistantMessage(heroComposerInput?.value || "", heroComposerInput);
 });
 assistantResetButton?.addEventListener("click", () => {
   clearAssistantConversation();

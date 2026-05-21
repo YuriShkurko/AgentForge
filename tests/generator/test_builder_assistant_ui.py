@@ -51,7 +51,13 @@ def test_assistant_panel_is_persistent_outside_describe_step():
     assert 'id="assistant-panel"' in side_panel
     assert 'persistent-assistant-panel' in side_panel
     assert 'aria-label="Persistent Builder assistant"' in html
-    assert "Assistant stays open" in describe_block
+    # Agent-first canvas: composer + proposal live in the Describe step.
+    assert 'id="assistant-form"' in describe_block
+    assert 'id="assistant-input"' in describe_block
+    assert 'id="assistant-proposal"' in describe_block
+    # Rail no longer carries the proposal block — it now shows just a pointer.
+    assert 'id="assistant-proposal"' not in side_panel
+    assert 'id="assistant-proposal-pointer"' in side_panel
 
 
 def test_review_workspace_renders_plan_build_run_cards_without_advanced_drawer():
@@ -60,14 +66,16 @@ def test_review_workspace_renders_plan_build_run_cards_without_advanced_drawer()
 
     assert 'class="plan-build-run-workspace"' in review_block
     assert 'class="workspace-card plan-card"' in review_block
-    assert '>Plan<' in review_block
+    assert 'Plan, build, and run your local demo' in review_block
+    assert 'workspace-step-number' in review_block
+    assert 'Plan</p>' in review_block
     assert 'id="assistant-proposal"' in html
     assert 'id="assistant-guidance"' in html
     assert 'class="build-summary live-plan plan-card-live-plan"' in review_block
     assert 'class="local-run-panel workspace-card build-card"' in review_block
-    assert '>Build<' in review_block
+    assert 'Build</p>' in review_block
     assert 'class="workspace-card run-card"' in review_block
-    assert '>Run<' in review_block
+    assert 'Run</p>' in review_block
     assert 'Advanced: YAML, CLI, logs' in html
 
 
@@ -95,16 +103,142 @@ def test_advanced_surface_contains_yaml_cli_logs_and_diagnostics():
 def test_describe_step_keeps_classic_draft_without_plan_build_run_rewrite():
     html = _read("index.html")
     describe_block = html[html.index('id="new-app-flow"'):html.index('id="review-flow"')]
-    nav = html[html.index('<nav class="flow-rail"'):html.index('</nav>')]
 
     assert "Use classic text-only draft" in describe_block
     assert "Draft from text only" in describe_block
     assert "Draft app plan" not in describe_block
-    assert "Review &amp; Build" in nav
-    assert "Export / Next Steps" in nav
-    assert ">Plan<" not in nav
-    assert ">Build<" not in nav
-    assert ">Run<" not in nav
+    # Slice A removes the 4-step wizard nav entirely.
+    assert '<nav class="flow-rail"' not in html
+    # Canvas state strip replaces the nav as the top-of-canvas affordance.
+    assert 'class="canvas-state-strip"' in html
+    assert 'id="canvas-state-badge"' in html
+
+
+def test_phase_8e_polish_adds_clear_states_and_responsive_styles():
+    html = _read("index.html")
+    script = _read("app.mjs")
+    css = _read("styles.css")
+
+    assert "Run app checks" in html
+    assert "Plan needed" in html
+    assert "Plan ready" in script
+    assert "Blueprint pending" in html
+    assert "Next step" in html
+    assert "Build status" in script
+    assert "Keep this tab open" in script
+    assert "renderBuildRunStatusChips" in script
+    assert "aria-busy" in script
+    assert ".compact-status-row" in css
+    assert ".status-chip" in css
+    assert ".next-action-row" in css
+    assert ".local-run-empty-state" in css
+    assert ".local-run-result.pending" in css
+    assert ".service-status" in css and "grid-template-columns: 1fr" in css
+
+
+def test_phase_8e_simplification_promotes_one_next_action():
+    html = _read("index.html")
+    script = _read("app.mjs")
+    css = _read("styles.css")
+
+    # Build card has a single dominant primary action button.
+    assert 'id="build-primary-action"' in html
+    assert 'class="primary-button next-action-button"' in html
+    # Secondary build actions are demoted behind a details element.
+    assert 'class="inline-advanced secondary-build-actions-details"' in html
+    assert 'id="local-run-validate-blueprint"' in html
+    assert 'class="quiet-button"' in html
+    # JS derives the next step from current state and wires it to the primary button.
+    assert "function computeNextStep" in script
+    assert "updateBuildPrimaryAction" in script
+    assert "buildPrimaryAction?.addEventListener" in script
+    # CSS demotes secondary build actions and styles the next-action button.
+    assert ".next-action-button" in css
+    assert ".secondary-build-actions-details" in css
+
+
+def test_phase_8e_simplification_rebuilds_run_controls_as_service_rows():
+    html = _read("index.html")
+    script = _read("app.mjs")
+    css = _read("styles.css")
+
+    # Run card uses compact per-service rows instead of a flat 4-button row.
+    assert 'class="run-service-rows"' in html
+    assert 'class="service-row"' in html
+    assert 'data-service="backend"' in html
+    assert 'data-service="frontend"' in html
+    # Service-row Start buttons are visible by default; Stop buttons start hidden.
+    assert 'id="local-run-start-backend" type="button" class="primary-button service-row-primary"' in html
+    assert 'id="local-run-stop-backend" type="button" class="quiet-button service-row-stop" hidden' in html
+    assert 'id="local-run-start-frontend" type="button" class="primary-button service-row-primary"' in html
+    assert 'id="local-run-stop-frontend" type="button" class="quiet-button service-row-stop" hidden' in html
+    # The "Open in browser" link is rendered next to the frontend row when reachable.
+    assert 'id="frontend-open-link"' in html
+    # JS toggles Start/Stop visibility based on status and never renders both as equally prominent.
+    assert "updateServiceRow" in script
+    assert "stopButton.hidden" in script
+    assert "startButton.hidden" in script
+    # CSS gives status-specific border tones so the row reflects state at a glance.
+    assert ".service-row" in css
+    assert '.service-row[data-status="running"]' in css
+    assert ".service-row-primary" in css
+    assert ".service-row-stop" in css
+
+
+def test_phase_8e_simplification_simplifies_plan_card_and_customize():
+    html = _read("index.html")
+    script = _read("app.mjs")
+    css = _read("styles.css")
+
+    # Plan summary leads with human copy; technical metadata stays behind Advanced details.
+    assert 'class="plan-summary-human"' in html
+    assert "AgentForge will turn it into a plain-language plan" in html
+    assert '<summary>Advanced plan details</summary>' in html
+    assert 'class="plan-summary-list"' in html
+    assert 'id="plan-summary-app"' in html
+    assert 'id="plan-summary-type"' in html
+    assert 'id="plan-summary-entities"' in html
+    assert 'id="plan-summary-providers"' in html
+    assert 'id="plan-summary-status"' in html
+    # Assumptions/warnings are demoted behind a details element.
+    assert 'id="plan-summary-extras"' in html
+    # Customize panel is moved behind a details element and not in the default view.
+    assert 'id="customize-details"' in html
+    assert "<summary>Customize app details</summary>" in html
+    # JS renders into the new summary fields.
+    assert "renderPlanSummaryList" in script
+    assert "planSummarySentence" in script
+    assert "planSummaryApp" in script
+    # CSS defines the compact summary list layout and the customize details container.
+    assert ".plan-summary-human" in css
+    assert ".plan-summary-list" in css
+    assert ".customize-details" in css
+
+
+def test_phase_8e_simplification_adds_assistant_current_guidance_and_collapses_history():
+    html = _read("index.html")
+    script = _read("app.mjs")
+    css = _read("styles.css")
+
+    # The persistent assistant panel surfaces a Current guidance / Next step block.
+    assert 'id="assistant-next-step"' in html
+    assert 'aria-label="Current guidance"' in html
+    assert 'id="assistant-next-step-label"' in html
+    assert 'id="assistant-next-step-detail"' in html
+    # Conversation history is wrapped in a details element so it can collapse.
+    assert 'id="assistant-history"' in html
+    assert 'class="assistant-history-details"' in html
+    # The original assistant-log lives inside the history details, still labelled.
+    assert 'id="assistant-log"' in html
+    assert 'role="log"' in html
+    # JS marks the panel as applied so older conversation collapses after Apply.
+    assert "setAssistantApplied" in script
+    assert 'assistantPanel.dataset.applied = "true"' in script
+    assert "renderAssistantNextStep" in script
+    # CSS defines next-step styling and the applied-state visual treatment.
+    assert ".assistant-next-step" in css
+    assert ".assistant-history-details" in css
+    assert '.assistant-panel[data-applied="true"]' in css
 
 
 def test_app_mjs_calls_assistant_endpoints_and_handles_fallback():
@@ -287,11 +421,12 @@ def test_app_mjs_renders_import_and_provider_meta_rows():
 
     render = _extract_function(script, "renderAssistantProposal")
     assert render is not None
-    # Phase 4: proposal meta block surfaces imports + providers before Apply.
+    # Proposal summary still surfaces imports + providers before Apply, via the shared model summary.
     assert "Imports:" in render
     assert "Providers:" in render
-    assert "model?.imports" in render
-    assert "model?.providers" in render
+    assert "modelDrivenSummary(proposal.blueprint)" in render
+    assert "importLabel" in render
+    assert "providerLabel" in render
 
 
 def test_index_html_contains_assistant_guidance_container():
@@ -355,7 +490,7 @@ def test_app_mjs_model_driven_apply_updates_review_and_live_plan():
     build_summary = _extract_function(script, "renderBuildSummary")
     assert build_summary is not None
     assert "modelDrivenCapabilityGroups(modelSummary)" in build_summary
-    assert "activeBlueprint?.display_name" in build_summary
+    assert "displayTitleForBlueprint(activeBlueprint" in build_summary
 
 
 def test_app_mjs_model_driven_review_replaces_scoring_customization():
@@ -381,3 +516,341 @@ def test_readme_documents_assistant_chat_mode():
     readme = _read("README.md")
     assert "Builder Assistant chat" in readme
     assert "/api/planner/assistant" in readme
+
+
+# ---------------------------------------------------------------------------
+# Agent-first canvas correction (pre-commit Phase 8E) — composer + proposal in
+# main canvas; right rail is compact guidance; thinking state; copy cleanup.
+# ---------------------------------------------------------------------------
+
+
+def test_agent_first_main_canvas_composer_lives_on_start_and_describe():
+    html = _read("index.html")
+    script = _read("app.mjs")
+    css = _read("styles.css")
+
+    # Start step exposes a primary composer in the main canvas.
+    start_block = html[html.index('data-step="start"'):html.index('data-step="new-app"')]
+    assert 'id="hero-composer"' in start_block
+    assert 'id="hero-composer-input"' in start_block
+    assert 'id="hero-composer-send"' in start_block
+    assert "main-canvas-composer" in start_block
+    # Path grid is reduced — only the secondary repo affordance remains.
+    assert "Start from an app idea" not in start_block
+
+    # Describe step main canvas hosts the assistant conversation composer.
+    describe_block = html[html.index('id="new-app-flow"'):html.index('id="review-flow"')]
+    assert 'class="main-canvas-conversation"' in describe_block
+    assert 'class="assistant-form main-canvas-composer"' in describe_block
+    assert 'id="assistant-input"' in describe_block
+    assert 'id="assistant-send"' in describe_block
+
+    # JS routes the hero composer through the existing send pipeline.
+    assert "heroComposer?.addEventListener" in script
+    assert "submitAssistantMessage(heroComposerInput" in script
+
+    # CSS provides composer styling.
+    assert ".main-canvas-composer" in css
+    assert ".main-canvas-conversation" in css
+
+
+def test_agent_first_proposal_renders_in_main_canvas():
+    html = _read("index.html")
+    script = _read("app.mjs")
+    css = _read("styles.css")
+
+    describe_block = html[html.index('id="new-app-flow"'):html.index('id="review-flow"')]
+    side_panel = html[html.index('class="builder-side-panel'):html.index('</aside>', html.index('class="builder-side-panel'))]
+
+    # Proposal block sits in main canvas with the wide-canvas class.
+    assert 'id="assistant-proposal"' in describe_block
+    assert "main-canvas-proposal" in describe_block
+    # Old in-rail proposal block is gone.
+    assert 'id="assistant-proposal"' not in side_panel
+    # Rail surfaces only a compact pointer to the main canvas card.
+    assert 'id="assistant-proposal-pointer"' in side_panel
+    assert "Plan ready — review in main area" in side_panel
+
+    # Proposal copy is human-first with technical diff collapsed behind details.
+    assert "Plan ready" in script
+    assert "Technical changes" in script
+    assert 'class="assistant-proposal-facts"' in script
+    assert 'class="assistant-proposal-chips"' in script
+    assert '<details class="assistant-proposal-changes"><summary>Technical changes' in script
+
+    # CSS styles the wide proposal card without trapping the entire card in a tiny scroller.
+    assert ".assistant-proposal.main-canvas-proposal" in css
+    assert "max-height: none" in css
+    assert "overflow: visible" in css
+    assert ".assistant-proposal-pointer" in css
+
+
+def test_agent_first_thinking_state_marks_main_canvas():
+    html = _read("index.html")
+    script = _read("app.mjs")
+    css = _read("styles.css")
+
+    # Thinking indicators exist but hidden indicators must not be revealed by class display rules at idle.
+    assert 'id="assistant-thinking"' in html
+    assert 'id="hero-composer-thinking"' in html
+    assert ">Drafting plan…<" in html
+    assert ".composer-thinking[hidden]" in css
+    # JS exposes a dedicated setAssistantThinking helper and toggles it on submit.
+    assert "function setAssistantThinking" in script
+    submit = _extract_function(script, "submitAssistantMessage")
+    assert submit is not None
+    assert "setAssistantThinking(true)" in submit
+    assert "setAssistantThinking(false)" in submit
+    assert "setAssistantThinking(false);\n    handleAssistantResponse(result)" in submit
+    # CSS pulses the indicator so the main canvas does not look empty.
+    assert ".composer-thinking" in css
+    assert "composer-thinking-pulse" in css
+    assert 'assistant-panel[data-thinking="true"]' in css
+
+
+def test_builder_title_cleanup_removes_prompt_prefixes():
+    script = _read("app.mjs")
+    assert "function cleanAppDisplayTitle" in script
+    assert "function displayTitleForBlueprint" in script
+    assert "I Want Manage My" not in script
+    assert "replace(/^(?:please\\s+)?(?:i|we)\\s+(?:want|need|would like)" in script
+    assert "replace(/^(?:to\\s+)?(?:manage|track|organize|monitor)" in script
+    assert "finance" in script and "Manager" in script
+
+
+def test_shell_spacing_centers_workspace_as_single_unit():
+    css = _read("styles.css")
+    assert ".builder.wizard-shell" in css
+    assert "width: min(1360px, calc(100% - 24px))" in css
+    assert "padding: 14px 0 32px" in css
+    assert "box-shadow: 0 22px 70px" in css
+
+
+def test_agent_first_right_rail_is_compact_guidance_only():
+    html = _read("index.html")
+
+    side_panel = html[html.index('class="builder-side-panel'):html.index('</aside>', html.index('class="builder-side-panel'))]
+
+    # Compact rail markers.
+    assert "compact-side-panel" in side_panel
+    assert "compact-assistant-panel" in side_panel
+    # Rail keeps current guidance and a collapsible conversation history.
+    assert 'id="assistant-next-step"' in side_panel
+    assert 'id="assistant-history"' in side_panel
+    assert "Conversation history" in side_panel
+    # Rail no longer hosts the input/send affordance — that lives in main canvas.
+    assert 'id="assistant-form"' not in side_panel
+    assert 'id="assistant-input"' not in side_panel
+    assert 'id="assistant-send"' not in side_panel
+    # Rail still shows the assistant mode and status.
+    assert 'id="assistant-mode-label"' in side_panel
+    assert 'id="assistant-status"' in side_panel
+
+
+def test_agent_first_assistant_history_collapses_by_default():
+    html = _read("index.html")
+
+    history_index = html.index('id="assistant-history"')
+    tag_start = html.rfind("<details", 0, history_index)
+    open_tag_end = html.index(">", tag_start)
+    open_tag = html[tag_start : open_tag_end + 1]
+
+    # Conversation history is NOT auto-open — rail starts compact.
+    assert " open" not in open_tag
+
+
+def test_agent_first_assistant_history_scrolls_when_expanded():
+    css = _read("styles.css")
+
+    assert ".assistant-history-details[open]" in css
+    assert "max-height: min(360px, calc(100vh - 260px))" in css
+    assert "overflow: hidden" in css
+    assert ".assistant-history-details[open] .assistant-log" in css
+    assert "max-height: min(300px, calc(100vh - 320px))" in css
+    assert "overflow-y: auto" in css
+    assert "overscroll-behavior: contain" in css
+
+
+def test_agent_first_copy_cleanup_filters_generic_acknowledgements():
+    script = _read("app.mjs")
+
+    # Generic ack patterns are filtered before being appended to the log.
+    assert "GENERIC_ACK_PATTERNS" in script
+    assert "function isGenericAcknowledgement" in script
+    handler = _extract_function(script, "handleAssistantResponse")
+    assert handler is not None
+    assert "isGenericAcknowledgement" in handler
+    # A synthetic Plan ready activity message replaces verbose echoes when a proposal arrives.
+    assert "function planReadyMessage" in script
+    assert "Plan ready" in script
+
+
+def test_agent_first_compact_start_hero_reduces_first_viewport():
+    html = _read("index.html")
+    css = _read("styles.css")
+
+    start_block = html[html.index('data-step="start"'):html.index('data-step="new-app"')]
+    # Compact markers on entry hero.
+    assert "compact-entry-hero" in start_block
+    assert "compact-lede" in start_block
+    assert "compact-entry-step" in html
+    # The eyebrow above the heading was removed.
+    assert "No-key local demo" not in start_block
+    # CSS tightens the hero.
+    assert ".compact-entry-hero" in css
+    assert ".compact-lede" in css
+
+
+# === Slice A — canvas state machine acceptance ===
+
+
+def test_slice_a_builder_shell_carries_canvas_state_attribute():
+    html = _read("index.html")
+    assert 'id="builder-shell"' in html
+    assert 'data-canvas-state="empty"' in html
+    # Strip + badge replace the wizard nav.
+    assert 'class="canvas-state-strip"' in html
+    assert 'id="canvas-state-badge"' in html
+    assert 'id="canvas-state-label"' in html
+    assert 'id="canvas-state-detail"' in html
+
+
+def test_slice_a_canvas_state_machine_defines_required_states():
+    script = _read("app.mjs")
+    assert "function computeCanvasState" in script
+    assert "function applyCanvasState" in script
+    for state in (
+        "empty",
+        "thinking",
+        "plan-ready",
+        "plan-applied",
+        "validating",
+        "generating",
+        "checking",
+        "running",
+        "open-app",
+        "error",
+    ):
+        assert f'"{state}"' in script, f"canvas state {state!r} should be referenced in app.mjs"
+    # Apply hook is reachable from all the major state-change call sites.
+    assert "applyCanvasState();" in script
+
+
+def test_slice_a_thinking_state_gated_by_submission_in_flight():
+    script = _read("app.mjs")
+    assert "assistantSubmissionInFlight" in script
+    # The submission flag is set in setAssistantThinking only.
+    assert "assistantSubmissionInFlight = Boolean(thinking)" in script
+    # computeCanvasState returns "thinking" only when the flag is true.
+    assert 'if (assistantSubmissionInFlight) return "thinking";' in script
+    # submitAssistantMessage is the single producer of the flag.
+    submit_index = script.index("async function submitAssistantMessage")
+    submit_end = script.index("}\n", submit_index) + 1
+    submit_body = script[submit_index:submit_end]
+    assert "setAssistantThinking(true)" in submit_body
+    assert "setAssistantThinking(false)" in submit_body
+    # No other call site flips the flag on.
+    other_calls = [
+        line
+        for line in script.splitlines()
+        if "setAssistantThinking(true)" in line and "//" not in line
+    ]
+    assert len(other_calls) == 1, "setAssistantThinking(true) should only be called from submitAssistantMessage"
+
+
+def test_slice_a_thinking_overlay_exists_in_canvas():
+    html = _read("index.html")
+    css = _read("styles.css")
+    assert 'id="canvas-thinking-overlay"' in html
+    assert "Drafting your app plan" in html
+    assert "Finding entities, pages, and build steps." in html
+    assert 'id="canvas-thinking-echo"' in html
+    # CSS makes the overlay a dominant centered surface and hides other steps in thinking state.
+    assert ".canvas-thinking-overlay" in css
+    assert '.builder[data-canvas-state="thinking"] .wizard-step' in css
+    assert '.canvas-thinking-overlay[hidden]' in css
+    assert '.builder:not([data-canvas-state="thinking"]) .canvas-thinking-overlay' in css
+
+
+def test_slice_a_plan_ready_state_hides_composer():
+    css = _read("styles.css")
+    # plan-ready collapses the composer so the proposal owns the canvas.
+    assert '.builder[data-canvas-state="plan-ready"] #assistant-form' in css
+    assert '.builder[data-canvas-state="plan-ready"] #hero-composer' in css
+
+
+def test_slice_a_wizard_chrome_is_removed():
+    html = _read("index.html")
+    # No flow-rail nav element.
+    assert '<nav class="flow-rail"' not in html
+    # No visible "Step N" labels above each panel head.
+    for label in ("Step 2", "Step 3", "Step 4"):
+        # Allowed inside JS strings or CSS comments only — assert no <p class="step-label"> wrapper survives.
+        assert f'<p class="step-label">{label}</p>' not in html
+    # No "Secondary flow" wizard label either.
+    assert '<p class="step-label">Secondary flow</p>' not in html
+
+
+def test_slice_a_canvas_state_badge_carries_state_copy():
+    script = _read("app.mjs")
+    assert "CANVAS_STATE_COPY" in script
+    # Each major state has a label and detail string; identifier keys are unquoted in JS,
+    # hyphenated keys are quoted.
+    for ident_state in ("empty", "thinking", "running", "error"):
+        assert f"  {ident_state}: {{" in script, f"canvas state {ident_state!r} should have a copy entry"
+    for quoted_state in ("plan-ready", "plan-applied", "open-app"):
+        assert f'"{quoted_state}":' in script, f"canvas state {quoted_state!r} should have a copy entry"
+
+
+def test_slice_a_local_run_busy_tracks_active_build_op():
+    script = _read("app.mjs")
+    assert "activeBuildOp" in script
+    # setLocalRunBusy accepts an op argument and assigns it.
+    assert "function setLocalRunBusy(message, op = null)" in script
+    assert "activeBuildOp = op" in script
+    # The four local-run actions pass the op key.
+    assert 'setLocalRunBusy("Validating active Blueprint...", "validate-blueprint")' in script
+    assert 'setLocalRunBusy("Generating sandboxed local app...", "generate")' in script
+    assert 'setLocalRunBusy("Running make validate in generated app...", "validate-app")' in script
+    assert 'setLocalRunBusy(`${verb} ${service}...`, action)' in script
+
+
+def test_slice_a_advanced_yaml_cli_logs_still_exposed():
+    html = _read("index.html")
+    # Advanced drawer still hosts YAML, CLI, raw logs after slice A.
+    assert 'id="advanced-drawer"' in html
+    assert 'id="yaml-preview"' in html
+    assert 'id="copy-yaml"' in html
+    assert 'id="local-run-log"' in html
+    assert 'id="copy-local-run-log"' in html
+    # Export advanced drawer still has CLI commands.
+    assert 'id="plan-preview"' in html
+    assert 'id="copy-cli-commands"' in html
+
+
+def test_slice_a_right_rail_remains_compact():
+    html = _read("index.html")
+    aside_index = html.index('<aside class="builder-side-panel"')
+    aside_block = html[aside_index:html.index("</aside>", aside_index)]
+    # Rail keeps mode, current guidance, next-action label, and history.
+    assert 'id="assistant-next-step"' in aside_block
+    assert 'id="assistant-history"' in aside_block
+    # No composer or proposal moved back into the rail.
+    assert "<textarea" not in aside_block
+    assert 'id="assistant-proposal"' not in aside_block
+    assert 'id="assistant-form"' not in aside_block
+
+
+def test_slice_a_advanced_drawer_opens_without_page_wide_grid_shift():
+    css = _read("styles.css")
+    assert ".advanced-drawer[open]" in css
+    assert "display: block" in css
+    assert ".advanced-drawer[open] > .advanced-section" in css
+
+
+def test_slice_a_progressive_next_action_still_drives_build_card():
+    script = _read("app.mjs")
+    # The morphing primary button + computeNextStep contract is intact.
+    assert "function computeNextStep" in script
+    assert "updateBuildPrimaryAction" in script
+    assert "buildPrimaryAction?.addEventListener" in script
