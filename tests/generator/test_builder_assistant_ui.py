@@ -220,9 +220,9 @@ def test_phase_8e_simplification_adds_assistant_current_guidance_and_collapses_h
     script = _read("app.mjs")
     css = _read("styles.css")
 
-    # The persistent assistant panel surfaces a Current guidance / Next step block.
+    # The persistent assistant panel surfaces a compact next-action block.
     assert 'id="assistant-next-step"' in html
-    assert 'aria-label="Current guidance"' in html
+    assert 'aria-label="Next action"' in html
     assert 'id="assistant-next-step-label"' in html
     assert 'id="assistant-next-step-detail"' in html
     # Conversation history is wrapped in a details element so it can collapse.
@@ -349,7 +349,7 @@ def test_index_html_documents_apply_reject_workflow():
     # The phase 2 placeholder copy must not leak into the phase 3 UI.
     assert "Apply/Reject controls arrive in a later phase" not in html
     assert "Apply and review plan" in script
-    assert "Reject" in html
+    assert "Reject" in script
 
 
 def test_app_mjs_renders_static_scripted_live_status_labels_safely():
@@ -634,10 +634,13 @@ def test_agent_first_right_rail_is_compact_guidance_only():
     # Compact rail markers.
     assert "compact-side-panel" in side_panel
     assert "compact-assistant-panel" in side_panel
-    # Rail keeps current guidance and a collapsible conversation history.
+    # Rail keeps HUD state, next action, compact summaries, and a collapsed history trigger.
+    assert 'id="assistant-current-state"' in side_panel
     assert 'id="assistant-next-step"' in side_panel
+    assert 'id="assistant-app-summary"' in side_panel
+    assert 'id="assistant-service-summary"' in side_panel
     assert 'id="assistant-history"' in side_panel
-    assert "Conversation history" in side_panel
+    assert "History" in side_panel
     # Rail no longer hosts the input/send affordance — that lives in main canvas.
     assert 'id="assistant-form"' not in side_panel
     assert 'id="assistant-input"' not in side_panel
@@ -663,10 +666,10 @@ def test_agent_first_assistant_history_scrolls_when_expanded():
     css = _read("styles.css")
 
     assert ".assistant-history-details[open]" in css
-    assert "max-height: min(360px, calc(100vh - 260px))" in css
+    assert "min-height: 0" in css
     assert "overflow: hidden" in css
     assert ".assistant-history-details[open] .assistant-log" in css
-    assert "max-height: min(300px, calc(100vh - 320px))" in css
+    assert "max-height: min(360px, 45vh)" in css
     assert "overflow-y: auto" in css
     assert "overscroll-behavior: contain" in css
 
@@ -854,3 +857,73 @@ def test_slice_a_progressive_next_action_still_drives_build_card():
     assert "function computeNextStep" in script
     assert "updateBuildPrimaryAction" in script
     assert "buildPrimaryAction?.addEventListener" in script
+
+
+def test_slice_b_right_rail_hud_blocks_and_no_heavy_content():
+    html = _read("index.html")
+    side_panel = html[html.index('class="builder-side-panel'):html.index('</aside>', html.index('class="builder-side-panel'))]
+
+    for marker in (
+        'id="assistant-current-state"',
+        'id="assistant-current-state-label"',
+        'id="assistant-next-step"',
+        'id="assistant-app-summary"',
+        'id="assistant-app-name"',
+        'id="assistant-app-type"',
+        'id="assistant-app-entities"',
+        'id="assistant-service-summary"',
+        'id="assistant-backend-chip"',
+        'id="assistant-frontend-chip"',
+        'id="assistant-open-app-link"',
+    ):
+        assert marker in side_panel
+
+    assert "<form" not in side_panel
+    assert "<textarea" not in side_panel
+    assert 'id="assistant-proposal"' not in side_panel
+    assert 'id="local-run-log"' not in side_panel
+    assert "Apply installs only" not in side_panel
+
+
+def test_slice_b_rail_state_next_action_and_summary_are_computed_in_app_mjs():
+    script = _read("app.mjs")
+
+    for function_name in (
+        "function renderRailHud",
+        "function railStatusLine",
+        "function hudNextStepCopy",
+        "function renderRailAppSummary",
+        "function renderRailServiceSummary",
+        "function updateRailServiceChip",
+    ):
+        assert function_name in script
+
+    for copy in (
+        "Describe your app.",
+        "Review the proposed plan.",
+        "Validate the Blueprint.",
+        "Generate the local app.",
+        "Run checks.",
+        "Start services.",
+        "Open the app.",
+        "Something failed. See Advanced/logs.",
+    ):
+        assert copy in script
+
+    assert "assistantAppSummary.hidden" in script
+    assert "assistantServiceSummary.hidden" in script
+    assert "assistantOpenAppLink.hidden = false" in script
+
+
+def test_slice_b_rail_css_keeps_hud_compact_and_scrolls_history():
+    css = _read("styles.css")
+
+    assert ".compact-assistant-panel" in css
+    assert "max-height: calc(100vh - 28px)" in css
+    assert "overflow-y: auto" in css
+    assert ".assistant-hud-block" in css
+    assert ".assistant-app-entities" in css
+    assert ".assistant-service-chip" in css
+    assert ".assistant-open-app-link" in css
+    assert ".assistant-history-details[open] .assistant-log" in css
+    assert "overflow-y: auto" in css

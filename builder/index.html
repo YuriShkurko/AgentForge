@@ -411,21 +411,34 @@
               <div class="section-head assistant-head compact-assistant-head">
                 <p class="eyebrow" id="assistant-mode-label">Assistant · local scripted</p>
                 <h3 id="assistant-heading" class="visually-hidden">Builder Assistant</h3>
+                <p id="assistant-current-state" class="assistant-current-state"><span class="hud-dot" aria-hidden="true"></span><span id="assistant-current-state-label">Ready</span></p>
                 <p id="assistant-status" class="assistant-status">Static mode. Start the Builder server.</p>
               </div>
-              <section id="assistant-next-step" class="assistant-next-step" aria-label="Current guidance" aria-live="polite">
-                <p class="eyebrow assistant-next-step-eyebrow">Current guidance</p>
-                <p class="assistant-next-step-label" id="assistant-next-step-label">Describe the app you want to build.</p>
+              <section id="assistant-next-step" class="assistant-next-step" aria-label="Next action" aria-live="polite">
+                <p class="eyebrow assistant-next-step-eyebrow">Next action</p>
+                <p class="assistant-next-step-label" id="assistant-next-step-label">Describe your app.</p>
                 <p class="assistant-next-step-detail" id="assistant-next-step-detail" hidden></p>
               </section>
-              <a id="assistant-proposal-pointer" class="assistant-proposal-pointer" href="#assistant-proposal" hidden>Plan ready — review in main area ↑</a>
+              <section id="assistant-app-summary" class="assistant-hud-block assistant-app-summary" aria-label="App summary" hidden>
+                <p class="eyebrow">App</p>
+                <strong id="assistant-app-name">—</strong>
+                <span id="assistant-app-type">—</span>
+                <div id="assistant-app-entities" class="assistant-app-entities" aria-label="App entities"></div>
+              </section>
+              <section id="assistant-service-summary" class="assistant-hud-block assistant-service-summary" aria-label="Service status" hidden>
+                <p class="eyebrow">Services</p>
+                <div class="assistant-service-chip" id="assistant-backend-chip" data-status="stopped"><span aria-hidden="true"></span><strong>Backend</strong><em>stopped</em></div>
+                <div class="assistant-service-chip" id="assistant-frontend-chip" data-status="stopped"><span aria-hidden="true"></span><strong>Frontend</strong><em>stopped</em></div>
+                <a id="assistant-open-app-link" class="assistant-open-app-link" href="#" target="_blank" rel="noreferrer" hidden>Open app →</a>
+              </section>
+              <div class="assistant-hud-links" aria-label="Builder shortcuts">
+                <a id="assistant-proposal-pointer" class="assistant-proposal-pointer" href="#assistant-proposal" hidden>Plan ready — review in main area ↑</a>
+                <a href="#local-run-panel">Build controls</a>
+                <a href="#advanced-drawer">Advanced/logs</a>
+              </div>
               <details class="assistant-history-details" id="assistant-history">
-                <summary class="assistant-history-summary">Conversation history</summary>
+                <summary class="assistant-history-summary">History <span id="assistant-history-count">0</span></summary>
                 <div id="assistant-log" class="assistant-log" role="log" aria-live="polite" aria-label="Assistant conversation"></div>
-              </details>
-              <details class="inline-advanced assistant-safety-details">
-                <summary>Apply safety</summary>
-                <p class="assistant-footnote">Assistant proposals are reviewed before Apply. Apply installs only the validated in-memory Builder draft; Reject keeps the current draft unchanged.</p>
               </details>
             </section>
           </aside>

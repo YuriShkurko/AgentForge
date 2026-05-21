@@ -2113,14 +2113,14 @@ button + button,
 .assistant-history-details[open] {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
-  max-height: min(360px, calc(100vh - 260px));
+  min-height: 0;
   overflow: hidden;
   padding: 10px 12px;
 }
 
 .assistant-history-details[open] .assistant-log {
   min-height: 0;
-  max-height: min(300px, calc(100vh - 320px));
+  max-height: min(360px, 45vh);
   overflow-y: auto;
   overscroll-behavior: contain;
 }
@@ -2581,7 +2581,15 @@ button + button,
 }
 
 .compact-assistant-panel {
+  display: flex;
+  flex-direction: column;
   gap: 0.6rem;
+  height: auto;
+  max-height: calc(100vh - 28px);
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 0.85rem;
 }
 
@@ -2598,6 +2606,124 @@ button + button,
   font-size: 0.78rem;
   margin: 0;
   color: rgba(0, 0, 0, 0.55);
+}
+
+.assistant-current-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin: 0;
+  color: #1d2430;
+  font-size: 0.95rem;
+  font-weight: 800;
+}
+
+.hud-dot,
+.assistant-service-chip > span {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 999px;
+  background: #94a3b8;
+  flex: 0 0 auto;
+}
+
+.assistant-current-state[data-state="thinking"] .hud-dot,
+.assistant-current-state[data-state="validating"] .hud-dot,
+.assistant-current-state[data-state="generating"] .hud-dot,
+.assistant-current-state[data-state="checking"] .hud-dot,
+.assistant-current-state[data-state="running"] .hud-dot { background: #f59e0b; }
+.assistant-current-state[data-state="plan-ready"] .hud-dot { background: #2563eb; }
+.assistant-current-state[data-state="plan-applied"] .hud-dot { background: #0ea5e9; }
+.assistant-current-state[data-state="open-app"] .hud-dot { background: #16a34a; }
+.assistant-current-state[data-state="error"] .hud-dot { background: #dc2626; }
+
+.assistant-hud-block {
+  display: grid;
+  gap: 0.35rem;
+  border-top: 1px solid rgba(15, 23, 42, 0.08);
+  padding-top: 0.7rem;
+}
+
+.assistant-hud-block[hidden] {
+  display: none;
+}
+
+.assistant-hud-block .eyebrow,
+.assistant-hud-links .eyebrow {
+  margin: 0;
+}
+
+.assistant-app-summary strong {
+  color: #1d2430;
+  font-size: 0.95rem;
+}
+
+.assistant-app-summary > span {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.assistant-app-entities {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+
+.assistant-app-entities span {
+  border-radius: 999px;
+  background: rgba(91, 91, 214, 0.10);
+  color: #34316f;
+  font-size: 0.72rem;
+  font-weight: 720;
+  padding: 0.18rem 0.45rem;
+}
+
+.assistant-service-summary {
+  gap: 0.4rem;
+}
+
+.assistant-service-chip {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 0.45rem;
+  color: #1d2430;
+  font-size: 0.78rem;
+}
+
+.assistant-service-chip strong {
+  font-weight: 760;
+}
+
+.assistant-service-chip em {
+  color: var(--muted);
+  font-style: normal;
+}
+
+.assistant-service-chip[data-status="running"] > span { background: #16a34a; }
+.assistant-service-chip[data-status="starting"] > span { background: #f59e0b; }
+.assistant-service-chip[data-status="failed"] > span,
+.assistant-service-chip[data-status="error"] > span { background: #dc2626; }
+
+.assistant-open-app-link,
+.assistant-hud-links a {
+  color: var(--brand-strong);
+  font-size: 0.78rem;
+  font-weight: 760;
+  text-decoration: none;
+}
+
+.assistant-open-app-link:hover,
+.assistant-hud-links a:hover {
+  text-decoration: underline;
+}
+
+.assistant-hud-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem 0.65rem;
+  border-top: 1px solid rgba(15, 23, 42, 0.08);
+  padding-top: 0.65rem;
 }
 
 .assistant-proposal-pointer {

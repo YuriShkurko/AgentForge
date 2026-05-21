@@ -78,6 +78,12 @@ try {
   const visibleOnStart = await page.locator('#assistant-panel').isVisible();
   const startStep = await page.locator('.wizard-step.active').getAttribute('data-step');
   const initialCanvasState = await page.locator('#builder-shell').getAttribute('data-canvas-state');
+  const initialRailState = await page.locator('#assistant-current-state-label').innerText();
+  const initialRailNext = await page.locator('#assistant-next-step-label').innerText();
+  const initialRailHeight = await page.locator('#assistant-panel').evaluate(el => el.offsetHeight);
+  const railOverflowY = await page.locator('#assistant-panel').evaluate(el => getComputedStyle(el).overflowY);
+  const railMaxHeight = await page.locator('#assistant-panel').evaluate(el => getComputedStyle(el).maxHeight);
+  const railTextareaCount = await page.locator('.builder-side-panel textarea').count();
   const thinkingVisibleOnStart = await page.locator('#canvas-thinking-overlay').isVisible();
   const inlineThinkingVisibleOnStart = await page.locator('#hero-composer-thinking').isVisible();
   await page.fill('#hero-composer-input', 'support ticket triage with title status priority owner notes to close tickets');
@@ -85,6 +91,11 @@ try {
   await page.waitForSelector('#assistant-proposal:not(.hidden)', { timeout: 30000 });
   const visibleOnDescribe = await page.locator('#assistant-panel').isVisible();
   const planReadyCanvasState = await page.locator('#builder-shell').getAttribute('data-canvas-state');
+  const planReadyRailState = await page.locator('#assistant-current-state-label').innerText();
+  const planReadyRailNext = await page.locator('#assistant-next-step-label').innerText();
+  const planReadyRailStatus = await page.locator('#assistant-status').innerText();
+  const planReadyRailHeight = await page.locator('#assistant-panel').evaluate(el => el.offsetHeight);
+  const viewportHeight = await page.evaluate(() => window.innerHeight);
   const thinkingVisibleOnProposal = await page.locator('#canvas-thinking-overlay').isVisible();
   const proposalBox = await page.locator('#assistant-proposal').boundingBox();
   const applyBox = await page.locator('#assistant-apply').boundingBox();
@@ -97,6 +108,9 @@ try {
   await page.waitForSelector('#review-flow.active', { timeout: 10000 });
   const activeStep = await page.locator('.wizard-step.active').getAttribute('data-step');
   const appliedCanvasState = await page.locator('#builder-shell').getAttribute('data-canvas-state');
+  const appliedRailNext = await page.locator('#assistant-next-step-label').innerText();
+  const railAppSummaryVisible = await page.locator('#assistant-app-summary').isVisible();
+  const railAppSummaryText = await page.locator('#assistant-app-summary').innerText();
   const visibleOnReview = await page.locator('#assistant-panel').isVisible();
   const thinkingVisibleOnReview = await page.locator('#canvas-thinking-overlay').isVisible();
   const historyCollapsedAfterApply = await page.locator('#assistant-history').evaluate(el => !el.open);
@@ -116,7 +130,7 @@ try {
   const livePlan = await page.locator('.live-plan').innerText();
   const review = await page.locator('#review-flow').innerText();
   const classicDraftClicks = await page.locator('#draft-blueprint').evaluate(el => el.dataset.clicked || '0').catch(() => '0');
-  console.log(JSON.stringify({ visibleOnStart, startStep, initialCanvasState, thinkingVisibleOnStart, inlineThinkingVisibleOnStart, visibleOnDescribe, planReadyCanvasState, thinkingVisibleOnProposal, proposalBox, applyBox, proposalChangesCollapsed, proposalInMainCanvas, proposalInRail, proposalText, proposalDisabled, activeStep, appliedCanvasState, visibleOnReview, thinkingVisibleOnReview, historyCollapsedAfterApply, historyScrollStyle, historyMaxHeight, localRunReachable, localRunValidateEnabled, exportStep, visibleOnExport, thinkingVisibleOnExport, advancedVisible, cliStillVisible, livePlan, review, classicDraftClicks, consoleErrors, failedRequests }));
+  console.log(JSON.stringify({ visibleOnStart, startStep, initialCanvasState, initialRailState, initialRailNext, initialRailHeight, railOverflowY, railMaxHeight, railTextareaCount, thinkingVisibleOnStart, inlineThinkingVisibleOnStart, visibleOnDescribe, planReadyCanvasState, planReadyRailState, planReadyRailNext, planReadyRailStatus, planReadyRailHeight, viewportHeight, thinkingVisibleOnProposal, proposalBox, applyBox, proposalChangesCollapsed, proposalInMainCanvas, proposalInRail, proposalText, proposalDisabled, activeStep, appliedCanvasState, appliedRailNext, railAppSummaryVisible, railAppSummaryText, visibleOnReview, thinkingVisibleOnReview, historyCollapsedAfterApply, historyScrollStyle, historyMaxHeight, localRunReachable, localRunValidateEnabled, exportStep, visibleOnExport, thinkingVisibleOnExport, advancedVisible, cliStillVisible, livePlan, review, classicDraftClicks, consoleErrors, failedRequests }));
 } finally {
   await browser.close();
 }
@@ -135,10 +149,20 @@ try {
         assert payload["visibleOnStart"] is True
         assert payload["startStep"] == "start"
         assert payload["initialCanvasState"] == "empty"
+        assert payload["initialRailState"] == "Ready"
+        assert payload["initialRailNext"] == "Describe your app."
+        assert payload["initialRailHeight"] <= 480
+        assert payload["railOverflowY"] == "auto"
+        assert payload["railMaxHeight"] != "none"
+        assert payload["railTextareaCount"] == 0
         assert payload["thinkingVisibleOnStart"] is False
         assert payload["inlineThinkingVisibleOnStart"] is False
         assert payload["visibleOnDescribe"] is True
         assert payload["planReadyCanvasState"] == "plan-ready"
+        assert payload["planReadyRailState"] == "Plan ready"
+        assert payload["planReadyRailNext"] == "Review the proposed plan."
+        assert "main area" in payload["planReadyRailStatus"].lower()
+        assert payload["planReadyRailHeight"] <= payload["viewportHeight"]
         assert payload["thinkingVisibleOnProposal"] is False
         assert payload["proposalInMainCanvas"] is True
         assert payload["proposalInRail"] == 0
@@ -148,6 +172,10 @@ try {
         assert payload["applyBox"]["y"] < payload["proposalBox"]["y"] + payload["proposalBox"]["height"]
         assert payload["proposalDisabled"] is False
         assert payload["activeStep"] == "review"
+        assert payload["appliedRailNext"] == "Validate the Blueprint."
+        assert payload["railAppSummaryVisible"] is True
+        assert "Model-driven" in payload["railAppSummaryText"]
+        assert "ticket" in payload["railAppSummaryText"].lower()
         # Apply transitions canvas state out of plan-ready (plan-applied or further).
         assert payload["appliedCanvasState"] in {"plan-applied", "validating", "generating", "checking", "running", "open-app"}
         assert payload["visibleOnReview"] is True

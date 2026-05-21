@@ -72,9 +72,20 @@ const planSummaryProviders = document.querySelector("#plan-summary-providers");
 const planSummaryStatus = document.querySelector("#plan-summary-status");
 const planSummaryExtras = document.querySelector("#plan-summary-extras");
 const assistantHistoryDetails = document.querySelector("#assistant-history");
+const assistantHistoryCount = document.querySelector("#assistant-history-count");
+const assistantCurrentState = document.querySelector("#assistant-current-state");
+const assistantCurrentStateLabel = document.querySelector("#assistant-current-state-label");
 const assistantNextStepLabel = document.querySelector("#assistant-next-step-label");
 const assistantNextStepDetail = document.querySelector("#assistant-next-step-detail");
 const assistantProposalPointer = document.querySelector("#assistant-proposal-pointer");
+const assistantAppSummary = document.querySelector("#assistant-app-summary");
+const assistantAppName = document.querySelector("#assistant-app-name");
+const assistantAppType = document.querySelector("#assistant-app-type");
+const assistantAppEntities = document.querySelector("#assistant-app-entities");
+const assistantServiceSummary = document.querySelector("#assistant-service-summary");
+const assistantBackendChip = document.querySelector("#assistant-backend-chip");
+const assistantFrontendChip = document.querySelector("#assistant-frontend-chip");
+const assistantOpenAppLink = document.querySelector("#assistant-open-app-link");
 const assistantThinking = document.querySelector("#assistant-thinking");
 const heroComposer = document.querySelector("#hero-composer");
 const heroComposerInput = document.querySelector("#hero-composer-input");
@@ -765,17 +776,130 @@ function updateBuildPrimaryAction(next = computeNextStep()) {
 }
 
 function renderAssistantNextStep(next = computeNextStep()) {
+  const stateName = computeCanvasState();
+  const hudNext = hudNextStepCopy(stateName, next);
   if (!assistantNextStepLabel) return;
-  assistantNextStepLabel.textContent = next.label;
+  assistantNextStepLabel.textContent = hudNext.label;
   if (assistantNextStepDetail) {
-    if (next.detail) {
+    if (hudNext.detail) {
       assistantNextStepDetail.hidden = false;
-      assistantNextStepDetail.textContent = next.detail;
+      assistantNextStepDetail.textContent = hudNext.detail;
     } else {
       assistantNextStepDetail.hidden = true;
       assistantNextStepDetail.textContent = "";
     }
   }
+}
+
+function hudNextStepCopy(stateName, next) {
+  if (stateName === "thinking") return { label: "Wait for the plan.", detail: "Drafting in the main canvas." };
+  if (stateName === "plan-ready") return { label: "Review the proposed plan.", detail: "Apply or reject it in the main canvas." };
+  if (stateName === "error") return { label: "Retry or refine.", detail: "See Advanced/logs for details." };
+  const labels = {
+    "start-server": "Start Builder server.",
+    "describe-app": "Describe your app.",
+    "validate-blueprint": "Validate the Blueprint.",
+    "review-validation": "Fix validation errors.",
+    generate: "Generate the local app.",
+    "review-generate": "Review generate error.",
+    "run-checks": "Run checks.",
+    "review-checks": "Review check error.",
+    "start-backend": "Start services.",
+    "start-frontend": "Start services.",
+    "open-app": "Open the app.",
+    ready: "Open the app.",
+  };
+  const shortDetail = {
+    "start-server": "Use Advanced for CLI details.",
+    "describe-app": "Use the main composer.",
+    "validate-blueprint": "Build controls are in the main canvas.",
+    "review-validation": "Use Advanced/logs, then retry.",
+    generate: "Build controls are in the main canvas.",
+    "review-generate": "Use Advanced/logs, then retry.",
+    "run-checks": "Build controls are in the main canvas.",
+    "review-checks": "Use Advanced/logs, then retry.",
+    "start-backend": "Use the service controls below Build.",
+    "start-frontend": "Use the service controls below Build.",
+    "open-app": "Frontend is reachable.",
+    ready: "Services are healthy.",
+  };
+  return { label: labels[next.id] || next.label, detail: shortDetail[next.id] || "" };
+}
+
+function blueprintForHud() {
+  return assistantSessionState?.proposal?.blueprint || plannerBlueprint;
+}
+
+function renderRailHud(stateName = computeCanvasState()) {
+  const next = computeNextStep();
+  renderAssistantNextStep(next);
+  const copy = CANVAS_STATE_COPY[stateName] || CANVAS_STATE_COPY.empty;
+  if (assistantCurrentState) assistantCurrentState.dataset.state = stateName;
+  if (assistantCurrentStateLabel) assistantCurrentStateLabel.textContent = copy.label;
+  if (assistantStatus) assistantStatus.textContent = railStatusLine(stateName);
+  renderRailAppSummary(stateName);
+  renderRailServiceSummary();
+}
+
+function railStatusLine(stateName) {
+  if (stateName === "static") return "Scripted drafting is unavailable.";
+  if (stateName === "thinking") return "Drafting plan…";
+  if (stateName === "plan-ready") return "Plan ready in main area.";
+  if (stateName === "plan-applied") return "Plan applied.";
+  if (stateName === "validating") return "Validating…";
+  if (stateName === "generating") return "Generating…";
+  if (stateName === "checking") return "Running checks…";
+  if (stateName === "running") return "Services are starting.";
+  if (stateName === "open-app") return "App is running.";
+  if (stateName === "error") return "Something failed. See Advanced/logs.";
+  return "Ready.";
+}
+
+function renderRailAppSummary(stateName) {
+  const blueprint = blueprintForHud();
+  if (!assistantAppSummary || !blueprint || stateName === "static" || stateName === "empty" || stateName === "thinking") {
+    if (assistantAppSummary) assistantAppSummary.hidden = true;
+    return;
+  }
+  const summary = modelDrivenSummary(blueprint);
+  const entities = summary?.entities || [];
+  assistantAppSummary.hidden = false;
+  if (assistantAppName) assistantAppName.textContent = displayTitleForBlueprint(blueprint, "Proposed app");
+  if (assistantAppType) assistantAppType.textContent = summary ? "Model-driven app" : plainArchetype(blueprint.app_archetype || "local app");
+  if (assistantAppEntities) {
+    assistantAppEntities.innerHTML = entities.length
+      ? entities.slice(0, 4).map((entity) => `<span>${escapeHtml(entity.label_plural || entity.name)}</span>`).join("")
+      : `<span>${escapeHtml(summary ? "0 entities" : "Feature modules")}</span>`;
+    if (entities.length > 4) assistantAppEntities.insertAdjacentHTML("beforeend", `<span>+${entities.length - 4}</span>`);
+  }
+}
+
+function renderRailServiceSummary() {
+  const build = computeBuildState();
+  const hasServiceInfo = Boolean(localRunState.runId || build.generated || build.backendStatus !== "stopped" || build.frontendStatus !== "stopped");
+  if (!assistantServiceSummary) return;
+  assistantServiceSummary.hidden = !hasServiceInfo;
+  if (!hasServiceInfo) return;
+  updateRailServiceChip(assistantBackendChip, "Backend", build.backendStatus, build.backendUrl);
+  updateRailServiceChip(assistantFrontendChip, "Frontend", build.frontendStatus, build.frontendUrl);
+  if (assistantOpenAppLink) {
+    if (build.frontendStatus === "running" && build.frontendUrl) {
+      assistantOpenAppLink.hidden = false;
+      assistantOpenAppLink.href = build.frontendUrl;
+    } else {
+      assistantOpenAppLink.hidden = true;
+      assistantOpenAppLink.removeAttribute("href");
+    }
+  }
+}
+
+function updateRailServiceChip(chip, label, status, url = "") {
+  if (!chip) return;
+  chip.dataset.status = status;
+  const strong = chip.querySelector("strong");
+  const detail = chip.querySelector("em");
+  if (strong) strong.textContent = label;
+  if (detail) detail.textContent = url && status === "running" ? `${status} · ${url}` : status;
 }
 
 function setAssistantApplied(applied) {
@@ -1396,6 +1520,12 @@ function appendAssistantMessage(role, text) {
   entry.appendChild(body);
   assistantLog.appendChild(entry);
   assistantLog.scrollTop = assistantLog.scrollHeight;
+  updateAssistantHistoryCount();
+}
+
+function updateAssistantHistoryCount() {
+  if (!assistantHistoryCount || !assistantLog) return;
+  assistantHistoryCount.textContent = String(assistantLog.querySelectorAll(".assistant-message").length);
 }
 
 function assistantMessageRoleLabel(role) {
@@ -1668,6 +1798,7 @@ function applyCanvasState() {
   if (canvasStateLabel) canvasStateLabel.textContent = copy.label;
   if (canvasStateDetail) canvasStateDetail.textContent = copy.detail;
   if (canvasThinkingOverlay) canvasThinkingOverlay.hidden = stateName !== "thinking";
+  renderRailHud(stateName);
   const region = CANVAS_STATE_REGION[stateName];
   if (region && region !== activeStep) setActiveStep(region);
 }
