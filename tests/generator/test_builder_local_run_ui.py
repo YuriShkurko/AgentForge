@@ -33,7 +33,9 @@ def test_step_labels_reframe_review_build_and_export_next_steps():
     # Slice A removes the 4-step wizard nav. Canvas region headings carry the labels now.
     assert '<nav class="flow-rail"' not in html
     assert "Plan, build, and run your local demo" in html
-    assert "Export / next steps" in step4_block
+    # Slice 8E re-titled the panel to "Export / CLI" and demoted it from primary path.
+    assert "Export / CLI" in step4_block
+    assert "Export / next steps" not in step4_block
     assert "Generate and run locally" not in step4_block
     # Visible "Step N" labels are removed in favour of the canvas state badge.
     assert "<p class=\"step-label\">Step 2</p>" not in html
@@ -215,7 +217,8 @@ def test_no_duplicate_conflicting_generate_step_messaging():
     assert "Generate and run locally" not in step4_block
     assert "Manual CLI commands" in step4_block
     assert "Advanced: YAML, CLI, logs" in step4_block
-    assert "Use the local summary, or open Advanced for YAML and CLI" in step4_block
+    # Slice 8E reframed the description to make local Run the recommended path.
+    assert "local Validate" in step4_block
 
 
 def test_styles_define_local_run_panel():
@@ -360,3 +363,50 @@ def test_slice_c1_start_app_reuses_service_status_polling_and_no_new_endpoints()
     assert '"/api/planner/local-run/start-app"' not in script
     assert 'startLocalRunApp' in script
     assert 'controlLocalRunService' in script
+
+
+def test_review_step_demotes_export_to_secondary_when_local_run_available():
+    """After 2026-05-23: 'Continue to export / next steps' is no longer the primary
+    action at the end of Review. The wizard button is a secondary 'Export / CLI'
+    affordance; the primary happy path is the Build/Run next-action button above.
+    """
+    html = _read("index.html")
+    review_block = html[html.index('id="review-flow"'):html.index('id="generate-flow"')]
+
+    # The old primary "Continue to export / next steps" button is gone.
+    assert "Continue to export / next steps" not in review_block
+    assert 'class="primary-button" data-step-target="generate"' not in review_block
+
+    # A secondary export affordance still exists and is reachable.
+    assert 'data-step-target="generate"' in review_block
+    assert "secondary-export-action" in review_block
+    assert "Export / CLI" in review_block
+
+    # Local run is still the primary happy-path call-to-action.
+    assert 'id="build-primary-action"' in review_block
+    assert 'class="primary-button next-action-button"' in review_block
+
+
+def test_export_step_describes_itself_as_secondary_and_advanced():
+    """The export/CLI heading is no longer framed as the required next step
+    after Review. Static/manual users can still discover it.
+    """
+    html = _read("index.html")
+    step4_block = html[html.index('id="generate-flow"'):html.index('id="existing-repo-flow"')]
+
+    # The export step still copies/downloads YAML and shows CLI commands
+    # (so static/manual users keep their fallback path).
+    assert "Blueprint YAML export" in step4_block
+    assert "Manual CLI commands" in step4_block
+
+    # But the framing makes clear that the local Run flow is the recommended path.
+    assert (
+        "local Validate" in step4_block or "local Build" in step4_block or "local run" in step4_block
+    )
+    assert "Optional" in step4_block or "secondary" in step4_block.lower()
+
+
+def test_secondary_export_button_styles_register_as_demoted():
+    css = _read("styles.css")
+    # The new CSS class must apply less visual weight than primary-button.
+    assert ".secondary-export-action" in css

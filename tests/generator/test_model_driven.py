@@ -578,7 +578,7 @@ def test_side_panel_dedupes_secondary_rows(tmp_path):
     generate(vendor, out)
     app = (out / "frontend/src/App.tsx").read_text()
     assert "const uniqueById =" in app
-    assert "uniqueById(ctx.rowsByEntity[ctx.secondary.name]" in app
+    assert "uniqueById(asRows(ctx.rowsByEntity[ctx.secondary.name]))" in app
     assert 'data-ui-surface="secondary-related"' in app
 
 

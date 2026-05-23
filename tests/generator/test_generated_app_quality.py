@@ -227,3 +227,77 @@ def test_generated_app_displayname_and_description_use_natural_copy(tmp_path: Pa
         lower = surface.lower()
         for filler in ("i need", "i want", "assist me", "(houses", "+ cash", "my work as"):
             assert filler not in lower, f"{surface!r} should not contain {filler!r}"
+
+
+def test_generated_app_load_function_validates_response_shape(tmp_path: Path) -> None:
+    """White-screen runtime regression (2026-05-23): a 404 or non-array response
+    from an entity route was assigned to rowsByEntity, then rendered with .filter()
+    which crashed React. The generated load() must guard with response.ok and
+    Array.isArray.
+    """
+    blueprint = _model_blueprint_from_text("website for skateboard shop")
+    pack = DomainPack.model_validate(blueprint)
+    out = tmp_path / pack.name
+    generate(pack, out)
+    app_tsx = (out / "frontend/src/App.tsx").read_text(encoding="utf-8")
+
+    # The defensive helper is generated.
+    assert "const asRows = (value: unknown): Row[] =>" in app_tsx
+    assert "Array.isArray(value)" in app_tsx
+
+    # The load function checks response.ok and never stores raw response.json().
+    assert "async function load(" in app_tsx
+    assert "if (!response.ok)" in app_tsx
+    assert "asRows(data)" in app_tsx
+
+    # The previous unsafe pattern is gone everywhere it consumed rowsByEntity.
+    assert "rowsByEntity[ctx.primary.name] || []" not in app_tsx
+    assert "rowsByEntity[ctx.secondary.name] || []" not in app_tsx
+    assert "rowsByEntity[ctx.activeEntity.name] || []" not in app_tsx
+    assert "rowsByEntity[entity.name] || []" not in app_tsx
+    assert "rowsByEntity[card.entity] || []" not in app_tsx
+    assert "(rowsByEntity[field.targetEntity] || [])" not in app_tsx
+
+
+@pytest.mark.parametrize(
+    "prompt",
+    [
+        "website for skateboard shop",
+        "website for managing livestock in a farm",
+        "i am a basketball coach, want to track clients and court vendors",
+        "vendor risk register to review findings with severity, status, owner",
+    ],
+)
+def test_generated_app_render_helpers_use_asrows_consistently(tmp_path: Path, prompt: str) -> None:
+    """For any prompt shape, every place that reads rowsByEntity[<name>] for
+    rendering must go through asRows so a 404 / non-list response cannot crash
+    React after the first render."""
+    blueprint = _model_blueprint_from_text(prompt)
+    pack = DomainPack.model_validate(blueprint)
+    out = tmp_path / pack.name
+    generate(pack, out)
+    app_tsx = (out / "frontend/src/App.tsx").read_text(encoding="utf-8")
+
+    # Every consumer is asRows-wrapped.
+    assert "asRows(ctx.rowsByEntity[ctx.primary.name])" in app_tsx
+    assert "asRows(rowsByEntity[card.entity])" in app_tsx
+    assert "asRows(rowsByEntity[field.targetEntity])" in app_tsx
+
+
+def test_generated_app_does_not_contain_known_runtime_crash_patterns(tmp_path: Path) -> None:
+    """Belt-and-suspenders guard against patterns that previously turned the
+    generated React app white half a second after first render."""
+    blueprint = _model_blueprint_from_text("website for skateboard shop")
+    pack = DomainPack.model_validate(blueprint)
+    out = tmp_path / pack.name
+    generate(pack, out)
+    app_tsx = (out / "frontend/src/App.tsx").read_text(encoding="utf-8")
+
+    # The exact crash pattern: response.json() assigned without shape validation.
+    assert "[selected.name]: data })" not in app_tsx
+    # No top-level .filter on a raw rowsByEntity bucket.
+    for token in (
+        "(rowsByEntity[card.entity] || []).filter",
+        "rowsByEntity[ctx.primary.name].filter",
+    ):
+        assert token not in app_tsx

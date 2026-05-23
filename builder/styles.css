@@ -1040,6 +1040,22 @@ button + button,
   box-shadow: 0 10px 24px rgba(53, 51, 164, 0.12);
 }
 
+.secondary-export-action {
+  font-weight: 600;
+  color: #475569;
+  border-style: dashed;
+}
+
+.secondary-export-action::before {
+  content: "Advanced · ";
+  color: #94a3b8;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  font-size: 11px;
+  margin-right: 4px;
+}
+
 .wizard-actions .primary-button,
 .actions .quiet-button,
 .command-grid code,

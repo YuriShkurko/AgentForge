@@ -328,14 +328,14 @@
               </details>
               <div class="wizard-actions">
                 <button type="button" class="quiet-button" data-step-target="new-app">Back</button>
-                <button type="button" class="primary-button" data-step-target="generate">Continue to export / next steps</button>
+                <button type="button" class="quiet-button secondary-export-action" data-step-target="generate" data-ui-action="open-export">Export / CLI</button>
               </div>
             </section>
 
             <section id="generate-flow" class="panel generation-panel wizard-step" data-step="generate" aria-labelledby="generate-heading">
               <div class="section-head roomy">
-                <h2 id="generate-heading" class="canvas-region-heading">Export / next steps</h2>
-                <p>Use the local summary, or open Advanced for YAML and CLI.</p>
+                <h2 id="generate-heading" class="canvas-region-heading">Export / CLI</h2>
+                <p>Optional — use this only when you need YAML or CLI to leave the Builder. The local Validate → Generate → Run checks → Start app → Open app flow remains the recommended next step.</p>
               </div>
               <section id="export-summary" class="export-summary" aria-live="polite"></section>
               <details class="advanced-drawer export-advanced-drawer">
