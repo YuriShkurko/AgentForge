@@ -40,6 +40,13 @@ def test_generated_pipeline_app_model_carries_board_by_relation_layout(tmp_path)
     assert card_entity_ui.get("display", {}).get("layout") == "board_by_relation"
 
 
+def test_generated_pipeline_seed_data_distributes_cards_across_stages(tmp_path):
+    app_model, _ = _generate_pipeline_app(tmp_path)
+    seed = app_model["seedData"]
+    assert len(seed["stage"]) == 3
+    assert [row["stage"] for row in seed["card"]] == [1, 2, 3, 1, 2, 3]
+
+
 def test_generated_pipeline_react_contains_board_by_relation_render_path(tmp_path):
     _, app_tsx = _generate_pipeline_app(tmp_path)
     # The new layout branch and its guards must be present.

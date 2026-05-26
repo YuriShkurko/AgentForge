@@ -178,12 +178,29 @@ def test_seed_data_uses_recipe_per_entity_counts():
     assert item_statuses.issubset(set(enum_values))
 
 
-def test_seed_data_skips_relation_fields():
-    spec = _spec(CLIENT_SESSION_MANAGER)
-    for entity in spec["model"]["entities"]:
-        relation_names = {field["name"] for field in entity["fields"] if field["type"] == "relation"}
-        for row in spec["model"]["seed_data"].get(entity["name"], []):
-            assert relation_names.isdisjoint(row.keys())
+def test_seed_data_links_required_relation_fields_deterministically():
+    spec = _spec(PIPELINE_KANBAN, "I want to manage job applications")
+    seed = spec["model"]["seed_data"]
+    assert len(seed["stage"]) == 3
+    assert [row["stage"] for row in seed["card"]] == [1, 2, 3, 1, 2, 3]
+    # Optional relations stay omitted unless a later slice can prove their
+    # target rows are inserted before the child rows.
+    assert all("owner" not in row for row in seed["card"])
+
+
+def test_seed_data_links_client_session_manager_relations():
+    spec = _spec(CLIENT_SESSION_MANAGER, "i am a tutor scheduling student sessions and logging payments")
+    seed = spec["model"]["seed_data"]
+    assert [row["client"] for row in seed["session"]] == [1, 2, 3, 1, 2]
+    assert [row["client"] for row in seed["payment"]] == [1, 2]
+    assert all("session" not in row for row in seed["payment"])
+
+
+def test_seed_data_links_approval_review_queue_relations():
+    spec = _spec(APPROVAL_REVIEW_QUEUE, "review vendor risk findings")
+    decision = spec["model"]["seed_data"]["decision"][0]
+    assert decision["item"] == 1
+    assert decision["reviewer"] == 1
 
 
 def test_seed_data_populates_required_integer_fields():

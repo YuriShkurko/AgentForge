@@ -60,6 +60,7 @@ prompt.txt
 _repro/
 yurishk_cv.json
 docs/AGENTFORGE_ARCHITECTURE_READABILITY_AUDIT.md
+docs/AGENTFORGE_STUDY_GUIDE.md
 
 # Local generated demo/scratch outputs
 domain-packs/basketball/

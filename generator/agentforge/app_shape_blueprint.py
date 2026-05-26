@@ -204,7 +204,7 @@ def _seed_from_recipe(entities: list[dict[str, Any]], recipe: AppRecipe) -> dict
         count = max(1, counts.get(entity["name"], 1))
         rows: list[dict[str, Any]] = []
         for index in range(count):
-            row = _seed_row(entity, index, count)
+            row = _seed_row(entity, index, count, counts)
             if row:
                 rows.append(row)
         if rows:
@@ -223,16 +223,27 @@ def _per_entity_counts(entities: list[dict[str, Any]], recipe: AppRecipe) -> dic
     return counts
 
 
-def _seed_row(entity: dict[str, Any], index: int, count: int) -> dict[str, Any]:
+def _seed_row(entity: dict[str, Any], index: int, count: int, counts: dict[str, int]) -> dict[str, Any]:
     row: dict[str, Any] = {}
     for field in entity["fields"]:
         if field["type"] == "relation":
-            continue
-        value = _sample_value(entity, field, index, count)
+            value = _sample_relation_id(field, index, counts)
+        else:
+            value = _sample_value(entity, field, index, count)
         if value is None:
             continue
         row[field["name"]] = value
     return row
+
+
+def _sample_relation_id(field: dict[str, Any], index: int, counts: dict[str, int]) -> int | None:
+    if not field.get("required"):
+        return None
+    target = field.get("target_entity") or ""
+    target_count = counts.get(target, 0)
+    if target_count <= 0:
+        return None
+    return (index % target_count) + 1
 
 
 def _sample_value(entity: dict[str, Any], field: dict[str, Any], index: int, count: int) -> Any:
