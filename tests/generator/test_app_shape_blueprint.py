@@ -192,6 +192,13 @@ def test_seed_data_links_client_session_manager_relations():
     spec = _spec(CLIENT_SESSION_MANAGER, "i am a tutor scheduling student sessions and logging payments")
     seed = spec["model"]["seed_data"]
     assert [row["client"] for row in seed["session"]] == [1, 2, 3, 1, 2]
+    assert [row["starts_at"] for row in seed["session"]] == [
+        "2026-01-01",
+        "2026-01-02",
+        "2026-01-03",
+        "2026-01-04",
+        "2026-01-05",
+    ]
     assert [row["client"] for row in seed["payment"]] == [1, 2]
     assert all("session" not in row for row in seed["payment"])
 

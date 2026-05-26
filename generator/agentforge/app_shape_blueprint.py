@@ -265,7 +265,12 @@ def _sample_value(entity: dict[str, Any], field: dict[str, Any], index: int, cou
         if field.get("required"):
             return index + 1
         return None
-    if field["type"] in {"boolean", "date"}:
+    if field["type"] == "date":
+        if field.get("required"):
+            day = (index % 28) + 1
+            return f"2026-01-{day:02d}"
+        return None
+    if field["type"] == "boolean":
         return None
     return None
 
