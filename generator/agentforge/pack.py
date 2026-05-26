@@ -178,7 +178,7 @@ _ENV_VAR_RE = r"^[A-Z][A-Z0-9_]*$"
 _VALID_UI_ACCENTS = {"blue", "emerald", "amber", "red", "slate", "violet"}
 _VALID_UI_DENSITIES = {"compact", "comfortable", "spacious"}
 _VALID_UI_LAYOUTS = {"workspace", "register", "operations"}
-_VALID_ENTITY_DISPLAY_LAYOUTS = {"table", "cards", "board_by_status"}
+_VALID_ENTITY_DISPLAY_LAYOUTS = {"table", "cards", "board_by_status", "board_by_relation"}
 _VALID_DASHBOARD_CARD_TYPES = {"count", "enum_breakdown", "attention_list"}
 _VALID_FIELD_SEMANTICS = {"status", "priority", "severity", "owner", "due_date", "title", "description"}
 _VALID_UI_COMPOSITIONS = {"standard", "board_workspace", "register_table"}
@@ -603,8 +603,17 @@ class ModelDrivenApp(BaseModel):
                 field_name = getattr(focus, attr)
                 if field_name and field_name not in primary_fields:
                     raise ValueError(f"ui focus {attr} references unknown field '{field_name}' on '{focus.primary_entity}'")
-            if ui.composition == "board_workspace" and focus.group_by and primary_fields[focus.group_by].type != "enum":
-                raise ValueError("ui focus group_by must be an enum field for board_workspace composition")
+            if ui.composition == "board_workspace" and focus.group_by:
+                group_field = primary_fields[focus.group_by]
+                primary_display = ui.entities.get(focus.primary_entity).display if focus.primary_entity in ui.entities else None
+                primary_layout = primary_display.layout if primary_display else ""
+                if primary_layout == "board_by_relation":
+                    if group_field.type != "relation":
+                        raise ValueError(
+                            "ui focus group_by must be a relation field for board_by_relation layout"
+                        )
+                elif group_field.type != "enum":
+                    raise ValueError("ui focus group_by must be an enum field for board_workspace composition")
         for entity_name, entity_ui in ui.entities.items():
             entity = entity_map.get(entity_name)
             if not entity:

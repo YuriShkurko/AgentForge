@@ -90,12 +90,32 @@ def test_pipeline_kanban_skips_actions_when_no_enum_status():
     assert spec["model"]["actions"] == []
 
 
-def test_pipeline_kanban_falls_back_to_standard_ui_without_status_enum():
+def test_pipeline_kanban_uses_board_by_relation_when_no_status_enum():
     spec = _spec(PIPELINE_KANBAN)
     ui = spec["model"]["ui"]
-    assert ui["composition"] == "standard"
-    # Primary is the workflow's target entity (Card), even without status enum.
-    assert spec["primary"] == "card"
+    # Card has no status enum, but it does have a required `stage` relation —
+    # the compiler picks that as the lane axis and emits a board_by_relation
+    # primary display so the generated app can render a kanban-like board.
+    assert ui["composition"] == "board_workspace"
+    assert ui["focus"]["primary_entity"] == "card"
+    assert ui["focus"]["group_by"] == "stage"
+    primary_display = ui["entities"]["card"]["display"]
+    assert primary_display["layout"] == "board_by_relation"
+
+
+def test_pipeline_kanban_board_by_relation_validates_through_domain_pack():
+    # The schema change must accept relation group_by under board_by_relation.
+    from agentforge.pack import DomainPack
+    from agentforge.planner.assistant import BuilderAssistant
+
+    result = BuilderAssistant().start("I want to manage job applications")
+    assert result["status"] == "proposed"
+    pack = DomainPack.model_validate(result["proposal"]["blueprint"])
+    assert pack.model is not None
+    assert pack.model.ui.composition == "board_workspace"
+    assert pack.model.ui.focus.group_by == "stage"
+    card_display = pack.model.ui.entities["card"].display
+    assert card_display.layout == "board_by_relation"
 
 
 # --- approval_review_queue ---------------------------------------------------
@@ -164,6 +184,12 @@ def test_seed_data_skips_relation_fields():
         relation_names = {field["name"] for field in entity["fields"] if field["type"] == "relation"}
         for row in spec["model"]["seed_data"].get(entity["name"], []):
             assert relation_names.isdisjoint(row.keys())
+
+
+def test_seed_data_populates_required_integer_fields():
+    spec = _spec(PIPELINE_KANBAN, "I want to manage job applications")
+    stage_rows = spec["model"]["seed_data"]["stage"]
+    assert [row["order"] for row in stage_rows] == [1, 2, 3]
 
 
 # --- determinism + JSON roundtrip --------------------------------------------

@@ -250,7 +250,11 @@ def _sample_value(entity: dict[str, Any], field: dict[str, Any], index: int, cou
         return ""
     if field["type"] == "text":
         return f"Notes for {entity['label_singular'].lower()} {index + 1}."
-    if field["type"] in {"integer", "boolean", "date"}:
+    if field["type"] == "integer":
+        if field.get("required"):
+            return index + 1
+        return None
+    if field["type"] in {"boolean", "date"}:
         return None
     return None
 
@@ -305,11 +309,54 @@ def _ui_from_entities(primary_name: str, entities: list[dict[str, Any]]) -> dict
             },
             "dashboard": {"title": "Dashboard", "primary_entity": primary_name, "cards": cards},
         }
+    lane_relation = _lane_relation_field(primary, entities)
+    if lane_relation is not None:
+        return {
+            "composition": "board_workspace",
+            "recipe": "workspace_board",
+            "style": {"accent": "emerald", "density": "comfortable", "layout": "workspace"},
+            "focus": {
+                "primary_entity": primary_name,
+                "group_by": lane_relation["name"],
+                "title_field": title_field,
+            },
+            "entities": {
+                primary_name: {
+                    "display": {
+                        "layout": "board_by_relation",
+                        "title_field": title_field,
+                    },
+                },
+            },
+            "dashboard": {"title": "Dashboard", "primary_entity": primary_name, "cards": cards},
+        }
     return {
         "composition": "standard",
         "recipe": "standard",
         "dashboard": {"title": "Dashboard", "primary_entity": primary_name, "cards": cards},
     }
+
+
+def _lane_relation_field(
+    primary: dict[str, Any],
+    entities: list[dict[str, Any]],
+) -> dict[str, Any] | None:
+    """Pick the relation field on `primary` that should drive board lanes, or None.
+
+    Preference: a required relation whose target entity exists in this spec.
+    This is how pipeline_kanban's `Card.stage` becomes the lane axis when no
+    status enum is available.
+    """
+    entity_names = {entity["name"] for entity in entities}
+    for field in primary["fields"]:
+        if field["type"] != "relation" or not field.get("required"):
+            continue
+        if field.get("target_entity") in entity_names:
+            return field
+    for field in primary["fields"]:
+        if field["type"] == "relation" and field.get("target_entity") in entity_names:
+            return field
+    return None
 
 
 # --- string helpers ----------------------------------------------------------
