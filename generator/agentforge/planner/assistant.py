@@ -20,6 +20,11 @@ from agentforge.naming import (
 )
 from agentforge.planner import validate_blueprint_result
 from agentforge.planner.live_llm import LiveAssistantProvider, LiveLLMResponseError
+from agentforge.planner.recipe_planner import (
+    is_recipe_confident,
+    recipe_aware_spec,
+    recipe_metadata,
+)
 from agentforge.planner.validation_guidance import summarize_validation_errors
 
 
@@ -492,6 +497,11 @@ def _missing_requirement_ids(text: str) -> list[str]:
     compact = text.lower().strip()
     if _is_vague(compact):
         return ["idea_seed"]
+    # If the recipe seam recognises a confident, non-fallback recipe, the
+    # planner has enough signal to draft a proposal directly — skip the
+    # scripted entity/field/workflow clarification chain.
+    if is_recipe_confident(text):
+        return []
     detected_terms = _detected_domain_terms(compact)
     has_workflow = any(word in compact for word in _WORKFLOW_KEYWORDS)
     if len(detected_terms) >= 2 and has_workflow:
@@ -541,6 +551,9 @@ def _model_blueprint_from_spec(text: str, spec: dict[str, Any]) -> dict[str, Any
     _apply_dashboard_copy(blueprint["model"], display, summary)
     blueprint["compatibility_gaps"] = []
     blueprint["future_extensions"] = {"features": ["assistant_refinement", "provider_imports"]}
+    metadata = recipe_metadata(text)
+    if metadata:
+        blueprint["future_extensions"]["recipe"] = metadata
     return blueprint
 
 
@@ -690,6 +703,9 @@ def _infer_model_spec(text: str) -> dict[str, Any]:
         return _vendor_risk_model()
     if any(word in compact for word in ["issue", "ticket", "support"]):
         return _ticket_model()
+    recipe_spec = recipe_aware_spec(text)
+    if recipe_spec is not None:
+        return recipe_spec
     return _task_model()
 
 
