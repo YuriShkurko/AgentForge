@@ -54,6 +54,12 @@ nul
 
 # Task files (working notes, not project artifacts)
 temp.txt
+prompt.txt
+
+# Local scratch / personal files (not project artifacts)
+_repro/
+yurishk_cv.json
+docs/AGENTFORGE_ARCHITECTURE_READABILITY_AUDIT.md
 
 # Local generated demo/scratch outputs
 domain-packs/basketball/
