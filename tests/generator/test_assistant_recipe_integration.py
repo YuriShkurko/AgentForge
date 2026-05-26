@@ -145,6 +145,34 @@ def test_generic_dashboard_prompt_does_not_force_recipe_override():
 # --- regression: existing good prompts still validate end-to-end --------------
 
 
+def test_assistant_recipe_approval_queue_includes_decision_actions():
+    blueprint = _blueprint(
+        "I run an approval workflow for submissions to review and claim items pending decisions"
+    )
+    pack = DomainPack.model_validate(blueprint)
+    assert pack.model is not None
+    action_names = {action.name for action in pack.model.actions}
+    # The compiler maps each Item-status workflow effect to an update_status action.
+    assert {"claim_item", "approve", "reject", "request_changes"}.issubset(action_names)
+
+
+def test_assistant_recipe_client_session_includes_session_actions():
+    blueprint = _blueprint("i am a tutor scheduling student sessions and logging payments")
+    pack = DomainPack.model_validate(blueprint)
+    assert pack.model is not None
+    action_names = {action.name for action in pack.model.actions}
+    assert "mark_session_completed" in action_names
+
+
+def test_assistant_recipe_seed_data_uses_recipe_counts():
+    blueprint = _blueprint(
+        "I run an approval workflow for submissions to review and claim items pending decisions"
+    )
+    seed = blueprint["model"]["seed_data"]
+    # approval_review_queue.sample_data_style declares Item:5.
+    assert len(seed["item"]) == 5
+
+
 @pytest.mark.parametrize(
     ("prompt", "expected_entities"),
     [
