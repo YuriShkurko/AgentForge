@@ -27,12 +27,15 @@ def _generate_from_prompt(tmp_path: Path, prompt: str) -> tuple[dict, str]:
 def test_pipeline_recipe_surface_emphasizes_board_workflow(tmp_path: Path) -> None:
     app_model, app_tsx = _generate_from_prompt(tmp_path, "I want to manage job applications")
     assert app_model["recipe"]["recipe_id"] == "pipeline_kanban"
+    assert app_model["experience"]["experience_id"] == "pipeline_board"
+    assert app_model["experience"]["primitive_id"] == "pipeline_board"
     assert app_model["ui"]["composition"] == "board_workspace"
     assert "Move work through stages" in app_tsx
     assert "Track active cards across stages" in app_tsx
     assert "Pipeline stages" in app_tsx
     assert "data-ui-layout=\"board_by_relation\"" in app_tsx
     assert "asRows(rowsByEntity[targetEntity.name])" in app_tsx
+    assert "\"experience\"" not in app_tsx
 
 
 def test_client_session_recipe_surface_has_sessions_clients_payments_copy(tmp_path: Path) -> None:
@@ -41,6 +44,7 @@ def test_client_session_recipe_surface_has_sessions_clients_payments_copy(tmp_pa
         "i am a tutor scheduling student sessions and logging payments",
     )
     assert app_model["recipe"]["recipe_id"] == "client_session_manager"
+    assert app_model["experience"]["experience_id"] == "client_workspace"
     assert [entity["name"] for entity in app_model["entities"]][:3] == ["client", "session", "payment"]
     assert "Manage students, sessions, and payments" in app_tsx
     assert "client-workspace" in app_tsx
@@ -56,6 +60,7 @@ def test_client_session_recipe_surface_has_freelance_work_payment_workspace(tmp_
         "I am a freelance web designer and I want help managing clients, work history, payments and more",
     )
     assert app_model["recipe"]["recipe_id"] == "client_session_manager"
+    assert app_model["experience"]["experience_id"] == "client_workspace"
     assert [entity["name"] for entity in app_model["entities"]][:3] == ["client", "project", "invoice"]
     assert "Manage clients, work, and payments" in app_tsx
     assert "client-workspace" in app_tsx
@@ -89,6 +94,7 @@ def test_approval_review_recipe_surface_has_queue_decision_copy(tmp_path: Path) 
 def test_inventory_asset_recipe_surface_has_asset_stock_maintenance_copy(tmp_path: Path) -> None:
     app_model, app_tsx = _generate_from_prompt(tmp_path, "I need to track equipment, vendors, and maintenance")
     assert app_model["recipe"]["recipe_id"] == "inventory_asset_tracker"
+    assert app_model["experience"]["experience_id"] == "inventory_ops"
     assert app_model["ui"]["composition"] == "board_workspace"
     assert [entity["name"] for entity in app_model["entities"]][:5] == ["asset", "category", "location", "vendor", "maintenance_task"]
     assert "Track assets, stock, and upkeep" in app_tsx
@@ -107,6 +113,7 @@ def test_generic_dashboard_surface_stays_generic_and_safe(tmp_path: Path) -> Non
     app_model = json.loads((out / "app-model.json").read_text(encoding="utf-8"))
     app_tsx = (out / "frontend/src/App.tsx").read_text(encoding="utf-8")
     assert app_model.get("recipe", {}).get("recipe_id") in {None, "", "generic_dashboard"}
+    assert app_model.get("experience") == {}
     assert app_model["ui"]["composition"] == "standard"
     assert "const heroHeadline" in app_tsx
     assert "recipeHighlightCards" in app_tsx

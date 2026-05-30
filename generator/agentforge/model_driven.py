@@ -27,6 +27,7 @@ def generate_model_driven_app(pack: DomainPack, output_dir: Path, *, dry_run: bo
 
 def _files(pack: DomainPack, model: ModelDrivenApp) -> dict[str, str]:
     meta = _metadata(pack, model)
+    frontend_meta = _frontend_metadata(meta)
     files = {
         "backend/app/__init__.py": "",
         "backend/app/database.py": _backend_database(),
@@ -44,7 +45,7 @@ def _files(pack: DomainPack, model: ModelDrivenApp) -> dict[str, str]:
         "frontend/tsconfig.json": _frontend_tsconfig(),
         "frontend/eslint.config.js": _frontend_eslint(),
         "frontend/src/main.tsx": _frontend_main(),
-        "frontend/src/App.tsx": _frontend_app(pack, meta),
+        "frontend/src/App.tsx": _frontend_app(pack, frontend_meta),
         "frontend/src/styles.css": _frontend_styles(),
         "Makefile": _makefile(),
         "README.md": _readme(pack),
@@ -87,6 +88,7 @@ def _metadata(pack: DomainPack, model: ModelDrivenApp) -> dict[str, Any]:
     return {
         "app": {"name": pack.name, "displayName": pack.display_name, "description": pack.domain.product_purpose},
         "recipe": pack.future_extensions.get("recipe", {}) if isinstance(pack.future_extensions, dict) else {},
+        "experience": pack.future_extensions.get("experience", {}) if isinstance(pack.future_extensions, dict) else {},
         "entities": [
             {
                 "name": e.name,
@@ -138,6 +140,13 @@ def _metadata(pack: DomainPack, model: ModelDrivenApp) -> dict[str, Any]:
             for provider in model.providers
         ],
     }
+
+
+def _frontend_metadata(meta: dict[str, Any]) -> dict[str, Any]:
+    """Keep read-only planning metadata out of generated React until consumed."""
+    frontend_meta = dict(meta)
+    frontend_meta.pop("experience", None)
+    return frontend_meta
 
 
 def _backend_database() -> str:

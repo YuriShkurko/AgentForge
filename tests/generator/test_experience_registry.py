@@ -10,6 +10,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent / "generator"))
 
 from agentforge.experience import (
     choose_experience_for_recipe,
+    experience_metadata_for_recipe,
     get_primitive,
     list_experience_primitives,
     list_experience_recipes,
@@ -59,6 +60,7 @@ def test_recipe_ids_choose_expected_experiences() -> None:
 
 def test_unknown_recipe_id_returns_none() -> None:
     assert choose_experience_for_recipe("unknown_recipe") is None
+    assert experience_metadata_for_recipe("unknown_recipe") is None
 
 
 def test_registry_serializes_to_json_compatible_dicts() -> None:
@@ -74,4 +76,14 @@ def test_registry_serializes_to_json_compatible_dicts() -> None:
     }
 
     assert get_primitive("client_workspace") is not None
+    json.dumps(payload, sort_keys=True)
+
+
+def test_experience_metadata_for_recipe_includes_primitive_contract() -> None:
+    payload = experience_metadata_for_recipe("client_session_manager")
+
+    assert payload is not None
+    assert payload["experience_id"] == "client_workspace"
+    assert payload["primitive_id"] == "client_workspace"
+    assert payload["primitive"]["primitive_id"] == "client_workspace"
     json.dumps(payload, sort_keys=True)

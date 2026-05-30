@@ -18,6 +18,7 @@ from agentforge.naming import (
     natural_app_name,
     natural_pack_slug,
 )
+from agentforge.experience import experience_metadata_for_recipe
 from agentforge.planner import validate_blueprint_result
 from agentforge.planner.live_llm import LiveAssistantProvider, LiveLLMResponseError
 from agentforge.app_intent import extract_intent
@@ -670,6 +671,9 @@ def _model_blueprint_from_spec(text: str, spec: dict[str, Any], recipe_metadata_
     metadata = recipe_metadata_override or recipe_metadata(text)
     if metadata:
         blueprint["future_extensions"]["recipe"] = metadata
+        experience_metadata = experience_metadata_for_recipe(str(metadata.get("recipe_id") or ""))
+        if experience_metadata:
+            blueprint["future_extensions"]["experience"] = experience_metadata
     return blueprint
 
 

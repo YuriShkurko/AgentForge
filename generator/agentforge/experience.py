@@ -292,6 +292,18 @@ def choose_experience_for_recipe(recipe_id: str) -> ExperienceRecipe | None:
     )
 
 
+def experience_metadata_for_recipe(recipe_id: str) -> dict[str, Any] | None:
+    """Return JSON-compatible read-only metadata for a selected AppRecipe id."""
+    experience = choose_experience_for_recipe(recipe_id)
+    if experience is None:
+        return None
+    primitive = get_primitive(experience.primitive_id)
+    payload = experience.to_dict()
+    if primitive is not None:
+        payload["primitive"] = primitive.to_dict()
+    return payload
+
+
 __all__ = [
     "ENTITY_ROLES",
     "EXPERIENCE_PRIMITIVES",
@@ -300,6 +312,7 @@ __all__ = [
     "ExperiencePrimitive",
     "ExperienceRecipe",
     "choose_experience_for_recipe",
+    "experience_metadata_for_recipe",
     "get_experience_recipe",
     "get_primitive",
     "list_experience_primitives",

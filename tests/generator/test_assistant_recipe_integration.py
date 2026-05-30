@@ -52,6 +52,9 @@ def test_assistant_recipe_pipeline_prompt():
     meta = blueprint["future_extensions"]["recipe"]
     assert meta["recipe_id"] == "pipeline_kanban"
     assert meta["verdict"] == "confident"
+    experience = blueprint["future_extensions"]["experience"]
+    assert experience["experience_id"] == "pipeline_board"
+    assert experience["primitive_id"] == "pipeline_board"
 
 
 def test_assistant_recipe_approval_queue_prompt():
@@ -83,6 +86,9 @@ def test_assistant_recipe_client_session_prompt_bypasses_scripted():
     meta = blueprint["future_extensions"]["recipe"]
     assert meta["recipe_id"] == "client_session_manager"
     assert meta["verdict"] == "confident"
+    experience = blueprint["future_extensions"]["experience"]
+    assert experience["experience_id"] == "client_workspace"
+    assert experience["primary_user_job"].startswith("Inspect a client")
 
 
 # --- metadata is stamped on every proposal, not just recipe-driven ones --------
@@ -107,6 +113,7 @@ def test_recipe_metadata_stamped_on_vendor_risk_proposal():
     meta = blueprint["future_extensions"]["recipe"]
     assert meta["recipe_id"] == "approval_review_queue"
     assert meta["home_surface"] == "queue"
+    assert "experience" not in blueprint["future_extensions"]
 
 
 def test_recipe_metadata_is_deterministic():
