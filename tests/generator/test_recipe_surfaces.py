@@ -32,17 +32,40 @@ def _generate_from_prompt(tmp_path: Path, prompt: str) -> tuple[dict, str]:
     return _generate_blueprint(tmp_path, _blueprint_from_prompt(prompt))
 
 
+PIPELINE_PROMPT = (
+    "I want to manage job applications through a hiring pipeline. Track companies, "
+    "application cards, stages, owners, follow-ups, and notes so I can see what needs attention next."
+)
+
+
 def test_pipeline_recipe_surface_emphasizes_board_workflow(tmp_path: Path) -> None:
-    app_model, app_tsx = _generate_from_prompt(tmp_path, "I want to manage job applications")
+    app_model, app_tsx = _generate_from_prompt(tmp_path, PIPELINE_PROMPT)
     assert app_model["recipe"]["recipe_id"] == "pipeline_kanban"
     assert app_model["experience"]["experience_id"] == "pipeline_board"
     assert app_model["experience"]["primitive_id"] == "pipeline_board"
     assert app_model["ui"]["composition"] == "board_workspace"
-    assert "Move work through stages" in app_tsx
-    assert "Track active cards across stages" in app_tsx
-    assert "Pipeline stages" in app_tsx
+    assert "Hiring Pipeline" in app_tsx
+    assert "Move candidates through stages" in app_tsx
+    assert "See what needs attention next" not in app_tsx
+    assert "see what needs attention next" in app_tsx
+    assert "Applications by stage" in app_tsx
+    assert "Review active applications by stage" in app_tsx
+    assert "Companies, owners, and follow-ups stay connected to each application." in app_tsx
+    assert "Tables and forms stay available" not in app_tsx
+    assert "Applications" in app_tsx
+    assert "Companies / owners" in app_tsx
+    assert "function PipelineBoardWorkspace" in app_tsx
+    assert "function PipelineRecordCard" in app_tsx
     assert "data-ui-layout=\"board_by_relation\"" in app_tsx
+    assert "data-ui-layout=\"pipeline-board-workspace\"" in app_tsx
+    assert "data-ui-surface=\"pipeline-board\"" in app_tsx
+    assert "data-ui-surface=\"pipeline-supporting\"" in app_tsx
     assert "asRows(rowsByEntity[targetEntity.name])" in app_tsx
+    pipeline_idx = app_tsx.index("function PipelineBoardWorkspace")
+    board_idx = app_tsx.index('data-ui-surface="pipeline-board"', pipeline_idx)
+    support_idx = app_tsx.index('data-ui-surface="pipeline-supporting"', pipeline_idx)
+    assert app_tsx.find("<Dashboard", pipeline_idx, support_idx) == -1
+    assert board_idx < support_idx
     assert '"experience_id": "pipeline_board"' in app_tsx
     assert '"primitive_id": "pipeline_board"' in app_tsx
     assert "isPipelineBoardExperience()" in app_tsx
@@ -50,7 +73,7 @@ def test_pipeline_recipe_surface_emphasizes_board_workflow(tmp_path: Path) -> No
 
 
 def test_pipeline_surface_uses_experience_metadata_without_recipe_id(tmp_path: Path) -> None:
-    blueprint = _blueprint_from_prompt("I want to manage job applications")
+    blueprint = _blueprint_from_prompt(PIPELINE_PROMPT)
     experience = blueprint["future_extensions"]["experience"]
     blueprint["future_extensions"] = {
         "features": ["assistant_refinement", "provider_imports"],
@@ -62,15 +85,15 @@ def test_pipeline_surface_uses_experience_metadata_without_recipe_id(tmp_path: P
     assert app_model["experience"]["experience_id"] == "pipeline_board"
     assert app_model["experience"]["primitive_id"] == "pipeline_board"
     assert '"experience_id": "pipeline_board"' in app_tsx
-    assert "if (usePipelineBoard()) return 'Move work through stages'" in app_tsx
-    assert "if (usePipelineBoard()) return 'Track active cards across stages" in app_tsx
-    assert "isPrimaryActive && useBoardWorkspace() ? <BoardWorkspace" in app_tsx
-    assert "Pipeline stages" in app_tsx
+    assert "if (usePipelineBoard()) return pipelineVocabulary().title" in app_tsx
+    assert "if (usePipelineBoard()) return pipelineVocabulary().summary" in app_tsx
+    assert "isPrimaryActive && usePipelineBoard() ? <PipelineBoardWorkspace" in app_tsx
+    assert "Applications by stage" in app_tsx
     assert "data-ui-layout=\"board_by_relation\"" in app_tsx
 
 
 def test_pipeline_surface_keeps_no_experience_recipe_fallback(tmp_path: Path) -> None:
-    blueprint = _blueprint_from_prompt("I want to manage job applications")
+    blueprint = _blueprint_from_prompt(PIPELINE_PROMPT)
     blueprint["future_extensions"].pop("experience", None)
     app_model, app_tsx = _generate_blueprint(tmp_path, blueprint)
 
@@ -78,8 +101,33 @@ def test_pipeline_surface_keeps_no_experience_recipe_fallback(tmp_path: Path) ->
     assert app_model["experience"] == {}
     assert '"experience_id": "pipeline_board"' not in app_tsx
     assert "const usePipelineBoard = (): boolean => isPipelineBoardExperience() || (!hasExperienceMetadata() && (recipeId() === 'pipeline_kanban' || isRelationBoardLayout()))" in app_tsx
-    assert "Move work through stages" in app_tsx
-    assert "Pipeline stages" in app_tsx
+    assert "Hiring Pipeline" in app_tsx
+    assert "Applications by stage" in app_tsx
+
+
+def test_pipeline_surface_has_no_slop_copy_for_canonical_prompt(tmp_path: Path) -> None:
+    app_model, app_tsx = _generate_from_prompt(tmp_path, PIPELINE_PROMPT)
+    surfaces = [app_model["app"]["displayName"], app_model["app"]["description"], app_tsx, json.dumps(app_model["seedData"])]
+    bad_fragments = [
+        "Job Through Hiring Pipeline Track",
+        "Application Cards Register",
+        "Create Application Card",
+        "Job Through Hiring",
+        "Example Job Title",
+        "Example Company Name",
+        "Tables and forms stay available",
+    ]
+    for surface in surfaces:
+        for fragment in bad_fragments:
+            assert fragment not in surface
+
+
+def test_pipeline_renderer_does_not_affect_non_pipeline_apps(tmp_path: Path) -> None:
+    app_model, app_tsx = _generate_from_prompt(tmp_path, "I need to track equipment, vendors, and maintenance")
+    assert app_model["experience"]["primitive_id"] == "inventory_ops"
+    assert app_model["ui"]["focus"]["primary_entity"] == "asset"
+    assert app_model["recipe"]["recipe_id"] == "inventory_asset_tracker"
+    assert "Track assets, stock, and upkeep" in app_tsx
 
 
 def test_client_session_recipe_surface_has_sessions_clients_payments_copy(tmp_path: Path) -> None:
@@ -261,7 +309,7 @@ def test_generic_dashboard_surface_stays_generic_and_safe(tmp_path: Path) -> Non
     assert '"experience_id": "client_workspace"' not in app_tsx
     assert "const useClientWorkspace = (): boolean => isClientWorkspaceExperience() || (!hasExperienceMetadata() && recipeId() === 'client_session_manager')" in app_tsx
     assert '"experience_id": "pipeline_board"' not in app_tsx
-    assert "if (usePipelineBoard()) return 'Move work through stages'" in app_tsx
+    assert "if (usePipelineBoard()) return pipelineVocabulary().title" in app_tsx
     assert '"experience_id": "inventory_ops"' not in app_tsx
     assert "const hasInventorySurfaceMetadata = (): boolean => Boolean(model.entities.find((entity) => ['asset','inventory_item'].includes(entity.name)) && model.entities.some((entity) => ['category','location','vendor','supplier','maintenance_task','warehouse'].includes(entity.name)))" in app_tsx
     assert [entity["name"] for entity in app_model["entities"]] == ["item"]

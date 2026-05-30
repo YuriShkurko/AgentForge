@@ -43,11 +43,19 @@ PIPELINE_KANBAN = AppRecipe(
             ),
         ),
         EntityTemplate(
+            name="Company",
+            label="Company",
+            fields=(
+                FieldTemplate("name", "Name", "string", required=True),
+            ),
+        ),
+        EntityTemplate(
             name="Card",
-            label="Card",
+            label="Application Card",
             fields=(
                 FieldTemplate("title", "Title", "string", required=True),
                 FieldTemplate("stage", "Stage", "reference", required=True, references="Stage"),
+                FieldTemplate("company", "Company", "reference", required=True, references="Company"),
                 FieldTemplate("owner", "Owner", "reference", references="Owner"),
                 FieldTemplate("value", "Value", "number", sample_style="money"),
                 FieldTemplate("due_on", "Due on", "date", sample_style="upcoming_date"),
@@ -59,6 +67,15 @@ PIPELINE_KANBAN = AppRecipe(
             label="Owner",
             fields=(
                 FieldTemplate("name", "Name", "string", required=True, sample_style="person_name"),
+            ),
+        ),
+        EntityTemplate(
+            name="FollowUp",
+            label="Follow-up",
+            fields=(
+                FieldTemplate("card", "Application", "reference", required=True, references="Card"),
+                FieldTemplate("due_on", "Due on", "date", required=True, sample_style="upcoming_date"),
+                FieldTemplate("notes", "Notes", "text", required=True),
             ),
         ),
     ),
@@ -88,7 +105,7 @@ PIPELINE_KANBAN = AppRecipe(
     home_surface="board",
     demo_moment="Move a card from Qualified to Proposal and see the board update.",
     sample_data_style=SampleDataStyle(
-        per_entity_counts={"Stage": 3, "Card": 6, "Owner": 2},
+        per_entity_counts={"Stage": 3, "Company": 6, "Card": 6, "Owner": 2, "FollowUp": 3},
         distribution_hints=("at least one card per stage", "one card due this week"),
         relation_density="medium",
         demo_seed="One card in the first stage with a near-term due date",

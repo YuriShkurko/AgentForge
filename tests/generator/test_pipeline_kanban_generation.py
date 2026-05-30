@@ -19,8 +19,14 @@ from agentforge.pack import DomainPack
 from agentforge.planner.assistant import BuilderAssistant
 
 
+PIPELINE_PROMPT = (
+    "I want to manage job applications through a hiring pipeline. Track companies, "
+    "application cards, stages, owners, follow-ups, and notes so I can see what needs attention next."
+)
+
+
 def _generate_pipeline_app(tmp_path: Path) -> tuple[dict, str]:
-    result = BuilderAssistant().start("I want to manage job applications")
+    result = BuilderAssistant().start(PIPELINE_PROMPT)
     assert result["status"] == "proposed", result
     pack = DomainPack.model_validate(result["proposal"]["blueprint"])
     out = tmp_path / "pipeline-app"
@@ -46,7 +52,20 @@ def test_generated_pipeline_seed_data_distributes_cards_across_stages(tmp_path):
     app_model, _ = _generate_pipeline_app(tmp_path)
     seed = app_model["seedData"]
     assert len(seed["stage"]) == 3
+    assert [row["name"] for row in seed["stage"]] == ["Applied", "Interview", "Offer"]
     assert [row["stage"] for row in seed["card"]] == [1, 2, 3, 1, 2, 3]
+    assert [row["company"] for row in seed["card"]] == [1, 2, 3, 4, 5, 6]
+    assert len(seed["company"]) >= 2
+    assert len(seed["owner"]) >= 2
+    assert [row["card"] for row in seed["follow_up"]] == [1, 2, 3]
+    assert seed["card"][0]["title"] == "Frontend Engineer — Northstar Labs"
+    assert seed["card"][0]["owner"] == 1
+    assert seed["card"][0]["due_on"] == "2026-06-01"
+    assert seed["card"][0]["notes"] == "Portfolio review due this week."
+    serialized = json.dumps(seed)
+    assert "Example Job Title" not in serialized
+    assert "Example Company Name" not in serialized
+    assert "Example Owner" not in serialized
 
 
 def test_generated_pipeline_react_contains_board_by_relation_render_path(tmp_path):
@@ -54,10 +73,47 @@ def test_generated_pipeline_react_contains_board_by_relation_render_path(tmp_pat
     # The new layout branch and its guards must be present.
     assert '"experience_id": "pipeline_board"' in app_tsx
     assert "const usePipelineBoard = (): boolean =>" in app_tsx
+    assert "function PipelineBoardWorkspace" in app_tsx
+    assert "data-ui-layout=\"pipeline-board-workspace\"" in app_tsx
+    assert "Applications by stage" in app_tsx
+    assert "Applied" in app_tsx
+    assert "Interview" in app_tsx
+    assert "Offer" in app_tsx
     assert "board_by_relation" in app_tsx
     assert "No stages yet" in app_tsx or "to see lanes" in app_tsx
     # asRows guards must still wrap row reads inside the new branch.
     assert "asRows(rowsByEntity[targetEntity.name])" in app_tsx
+
+
+def test_generated_pipeline_board_is_before_generic_tables_and_create_form(tmp_path):
+    _, app_tsx = _generate_pipeline_app(tmp_path)
+    pipeline_idx = app_tsx.index("function PipelineBoardWorkspace")
+    board_idx = app_tsx.index('data-ui-surface="pipeline-board"', pipeline_idx)
+    support_idx = app_tsx.index('data-ui-surface="pipeline-supporting"', pipeline_idx)
+    create_idx = app_tsx.index("pipeline-create", pipeline_idx)
+    generic_table_idx = app_tsx.index("function RegisterTable")
+    dashboard_call_idx = app_tsx.find("<Dashboard", pipeline_idx, support_idx)
+
+    assert board_idx < support_idx < create_idx
+    assert pipeline_idx < generic_table_idx
+    assert dashboard_call_idx == -1
+    assert "Tables and forms stay available" not in app_tsx
+    assert "Companies, owners, and follow-ups stay connected to each application." in app_tsx
+
+
+def test_generated_pipeline_lane_cards_include_counts_and_context(tmp_path):
+    _, app_tsx = _generate_pipeline_app(tmp_path)
+    assert "function PipelineRecordCard" in app_tsx
+    assert "data-ui-surface=\"pipeline-card\"" in app_tsx
+    assert "lane-heading" in app_tsx
+    assert "matched.length" in app_tsx
+    assert "matched.length === 1 ? entity.labelSingular.toLowerCase() : entity.labelPlural.toLowerCase()" in app_tsx
+    assert "Follow-up:" in app_tsx
+    assert "Portfolio review due this week." in app_tsx
+    assert "Frontend Engineer \\u2014 Northstar Labs" in app_tsx
+    assert "Northstar Labs" in app_tsx
+    assert "Owner" in app_tsx or "owner" in app_tsx
+    assert "Company" in app_tsx or "company" in app_tsx
 
 
 def test_generated_pipeline_react_keeps_existing_board_by_status_branch(tmp_path):

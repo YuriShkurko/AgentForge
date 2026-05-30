@@ -79,9 +79,12 @@ def test_client_session_manager_ui_is_board_workspace_grouped_by_status():
 # --- pipeline_kanban ---------------------------------------------------------
 
 
-def test_pipeline_kanban_compiles_stage_card_owner():
+def test_pipeline_kanban_compiles_stage_card_company_owner_follow_up():
     spec = _spec(PIPELINE_KANBAN, "I want to manage job applications")
-    assert _entity_names(spec) == {"stage", "card", "owner"}
+    assert _entity_names(spec) == {"stage", "company", "card", "owner", "follow_up"}
+    card = next(entity for entity in spec["model"]["entities"] if entity["name"] == "card")
+    relation_targets = {field["name"]: field.get("target_entity") for field in card["fields"] if field["type"] == "relation"}
+    assert relation_targets == {"stage": "stage", "company": "company", "owner": "owner"}
 
 
 def test_pipeline_kanban_skips_actions_when_no_enum_status():
@@ -211,9 +214,19 @@ def test_seed_data_links_required_relation_fields_deterministically():
     seed = spec["model"]["seed_data"]
     assert len(seed["stage"]) == 3
     assert [row["stage"] for row in seed["card"]] == [1, 2, 3, 1, 2, 3]
-    # Optional relations stay omitted unless a later slice can prove their
-    # target rows are inserted before the child rows.
-    assert all("owner" not in row for row in seed["card"])
+    assert [row["company"] for row in seed["card"]] == [1, 2, 3, 4, 5, 6]
+    assert [row["owner"] for row in seed["card"]] == [1, 2, 1, 2, 1, 2]
+    assert [row["card"] for row in seed["follow_up"]] == [1, 2, 3]
+    assert seed["stage"][0]["name"] == "Applied"
+    assert seed["company"][0]["name"] == "Northstar Labs"
+    assert seed["card"][0]["title"] == "Frontend Engineer — Northstar Labs"
+    assert seed["card"][0]["due_on"] == "2026-06-01"
+    assert seed["card"][0]["value"] == 120
+    assert seed["card"][0]["notes"] == "Portfolio review due this week."
+    serialized = json.dumps(seed)
+    assert "Example Job Title" not in serialized
+    assert "Example Company Name" not in serialized
+    assert "Example Owner" not in serialized
 
 
 def test_seed_data_links_client_session_manager_relations():

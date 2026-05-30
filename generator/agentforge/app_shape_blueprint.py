@@ -248,6 +248,10 @@ def _sample_relation_id(entity: dict[str, Any], field: dict[str, Any], index: in
     # only link obvious payment/invoice -> work/session relations.
     if entity["name"] in {"payment", "invoice", "earning"} and target in {"session", "lesson_session", "project"}:
         return (index % target_count) + 1
+    if entity["name"] in {"card", "application_card", "application", "job"} and target in {"owner", "assignee", "company", "customer", "client"}:
+        return (index % target_count) + 1
+    if entity["name"] in {"follow_up", "followup", "reminder"} and target in {"card", "application_card", "application", "job"}:
+        return (index % target_count) + 1
     return None
 
 
@@ -261,6 +265,16 @@ def _recipe_sample_name(entity_name: str, index: int) -> str:
         "location": ["Main warehouse", "Office closet", "North barn"],
         "vendor": ["Acme Supply", "Reliable Maintenance"],
         "maintenance_task": ["Inspect forklift", "Restock feed", "Service generator"],
+        "stage": ["Applied", "Interview", "Offer"],
+        "card": ["Frontend Engineer — Northstar Labs", "Backend Platform Engineer — Orbit Systems", "Product Engineer — Studio Atlas", "Data Analyst — Helio Health", "DevOps Engineer — Cloudnine Tools", "Full Stack Developer — BrightCart"],
+        "application_card": ["Frontend Engineer — Northstar Labs", "Backend Platform Engineer — Orbit Systems", "Product Engineer — Studio Atlas", "Data Analyst — Helio Health", "DevOps Engineer — Cloudnine Tools", "Full Stack Developer — BrightCart"],
+        "application": ["Frontend Engineer — Northstar Labs", "Backend Platform Engineer — Orbit Systems", "Product Engineer — Studio Atlas", "Data Analyst — Helio Health", "DevOps Engineer — Cloudnine Tools", "Full Stack Developer — BrightCart"],
+        "job": ["Frontend Engineer — Northstar Labs", "Backend Platform Engineer — Orbit Systems", "Product Engineer — Studio Atlas", "Data Analyst — Helio Health", "DevOps Engineer — Cloudnine Tools", "Full Stack Developer — BrightCart"],
+        "company": ["Northstar Labs", "Orbit Systems", "Studio Atlas", "Helio Health", "Cloudnine Tools", "BrightCart"],
+        "customer": ["Northstar Labs", "Orbit Systems", "Studio Atlas", "Helio Health", "Cloudnine Tools", "BrightCart"],
+        "owner": ["Avery Lee", "Jordan Kim"],
+        "follow_up": ["Portfolio review follow-up", "Backend project notes", "Interview scorecard prep", "Hiring manager check-in"],
+        "followup": ["Portfolio review follow-up", "Backend project notes", "Interview scorecard prep", "Hiring manager check-in"],
     }
     pool = pools.get(entity_name)
     if not pool:
@@ -286,17 +300,36 @@ def _sample_value(entity: dict[str, Any], field: dict[str, Any], index: int, cou
                 return recipe_name
             label = entity["label_singular"]
             return f"Sample {label.lower()} {index + 1}" if count > 1 else f"Sample {label.lower()}"
+        if entity["name"] in {"card", "application_card", "application", "job"} and name in {"job_title", "role", "position"}:
+            return ["Frontend Engineer", "Backend Platform Engineer", "Product Engineer", "Data Analyst", "DevOps Engineer", "Full Stack Developer"][index % 6]
+        if name in {"company", "company_name", "organization"}:
+            return ["Northstar Labs", "Orbit Systems", "Studio Atlas", "Helio Health", "Cloudnine Tools", "BrightCart"][index % 6]
         if name in {"contact", "email"}:
             return ["maya@example.test", "hello@northline.example", "alex@example.test"][index % 3]
         if name == "location":
             return ["Online", "Studio", "Client site"][index % 3]
         return ""
     if field["type"] == "text":
+        if entity["name"] in {"card", "application_card", "application", "job"}:
+            return [
+                "Portfolio review due this week.",
+                "Recruiter asked for backend platform project notes.",
+                "Prepare interview scorecard and questions.",
+                "Confirm next step with the hiring manager.",
+                "Send follow-up with product engineering case study.",
+                "Review offer details before Friday.",
+            ][index % 6]
+        if entity["name"] in {"follow_up", "followup", "reminder"}:
+            return [
+                "Send portfolio review notes to Northstar Labs.",
+                "Share backend project links with Orbit Systems.",
+                "Prepare Studio Atlas interview questions.",
+            ][index % 3]
         if entity["name"] == "client":
             return ["Prefers Tuesday afternoons.", "Monthly retainer client.", "Working toward spring goals."][index % 3]
         return f"Notes for {entity['label_singular'].lower()} {index + 1}."
     if field["type"] == "integer":
-        if name in {"amount", "fee"}:
+        if name in {"amount", "fee", "value", "budget", "salary"}:
             return [120, 850, 75, 1400, 95][index % 5]
         if name == "duration_minutes":
             return [60, 90, 45, 60, 75][index % 5]
@@ -305,7 +338,7 @@ def _sample_value(entity: dict[str, Any], field: dict[str, Any], index: int, cou
         return None
     if field["type"] == "date":
         dated = ["2026-06-01", "2026-06-03", "2026-05-28", "2026-06-08", "2026-05-20"]
-        if field.get("required") or entity["name"] in {"session", "payment"}:
+        if field.get("required") or entity["name"] in {"session", "payment", "card", "application_card", "application", "job", "follow_up"} or semantic == "due_date":
             return dated[index % len(dated)]
         return None
     if field["type"] == "boolean":
