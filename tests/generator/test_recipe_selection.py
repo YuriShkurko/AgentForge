@@ -9,6 +9,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "generator"))
 
 from agentforge.app_intent import extract_intent
+from agentforge.planner.recipe_planner import planning_direction_choices
 from agentforge.recipe_select import (
     CONFIDENT_THRESHOLD,
     FALLBACK_THRESHOLD,
@@ -94,9 +95,32 @@ def test_repair_shop_parts_stock_reorder_selects_inventory():
 
 
 def test_repair_shop_jobs_parts_customer_updates_stays_ambiguous():
+    selection = _select("I run a repair shop and need to track jobs, parts, customers, updates, and inventory")
+    choices = planning_direction_choices(
+        "I run a repair shop and need to track jobs, parts, customers, updates, and inventory"
+    )
+
+    # The raw scorer may have a dominant top score, but the planning gate must
+    # still expose the two viable product directions before Blueprint drafting.
+    assert selection.picked.id == "inventory_asset_tracker"
+    assert {choice.recipe_id for choice in choices} == {"pipeline_kanban", "inventory_asset_tracker"}
+
+
+def test_repair_shop_jobs_parts_without_inventory_still_has_direction_choices():
     selection = _select("I run a repair shop and need to track jobs, parts, and customer updates")
     assert selection.verdict == "ambiguous"
     assert {"inventory_asset_tracker", "pipeline_kanban"}.issubset({candidate.recipe_id for candidate in selection.candidates})
+
+
+@pytest.mark.parametrize("prompt", [
+    "I want to manage job applications",
+    "I need to track equipment, vendors, and maintenance",
+    "I manage office inventory and reorder supplies",
+    "I am a tutor scheduling student sessions and logging payments",
+    "I am a freelance software engineer and I want help managing clients, projects, payments and more",
+])
+def test_direct_recipe_prompts_do_not_get_direction_choices(prompt):
+    assert planning_direction_choices(prompt) == ()
 
 
 def test_ambiguous_prompt_returns_multiple_candidates():

@@ -9,13 +9,25 @@ No live LLM. No I/O. No randomness. Same prompt -> same output.
 """
 from __future__ import annotations
 
+import re
+from dataclasses import dataclass
 from typing import Any
 
 from agentforge.app_intent import extract_intent
 from agentforge.app_shape import compile_app_shape
 from agentforge.app_shape_blueprint import compile_blueprint_spec
-from agentforge.recipe_select import RecipeSelection, select_recipe
+from agentforge.recipe_select import FALLBACK_THRESHOLD, RecipeScore, RecipeSelection, select_recipe
 from agentforge.recipes import AppRecipe, get_recipe
+
+
+@dataclass(frozen=True)
+class RecipeDirectionChoice:
+    """One deterministic planning direction offered before Blueprint drafting."""
+
+    recipe_id: str
+    display_name: str
+    summary: str
+    score: int
 
 
 def is_recipe_confident(text: str) -> bool:
@@ -25,8 +37,34 @@ def is_recipe_confident(text: str) -> bool:
     prompts when the recipe seam already understands the request. Skips the
     AppShape compilation step that `recipe_aware_spec` does.
     """
+    if planning_direction_choices(text):
+        return False
     selection = _selection_for(text)
     return selection is not None and selection.verdict == "confident" and not selection.picked.is_fallback
+
+
+def planning_direction_choices(text: str) -> tuple[RecipeDirectionChoice, ...]:
+    """Return deterministic recipe choices when a prompt should ask direction first."""
+    selection = _selection_for(text)
+    if selection is None:
+        return ()
+    scores = _forced_composite_scores(text, selection)
+    if not scores and selection.verdict == "ambiguous":
+        scores = tuple(
+            score for score in selection.candidates
+            if score.score >= FALLBACK_THRESHOLD and not score.recipe.is_fallback
+        )
+    if len(scores) < 2:
+        return ()
+    return tuple(
+        RecipeDirectionChoice(
+            recipe_id=score.recipe.id,
+            display_name=score.recipe.display_name,
+            summary=score.recipe.summary,
+            score=score.score,
+        )
+        for score in scores[:4]
+    )
 
 
 def recipe_aware_spec(text: str) -> dict[str, Any] | None:
@@ -36,6 +74,8 @@ def recipe_aware_spec(text: str) -> dict[str, Any] | None:
     pick. Callers should keep their existing logic in that case so we never
     silently override prompts the scripted path handles well.
     """
+    if planning_direction_choices(text):
+        return None
     selection = _selection_for(text)
     if selection is None or selection.verdict != "confident":
         return None
@@ -98,6 +138,29 @@ def _selection_for(text: str) -> RecipeSelection | None:
     return select_recipe(intent)
 
 
+def _forced_composite_scores(text: str, selection: RecipeSelection) -> tuple[RecipeScore, ...]:
+    """Catch clear composite prompts whose top recipe score hides a second direction."""
+    compact = f" {re.sub(r'[^a-z0-9]+', ' ', str(text or '').lower()).strip()} "
+    if not _has_any(compact, ("repair shop", "repair", "workshop", "garage")):
+        return ()
+    has_job_pipeline = _has_any(compact, (" job ", " jobs ", " customer ", " customers ", " update ", " updates ", " status ", " pipeline "))
+    has_inventory = _has_any(compact, (" part ", " parts ", " inventory ", " stock ", " vendor ", " vendors ", " reorder ", " maintenance ", " supplier ", " suppliers "))
+    if not (has_job_pipeline and has_inventory):
+        return ()
+    by_id = {score.recipe_id: score for score in selection.all_scores}
+    pipeline = by_id.get("pipeline_kanban")
+    inventory = by_id.get("inventory_asset_tracker")
+    if not pipeline or not inventory:
+        return ()
+    if pipeline.score < FALLBACK_THRESHOLD or inventory.score < FALLBACK_THRESHOLD:
+        return ()
+    return (pipeline, inventory)
+
+
+def _has_any(text: str, needles: tuple[str, ...]) -> bool:
+    return any(needle in text for needle in needles)
+
+
 def _metadata_payload(
     selection: RecipeSelection,
     home_surface: str,
@@ -120,4 +183,12 @@ def _metadata_payload(
     }
 
 
-__all__ = ["is_recipe_confident", "recipe_aware_spec", "recipe_aware_spec_for_recipe", "recipe_metadata", "recipe_metadata_for_recipe"]
+__all__ = [
+    "RecipeDirectionChoice",
+    "is_recipe_confident",
+    "planning_direction_choices",
+    "recipe_aware_spec",
+    "recipe_aware_spec_for_recipe",
+    "recipe_metadata",
+    "recipe_metadata_for_recipe",
+]

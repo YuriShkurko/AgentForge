@@ -57,6 +57,37 @@ def test_assistant_recipe_pipeline_prompt():
     assert experience["primitive_id"] == "pipeline_board"
 
 
+@pytest.mark.parametrize("prompt", [
+    "I need to track equipment, vendors, and maintenance",
+    "I manage office inventory and reorder supplies",
+])
+def test_assistant_recipe_inventory_prompts_build_directly(prompt: str):
+    blueprint = _blueprint(prompt)
+    pack = DomainPack.model_validate(blueprint)
+    assert pack.model is not None
+    entity_names = {entity.name for entity in pack.model.entities}
+    assert {"asset", "category", "location", "vendor", "maintenance_task"}.issubset(entity_names)
+    meta = blueprint["future_extensions"]["recipe"]
+    assert meta["recipe_id"] == "inventory_asset_tracker"
+    experience = blueprint["future_extensions"]["experience"]
+    assert experience["experience_id"] == "inventory_ops"
+    assert experience["primitive_id"] == "inventory_ops"
+
+
+def test_assistant_repair_shop_composite_prompt_asks_before_blueprint():
+    result = _propose(
+        "I run a repair shop and need to track jobs, parts, customers, updates, and inventory."
+    )
+
+    assert result["status"] == "needs_clarification"
+    assert result["proposal"] is None
+    detail = result["question_details"][0]
+    assert detail["id"] == "recipe_direction"
+    assert {"recipe:pipeline_kanban", "recipe:inventory_asset_tracker"}.issubset(
+        {chip["value"] for chip in detail["chips"]}
+    )
+
+
 def test_assistant_recipe_approval_queue_prompt():
     blueprint = _blueprint(
         "I run an approval workflow for submissions to review and claim items pending decisions"
@@ -130,6 +161,13 @@ def test_vague_prompt_still_asks_clarification_no_recipe_override():
     result = _propose("app")
     assert result["status"] == "needs_clarification"
     assert result["proposal"] is None
+
+
+def test_work_help_vague_prompt_still_asks_normal_clarification():
+    result = _propose("I need help with work")
+    assert result["status"] == "needs_clarification"
+    assert result["proposal"] is None
+    assert result["question_details"][0]["id"] != "recipe_direction"
 
 
 def test_generic_dashboard_prompt_does_not_force_recipe_override():

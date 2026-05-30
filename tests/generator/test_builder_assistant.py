@@ -12,6 +12,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent / "generator"))
 from agentforge.generator import generate
 from agentforge.pack import DomainPack
 from agentforge.planner.assistant import BuilderAssistant
+from agentforge.planner.live_llm import LiveAssistantProvider
 from agentforge.planner.server import PlannerServer
 
 
@@ -35,7 +36,7 @@ def test_assistant_start_with_vague_idea_asks_clarifying_questions():
 
 def test_assistant_ambiguous_recipe_prompt_asks_direction_question():
     result = BuilderAssistant().start(
-        "I run a repair shop and need to track jobs, parts, and customer updates"
+        "I run a repair shop and need to track jobs, parts, customers, updates, and inventory"
     )
 
     assert result["status"] == "needs_clarification"
@@ -54,11 +55,14 @@ def test_assistant_ambiguous_recipe_prompt_asks_direction_question():
     assert any(chip["label"] == "Parts and inventory tracker" for chip in chips)
 
 
-def test_assistant_recipe_direction_choice_pipeline_produces_pipeline_proposal():
+@pytest.mark.parametrize("answer", ["recipe:pipeline_kanban", "pipeline_kanban"])
+def test_assistant_recipe_direction_choice_pipeline_produces_pipeline_proposal(answer):
     assistant = BuilderAssistant()
-    first = assistant.start("I run a repair shop and need to track jobs, parts, and customer updates")
+    first = assistant.start(
+        "I run a repair shop and need to track jobs, parts, customers, updates, and inventory"
+    )
 
-    result = assistant.message(first["state"], "recipe:pipeline_kanban")
+    result = assistant.message(first["state"], answer)
 
     assert result["status"] == "proposed"
     recipe = result["proposal"]["blueprint"]["future_extensions"]["recipe"]
@@ -67,11 +71,14 @@ def test_assistant_recipe_direction_choice_pipeline_produces_pipeline_proposal()
     assert {"stage", "card", "owner"}.issubset(names)
 
 
-def test_assistant_recipe_direction_choice_inventory_produces_inventory_proposal():
+@pytest.mark.parametrize("answer", ["recipe:inventory_asset_tracker", "inventory_asset_tracker"])
+def test_assistant_recipe_direction_choice_inventory_produces_inventory_proposal(answer):
     assistant = BuilderAssistant()
-    first = assistant.start("I run a repair shop and need to track jobs, parts, and customer updates")
+    first = assistant.start(
+        "I run a repair shop and need to track jobs, parts, customers, updates, and inventory"
+    )
 
-    result = assistant.message(first["state"], "recipe:inventory_asset_tracker")
+    result = assistant.message(first["state"], answer)
 
     assert result["status"] == "proposed"
     recipe = result["proposal"]["blueprint"]["future_extensions"]["recipe"]
@@ -82,12 +89,27 @@ def test_assistant_recipe_direction_choice_inventory_produces_inventory_proposal
 
 def test_assistant_direction_question_reject_does_not_apply_anything():
     result = BuilderAssistant().start(
-        "I run a repair shop and need to track jobs, parts, and customer updates"
+        "I run a repair shop and need to track jobs, parts, customers, updates, and inventory"
     )
 
     assert result["status"] == "needs_clarification"
     assert result["proposal"] is None
     assert result["state"].get("proposal") is None
+
+
+def test_live_assistant_cannot_bypass_recipe_direction_gate():
+    client = _CountingLiveClient()
+    assistant = BuilderAssistant(live_provider=LiveAssistantProvider(client))
+
+    result = assistant.start(
+        "I run a repair shop and need to track jobs, parts, customers, updates, and inventory"
+    )
+
+    assert result["mode"] == "live"
+    assert result["status"] == "needs_clarification"
+    assert result["proposal"] is None
+    assert result["state"]["pending_question_ids"] == ["recipe_direction"]
+    assert client.calls == []
 
 
 def test_assistant_message_advances_from_clarification_to_valid_proposal():
@@ -495,3 +517,23 @@ def _post_json(url, payload):
     request = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"}, method="POST")
     with urllib.request.urlopen(request, timeout=5) as response:
         return json.loads(response.read().decode("utf-8"))
+
+
+class _CountingLiveClient:
+    def __init__(self):
+        self.calls: list[tuple[str, str]] = []
+
+    def complete(self, system: str, user: str) -> str:
+        self.calls.append((system, user))
+        return json.dumps({
+            "primary": "job",
+            "entities": [{
+                "name": "job",
+                "label_singular": "Job",
+                "label_plural": "Jobs",
+                "fields": [
+                    {"name": "title", "label": "Title", "type": "string", "required": True, "semantic": "title"},
+                    {"name": "status", "label": "Status", "type": "enum", "required": True, "enum_values": ["open", "done"], "semantic": "status"},
+                ],
+            }],
+        })

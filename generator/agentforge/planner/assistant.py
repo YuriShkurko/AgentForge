@@ -21,10 +21,10 @@ from agentforge.naming import (
 from agentforge.experience import experience_metadata_for_recipe
 from agentforge.planner import validate_blueprint_result
 from agentforge.planner.live_llm import LiveAssistantProvider, LiveLLMResponseError
-from agentforge.app_intent import extract_intent
-from agentforge.recipe_select import RecipeSelection, select_recipe
 from agentforge.planner.recipe_planner import (
+    RecipeDirectionChoice,
     is_recipe_confident,
+    planning_direction_choices,
     recipe_aware_spec,
     recipe_aware_spec_for_recipe,
     recipe_metadata,
@@ -198,32 +198,17 @@ def _build_questions_payload(ids: list[str]) -> tuple[list[str], list[dict[str, 
     return prompts, details
 
 
-def _recipe_selection_for(text: str) -> RecipeSelection | None:
-    if not (text or "").strip():
-        return None
-    return select_recipe(extract_intent(text))
-
-
-def _viable_recipe_candidates(selection: RecipeSelection) -> tuple[Any, ...]:
-    return tuple(score for score in selection.candidates if score.score >= 3 and not score.recipe.is_fallback)
-
-
-def _should_ask_recipe_direction(selection: RecipeSelection | None) -> bool:
-    return bool(selection and selection.verdict == "ambiguous" and len(_viable_recipe_candidates(selection)) >= 2)
-
-
-def _recipe_direction_detail(selection: RecipeSelection) -> dict[str, Any]:
+def _recipe_direction_detail(choices: tuple[RecipeDirectionChoice, ...]) -> dict[str, Any]:
     entry = QUESTION_CATALOG["recipe_direction"]
     chips: list[dict[str, Any]] = []
     examples: list[str] = []
-    for score in _viable_recipe_candidates(selection):
-        recipe = score.recipe
-        label = _RECIPE_DIRECTION_LABELS.get(recipe.id, recipe.display_name)
-        helper = _RECIPE_DIRECTION_HELPERS.get(recipe.id, recipe.summary)
+    for choice in choices:
+        label = _RECIPE_DIRECTION_LABELS.get(choice.recipe_id, choice.display_name)
+        helper = _RECIPE_DIRECTION_HELPERS.get(choice.recipe_id, choice.summary)
         chips.append({
             "label": label,
-            "value": f"recipe:{recipe.id}",
-            "recipe_id": recipe.id,
+            "value": f"recipe:{choice.recipe_id}",
+            "recipe_id": choice.recipe_id,
             "helper": helper,
         })
         examples.append(f"{label}: {helper}")
@@ -237,19 +222,17 @@ def _recipe_direction_detail(selection: RecipeSelection) -> dict[str, Any]:
     }
 
 
-def _selected_recipe_id(text: str, selection: RecipeSelection | None = None) -> str:
+def _selected_recipe_id(text: str, choices: tuple[RecipeDirectionChoice, ...] = ()) -> str:
     compact = str(text or "").strip().lower()
     if not compact:
         return ""
     match = re.search(r"\brecipe:([a-z0-9_\-]+)\b", compact)
     if match:
         return match.group(1).replace("-", "_")
-    candidates = selection.candidates if selection else ()
-    for score in candidates:
-        recipe = score.recipe
-        label = _RECIPE_DIRECTION_LABELS.get(recipe.id, recipe.display_name).lower()
-        if recipe.id in compact or label in compact or recipe.display_name.lower() in compact:
-            return recipe.id
+    for choice in choices:
+        label = _RECIPE_DIRECTION_LABELS.get(choice.recipe_id, choice.display_name).lower()
+        if choice.recipe_id in compact or label in compact or choice.display_name.lower() in compact:
+            return choice.recipe_id
     return ""
 
 
@@ -409,11 +392,11 @@ class BuilderAssistant:
         gate = live_gate if self._live_provider is not None else scripted_gate
         forced_recipe_id = ""
         if "recipe_direction" in state.pending_question_ids:
-            selection = _recipe_selection_for(state.idea)
-            forced_recipe_id = _selected_recipe_id(state.answers[-1] if state.answers else "", selection)
+            choices = planning_direction_choices(state.idea)
+            forced_recipe_id = _selected_recipe_id(state.answers[-1] if state.answers else "", choices)
             if not forced_recipe_id:
                 state.status = "needs_clarification"
-                detail = _recipe_direction_detail(selection) if selection else QUESTION_CATALOG["recipe_direction"]
+                detail = _recipe_direction_detail(choices) if choices else QUESTION_CATALOG["recipe_direction"]
                 state.questions = [detail["prompt"]]
                 state.pending_question_ids = ["recipe_direction"]
                 return self._response(
@@ -424,9 +407,9 @@ class BuilderAssistant:
             combined = state.idea
             gate = False
         else:
-            selection = _recipe_selection_for(combined)
-            if _should_ask_recipe_direction(selection):
-                detail = _recipe_direction_detail(selection)
+            choices = planning_direction_choices(combined)
+            if choices:
+                detail = _recipe_direction_detail(choices)
                 state.status = "needs_clarification"
                 state.questions = [detail["prompt"]]
                 state.pending_question_ids = ["recipe_direction"]
