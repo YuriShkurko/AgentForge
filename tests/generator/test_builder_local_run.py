@@ -137,6 +137,7 @@ def test_start_backend_frontend_lifecycle_with_mocked_processes(tmp_path, monkey
     monkeypatch.setattr(local_run, "_popen_allowlisted_service", fake_popen)
     monkeypatch.setattr(local_run, "_url_available", lambda url, timeout: True)
     monkeypatch.setattr(local_run, "_tcp_port_available", lambda host, port: True)
+    monkeypatch.setattr(local_run, "_listening_pids", lambda port: set())
     monkeypatch.setattr(local_run, "_frontend_render_check", lambda app_dir, url, timeout: (True, ""))
 
     backend = local_run.start_generated_app_service("run-servers1", "backend", repo_root=tmp_path)
@@ -166,6 +167,7 @@ def test_duplicate_start_returns_existing_status_without_new_process(tmp_path, m
     monkeypatch.setattr(local_run, "_popen_allowlisted_service", fake_popen)
     monkeypatch.setattr(local_run, "_url_available", lambda url, timeout: True)
     monkeypatch.setattr(local_run, "_tcp_port_available", lambda host, port: True)
+    monkeypatch.setattr(local_run, "_listening_pids", lambda port: set())
 
     first = local_run.start_generated_app_service("run-dupe123", "backend", repo_root=tmp_path)
     second = local_run.start_generated_app_service("run-dupe123", "backend", repo_root=tmp_path)
@@ -213,6 +215,7 @@ def test_starting_new_run_stops_previous_builder_started_service(tmp_path, monke
     monkeypatch.setattr(local_run, "_popen_allowlisted_service", fake_popen)
     monkeypatch.setattr(local_run, "_url_available", lambda url, timeout: True)
     monkeypatch.setattr(local_run, "_tcp_port_available", lambda host, port: True)
+    monkeypatch.setattr(local_run, "_listening_pids", lambda port: set())
     monkeypatch.setattr(local_run, "_terminate_process_tree", lambda proc: (stopped.append(proc.pid), setattr(proc, "returncode", -15)))
 
     first = local_run.start_generated_app_service("run-stop111", "backend", repo_root=tmp_path)
@@ -326,6 +329,7 @@ def test_start_service_reports_starting_until_health_url_is_reachable(tmp_path, 
     monkeypatch.setattr(local_run, "_wait_for_service_ready", lambda managed, spec: False)
     monkeypatch.setattr(local_run, "_url_available", lambda url, timeout: False)
     monkeypatch.setattr(local_run, "_tcp_port_available", lambda host, port: True)
+    monkeypatch.setattr(local_run, "_listening_pids", lambda port: set())
 
     result = local_run.start_generated_app_service("run-starting", "backend", repo_root=tmp_path)
 
