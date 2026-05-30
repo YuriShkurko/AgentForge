@@ -44,6 +44,42 @@ def test_pipeline_recipe_surface_emphasizes_board_workflow(tmp_path: Path) -> No
     assert "data-ui-layout=\"board_by_relation\"" in app_tsx
     assert "asRows(rowsByEntity[targetEntity.name])" in app_tsx
     assert '"experience_id": "pipeline_board"' in app_tsx
+    assert '"primitive_id": "pipeline_board"' in app_tsx
+    assert "isPipelineBoardExperience()" in app_tsx
+    assert "usePipelineBoard()" in app_tsx
+
+
+def test_pipeline_surface_uses_experience_metadata_without_recipe_id(tmp_path: Path) -> None:
+    blueprint = _blueprint_from_prompt("I want to manage job applications")
+    experience = blueprint["future_extensions"]["experience"]
+    blueprint["future_extensions"] = {
+        "features": ["assistant_refinement", "provider_imports"],
+        "experience": experience,
+    }
+    app_model, app_tsx = _generate_blueprint(tmp_path, blueprint)
+
+    assert app_model["recipe"] == {}
+    assert app_model["experience"]["experience_id"] == "pipeline_board"
+    assert app_model["experience"]["primitive_id"] == "pipeline_board"
+    assert '"experience_id": "pipeline_board"' in app_tsx
+    assert "if (usePipelineBoard()) return 'Move work through stages'" in app_tsx
+    assert "if (usePipelineBoard()) return 'Track active cards across stages" in app_tsx
+    assert "isPrimaryActive && useBoardWorkspace() ? <BoardWorkspace" in app_tsx
+    assert "Pipeline stages" in app_tsx
+    assert "data-ui-layout=\"board_by_relation\"" in app_tsx
+
+
+def test_pipeline_surface_keeps_no_experience_recipe_fallback(tmp_path: Path) -> None:
+    blueprint = _blueprint_from_prompt("I want to manage job applications")
+    blueprint["future_extensions"].pop("experience", None)
+    app_model, app_tsx = _generate_blueprint(tmp_path, blueprint)
+
+    assert app_model["recipe"]["recipe_id"] == "pipeline_kanban"
+    assert app_model["experience"] == {}
+    assert '"experience_id": "pipeline_board"' not in app_tsx
+    assert "const usePipelineBoard = (): boolean => isPipelineBoardExperience() || (!hasExperienceMetadata() && (recipeId() === 'pipeline_kanban' || isRelationBoardLayout()))" in app_tsx
+    assert "Move work through stages" in app_tsx
+    assert "Pipeline stages" in app_tsx
 
 
 def test_client_session_recipe_surface_has_sessions_clients_payments_copy(tmp_path: Path) -> None:
@@ -167,5 +203,7 @@ def test_generic_dashboard_surface_stays_generic_and_safe(tmp_path: Path) -> Non
     assert '"experience": {' in app_tsx
     assert '"experience_id": "client_workspace"' not in app_tsx
     assert "const useClientWorkspace = (): boolean => isClientWorkspaceExperience() || (!hasExperienceMetadata() && recipeId() === 'client_session_manager')" in app_tsx
+    assert '"experience_id": "pipeline_board"' not in app_tsx
+    assert "if (usePipelineBoard()) return 'Move work through stages'" in app_tsx
     assert "recipeHighlightCards" in app_tsx
     assert "Example item" not in app_tsx

@@ -33,6 +33,8 @@ def _generate_pipeline_app(tmp_path: Path) -> tuple[dict, str]:
 def test_generated_pipeline_app_model_carries_board_by_relation_layout(tmp_path):
     app_model, _ = _generate_pipeline_app(tmp_path)
     ui = app_model["ui"]
+    assert app_model["experience"]["experience_id"] == "pipeline_board"
+    assert app_model["experience"]["primitive_id"] == "pipeline_board"
     assert ui["composition"] == "board_workspace"
     assert ui["focus"]["primary_entity"] == "card"
     assert ui["focus"]["group_by"] == "stage"
@@ -50,6 +52,8 @@ def test_generated_pipeline_seed_data_distributes_cards_across_stages(tmp_path):
 def test_generated_pipeline_react_contains_board_by_relation_render_path(tmp_path):
     _, app_tsx = _generate_pipeline_app(tmp_path)
     # The new layout branch and its guards must be present.
+    assert '"experience_id": "pipeline_board"' in app_tsx
+    assert "const usePipelineBoard = (): boolean =>" in app_tsx
     assert "board_by_relation" in app_tsx
     assert "No stages yet" in app_tsx or "to see lanes" in app_tsx
     # asRows guards must still wrap row reads inside the new branch.

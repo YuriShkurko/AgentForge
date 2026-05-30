@@ -566,7 +566,7 @@ def test_dispatch_renders_focused_surface_when_not_primary(tmp_path):
     generate(vendor, out)
     app = (out / "frontend/src/App.tsx").read_text()
     assert "function FocusedSurface(" in app
-    assert "isPrimaryActive && model.ui.composition === 'board_workspace'" in app
+    assert "isPrimaryActive && useBoardWorkspace()" in app
     assert "isPrimaryActive && model.ui.composition === 'register_table'" in app
     assert "<FocusedSurface" in app
     assert 'data-ui-layout="composition-focused"' in app
