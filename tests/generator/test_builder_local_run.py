@@ -277,6 +277,93 @@ def test_frontend_port_held_by_orphan_builder_process_is_reclaimed(tmp_path, mon
     assert terminated == [4496]
 
 
+def test_backend_port_held_by_orphan_builder_process_is_reclaimed(tmp_path, monkeypatch):
+    paths = local_run.safe_run_paths("run-backreclaim1", repo_root=tmp_path)
+    paths.app_dir.mkdir(parents=True)
+    (paths.app_dir / "Makefile").write_text("run-backend:\n\t@echo backend\n", encoding="utf-8")
+    terminated = []
+    monkeypatch.setattr(local_run, "_tcp_port_available", lambda host, port: True)
+    monkeypatch.setattr(local_run, "_listening_pids", lambda port: {4497})
+    monkeypatch.setattr(local_run, "_is_builder_run_process", lambda pid: True)
+    monkeypatch.setattr(local_run, "_terminate_pid_tree", lambda pid: terminated.append(pid))
+    monkeypatch.setattr(local_run, "_popen_allowlisted_service", lambda command, cwd: FakeProc(pid=6202))
+    monkeypatch.setattr(local_run, "_url_available", lambda url, timeout: True)
+
+    result = local_run.start_generated_app_service("run-backreclaim1", "backend", repo_root=tmp_path)
+
+    assert result["status"] == "running"
+    assert terminated == [4497]
+
+
+def test_backend_port_held_by_generated_backend_child_is_reclaimed(tmp_path, monkeypatch):
+    paths = local_run.safe_run_paths("run-backchild1", repo_root=tmp_path)
+    paths.app_dir.mkdir(parents=True)
+    (paths.app_dir / "Makefile").write_text("run-backend:\n\t@echo backend\n", encoding="utf-8")
+    terminated = []
+    monkeypatch.setattr(local_run, "_tcp_port_available", lambda host, port: True)
+    monkeypatch.setattr(local_run, "_listening_pids", lambda port: {4498})
+    monkeypatch.setattr(local_run, "_is_builder_run_process", lambda pid: False)
+    monkeypatch.setattr(local_run, "_is_generated_backend_listener", lambda pid, spec: True)
+    monkeypatch.setattr(local_run, "_terminate_pid_tree", lambda pid: terminated.append(pid))
+    monkeypatch.setattr(local_run, "_popen_allowlisted_service", lambda command, cwd: FakeProc(pid=6203))
+    monkeypatch.setattr(local_run, "_url_available", lambda url, timeout: True)
+
+    result = local_run.start_generated_app_service("run-backchild1", "backend", repo_root=tmp_path)
+
+    assert result["status"] == "running"
+    assert terminated == [4498]
+
+
+def test_backend_port_reported_as_dead_reloader_reclaims_generated_child(tmp_path, monkeypatch):
+    paths = local_run.safe_run_paths("run-backchild2", repo_root=tmp_path)
+    paths.app_dir.mkdir(parents=True)
+    (paths.app_dir / "Makefile").write_text("run-backend:\n\t@echo backend\n", encoding="utf-8")
+    terminated = []
+    monkeypatch.setattr(local_run, "_tcp_port_available", lambda host, port: True)
+    monkeypatch.setattr(local_run, "_listening_pids", lambda port: {3652})
+    monkeypatch.setattr(local_run, "_child_pids", lambda pid: [17688])
+    monkeypatch.setattr(local_run, "_is_builder_run_process", lambda pid: False)
+    monkeypatch.setattr(local_run, "_is_generated_backend_listener", lambda pid, spec: pid == 17688)
+    monkeypatch.setattr(local_run, "_terminate_pid_tree", lambda pid: terminated.append(pid))
+    monkeypatch.setattr(local_run, "_popen_allowlisted_service", lambda command, cwd: FakeProc(pid=6204))
+    monkeypatch.setattr(local_run, "_url_available", lambda url, timeout: True)
+
+    result = local_run.start_generated_app_service("run-backchild2", "backend", repo_root=tmp_path)
+
+    assert result["status"] == "running"
+    assert terminated == [17688]
+
+
+def test_reset_generated_app_services_stops_registered_processes_and_reclaims_ports(tmp_path, monkeypatch):
+    paths = local_run.safe_run_paths("run-reset11", repo_root=tmp_path)
+    paths.app_dir.mkdir(parents=True)
+    proc = FakeProc(pid=8100)
+    local_run._PROCESS_REGISTRY[local_run._process_key(paths, "backend")] = local_run.ManagedProcess(
+        run_id=paths.run_id,
+        service="backend",
+        command=["make", "run-backend"],
+        cwd=paths.app_dir,
+        url="http://127.0.0.1:8000/docs",
+        proc=proc,
+    )
+    stopped = []
+    terminated = []
+    monkeypatch.setattr(local_run, "_terminate_process_tree", lambda target: (stopped.append(target.pid), setattr(target, "returncode", -15)))
+    monkeypatch.setattr(local_run, "_listening_pids", lambda port: {8200 + port})
+    monkeypatch.setattr(local_run, "_is_builder_run_process", lambda pid: True)
+    monkeypatch.setattr(local_run, "_terminate_pid_tree", lambda pid: terminated.append(pid))
+
+    result = local_run.reset_generated_app_services(repo_root=tmp_path)
+
+    assert result["ok"] is True
+    assert result["status"] == "stopped"
+    assert result["stopped"] == [{"run_id": "run-reset11", "service": "backend", "pid": 8100}]
+    assert result["reclaimed_pids"] == [13373, 16200]
+    assert stopped == [8100]
+    assert sorted(terminated) == [13373, 16200]
+    assert local_run._process_key(paths, "backend") not in local_run._PROCESS_REGISTRY
+
+
 def test_frontend_process_exit_before_health_check_reports_failed(tmp_path, monkeypatch):
     paths = local_run.safe_run_paths("run-exit123", repo_root=tmp_path)
     paths.app_dir.mkdir(parents=True)
@@ -409,6 +496,7 @@ def test_server_local_run_endpoints_round_trip(tmp_path, monkeypatch):
     monkeypatch.setattr(planner_server, "validate_generated_app", lambda run_id: local_run.validate_generated_app(run_id, repo_root=tmp_path))
     monkeypatch.setattr(planner_server, "start_generated_app_service", lambda run_id, service: {"ok": True, "step": "start-service", "status": "running", "service": service, "run_id": run_id, "url": "http://127.0.0.1:8000", "commands": ["make run-backend"], "stdout": "", "stderr": "", "errors": []})
     monkeypatch.setattr(planner_server, "stop_generated_app_service", lambda run_id, service: {"ok": True, "step": "stop-service", "status": "stopped", "service": service, "run_id": run_id, "url": "http://127.0.0.1:8000", "commands": ["make run-backend"], "stdout": "", "stderr": "", "errors": []})
+    monkeypatch.setattr(planner_server, "reset_generated_app_services", lambda: {"ok": True, "step": "reset-session", "status": "stopped", "stopped": [], "reclaimed_pids": [], "errors": []})
     server = PlannerServer(("127.0.0.1", 0), tmp_path)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
@@ -420,6 +508,7 @@ def test_server_local_run_endpoints_round_trip(tmp_path, monkeypatch):
         checked = _post_json(base + "/api/planner/local-run/validate-app", {"run_id": generated["run_id"]})
         started = _post_json(base + "/api/planner/local-run/start-service", {"run_id": generated["run_id"], "service": "backend"})
         stopped = _post_json(base + "/api/planner/local-run/stop-service", {"run_id": generated["run_id"], "service": "backend"})
+        reset = _post_json(base + "/api/planner/local-run/reset-session", {})
         traversal = _post_json(base + "/api/planner/local-run/validate-app", {"run_id": "../escape"}, expect_status=400)
 
         assert valid["ok"] is True
@@ -427,6 +516,7 @@ def test_server_local_run_endpoints_round_trip(tmp_path, monkeypatch):
         assert checked["ok"] is True
         assert started["status"] == "running"
         assert stopped["status"] == "stopped"
+        assert reset["status"] == "stopped"
         assert "invalid local run id" in json.dumps(traversal)
     finally:
         server.shutdown()

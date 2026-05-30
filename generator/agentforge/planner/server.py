@@ -16,6 +16,7 @@ from agentforge.planner.assistant import BuilderAssistant
 from agentforge.planner.local_run import (
     generate_local_app,
     get_generated_app_service_status,
+    reset_generated_app_services,
     start_generated_app_service,
     stop_generated_app_service,
     validate_blueprint_for_local_run,
@@ -135,6 +136,8 @@ class PlannerRequestHandler(SimpleHTTPRequestHandler):
                 self._write_json(stop_generated_app_service(str(payload.get("run_id") or ""), str(payload.get("service") or "")))
             elif self.path == "/api/planner/local-run/service-status":
                 self._write_json(get_generated_app_service_status(str(payload.get("run_id") or ""), str(payload.get("service") or "")))
+            elif self.path == "/api/planner/local-run/reset-session":
+                self._write_json(reset_generated_app_services())
             else:
                 self._write_json({"error": "unknown planner endpoint"}, HTTPStatus.NOT_FOUND)
                 return

@@ -367,7 +367,26 @@ function restoreSessionFromStorage() {
   }
 }
 
-function resetBuilderSession({ reload = true } = {}) {
+async function resetLocalRunServicesForSessionReset() {
+  if (!plannerAvailable) return;
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), 2500);
+  try {
+    await fetch(`${plannerApi}/local-run/reset-session`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ run_id: localRunState.runId }),
+      signal: controller.signal,
+    });
+  } catch {
+    // Reset must still clear local UI state even if serve-builder is offline.
+  } finally {
+    window.clearTimeout(timeout);
+  }
+}
+
+async function resetBuilderSession({ reload = true } = {}) {
+  await resetLocalRunServicesForSessionReset();
   // Set the reset flag BEFORE clearing storage so the beforeunload flush
   // (triggered by the reload below) cannot re-write the snapshot we just
   // erased. Without this guard the page would reload back into the same
@@ -2397,11 +2416,11 @@ document.addEventListener("click", (event) => {
   setActiveStep(target.dataset.stepTarget);
 });
 
-resetSessionButton?.addEventListener("click", () => {
+resetSessionButton?.addEventListener("click", async () => {
   if (typeof window.confirm === "function") {
     if (!window.confirm("Reset Builder session? This clears the saved plan, run summary, and chat history in this browser.")) return;
   }
-  resetBuilderSession();
+  await resetBuilderSession();
 });
 copyButton.addEventListener("click", copyYaml);
 downloadButton.addEventListener("click", downloadYaml);

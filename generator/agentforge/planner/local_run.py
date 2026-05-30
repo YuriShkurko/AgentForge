@@ -7,6 +7,7 @@ from the browser.
 from __future__ import annotations
 
 import os
+import json
 import re
 import signal
 import socket
@@ -239,6 +240,32 @@ def get_generated_app_service_status(run_id: str, service: str, *, repo_root: Pa
     return _service_status(paths, service, spec, "service-status", managed, repo_root)
 
 
+def reset_generated_app_services(*, repo_root: Path | None = None) -> dict[str, Any]:
+    """Stop Builder-started generated app services and reclaim their fixed ports."""
+    root = builder_runs_root(repo_root).resolve()
+    stopped: list[dict[str, Any]] = []
+    reclaimed_pids: list[int] = []
+    with _PROCESS_LOCK:
+        for key, managed in list(_PROCESS_REGISTRY.items()):
+            managed_root, _run_id, _service = key
+            if managed_root != root:
+                continue
+            if _process_running(managed.proc):
+                _terminate_process_tree(managed.proc)
+            stopped.append({"run_id": managed.run_id, "service": managed.service, "pid": managed.proc.pid})
+            _PROCESS_REGISTRY.pop(key, None)
+        for service, spec in _SERVICE_SPECS.items():
+            reclaimed_pids.extend(_cleanup_builder_service_port(service, spec))
+    return {
+        "step": "reset-session",
+        "ok": True,
+        "status": "stopped",
+        "stopped": stopped,
+        "reclaimed_pids": sorted(set(reclaimed_pids)),
+        "errors": [],
+    }
+
+
 def _validate_app_error(paths: LocalRunPaths, repo_root: Path | None, message: str) -> dict[str, Any]:
     return {
         "step": "validate-app",
@@ -451,26 +478,61 @@ def _fixed_port_preflight_error(service: str, spec: dict[str, str]) -> str | Non
     listening_pids = _listening_pids(port)
     if not listening_pids and _tcp_port_available(host, port):
         return None
-    if service == "frontend" and listening_pids and all(_is_builder_run_process(pid) for pid in listening_pids):
+    if listening_pids and all(_has_reclaimable_service_pid(service, spec, pid) for pid in listening_pids):
         _cleanup_builder_service_port(service, spec)
         deadline = time.time() + 5.0
         while time.time() < deadline:
             if _tcp_port_available(host, port):
                 return None
             time.sleep(0.1)
-        return f"Frontend port {port} is still held by a previous Builder-started generated app. Stop it or restart serve-builder."
+        label = "Backend" if service == "backend" else "Frontend"
+        return f"{label} port {port} is still held by a previous Builder-started generated app. Stop it or restart serve-builder."
     label = "Backend" if service == "backend" else "Frontend"
     return f"{label} port {port} is already in use by another process. Stop it or restart serve-builder."
 
 
-def _cleanup_builder_service_port(service: str, spec: dict[str, str]) -> None:
+def _cleanup_builder_service_port(service: str, spec: dict[str, str]) -> list[int]:
     parsed = urllib.parse.urlparse(spec["url"])
     port = parsed.port
     if not port:
-        return
+        return []
+    terminated: list[int] = []
     for pid in _listening_pids(port):
-        if _is_builder_run_process(pid):
-            _terminate_pid_tree(pid)
+        candidates = [pid, *_child_pids(pid)]
+        for candidate in candidates:
+            if candidate in terminated:
+                continue
+            if _is_reclaimable_service_pid(service, spec, candidate):
+                _terminate_pid_tree(candidate)
+                terminated.append(candidate)
+    return terminated
+
+
+def _is_reclaimable_service_pid(service: str, spec: dict[str, str], pid: int) -> bool:
+    if _is_builder_run_process(pid):
+        return True
+    return service == "backend" and _is_generated_backend_listener(pid, spec)
+
+
+def _has_reclaimable_service_pid(service: str, spec: dict[str, str], pid: int) -> bool:
+    return any(_is_reclaimable_service_pid(service, spec, candidate) for candidate in [pid, *_child_pids(pid)])
+
+
+def _is_generated_backend_listener(pid: int, spec: dict[str, str]) -> bool:
+    command_line = _process_command_line(pid).lower()
+    if not any(marker in command_line for marker in ("uvicorn", "multiprocessing.spawn", "python")):
+        return False
+    parsed = urllib.parse.urlparse(spec["health_url"])
+    base = f"{parsed.scheme}://{parsed.netloc}"
+    try:
+        with urllib.request.urlopen(f"{base}/openapi.json", timeout=1.0) as response:
+            if not 200 <= response.status < 400:
+                return False
+            data = json.loads(response.read(200000).decode("utf-8", errors="replace"))
+    except (OSError, TimeoutError, urllib.error.URLError, json.JSONDecodeError):
+        return False
+    paths = data.get("paths") if isinstance(data, dict) else {}
+    return isinstance(paths, dict) and "/seed" in paths and "/health" in paths
 
 
 def _tcp_port_available(host: str, port: int) -> bool:
@@ -517,8 +579,94 @@ def _listening_pids(port: int) -> set[int]:
 
 
 def _is_builder_run_process(pid: int) -> bool:
-    command_line = _process_command_line(pid).replace("\\", "/").lower()
-    return "/.tmp/builder-runs/" in command_line and ("vite" in command_line or "run-frontend" in command_line or "node" in command_line)
+    command_lines = [_process_command_line(pid), *_ancestor_command_lines(pid)]
+    normalized = " ".join(command_lines).replace("\\", "/").lower()
+    if "/.tmp/builder-runs/" not in normalized:
+        return False
+    service_markers = ("vite", "run-frontend", "node", "uvicorn", "run-backend", "python")
+    return any(marker in normalized for marker in service_markers)
+
+
+def _ancestor_command_lines(pid: int, *, max_depth: int = 6) -> list[str]:
+    lines: list[str] = []
+    current = pid
+    seen: set[int] = set()
+    for _ in range(max_depth):
+        parent = _parent_pid(current)
+        if parent is None or parent <= 0 or parent in seen:
+            break
+        seen.add(parent)
+        lines.append(_process_command_line(parent))
+        current = parent
+    return lines
+
+
+def _parent_pid(pid: int) -> int | None:
+    if os.name == "nt":
+        try:
+            result = subprocess.run(
+                ["powershell", "-NoProfile", "-Command", f"(Get-CimInstance Win32_Process -Filter 'ProcessId={pid}').ParentProcessId"],
+                text=True,
+                capture_output=True,
+                timeout=5,
+                check=False,
+            )
+            text = result.stdout.strip()
+            return int(text) if text else None
+        except Exception:
+            return None
+    try:
+        status = Path(f"/proc/{pid}/status").read_text(encoding="utf-8", errors="replace")
+        match = re.search(r"^PPid:\s*(\d+)", status, flags=re.MULTILINE)
+        return int(match.group(1)) if match else None
+    except Exception:
+        return None
+
+
+def _child_pids(pid: int, *, max_depth: int = 3) -> list[int]:
+    children: list[int] = []
+    frontier = [pid]
+    seen = {pid}
+    for _ in range(max_depth):
+        next_frontier: list[int] = []
+        for current in frontier:
+            direct = _direct_child_pids(current)
+            for child in direct:
+                if child in seen:
+                    continue
+                seen.add(child)
+                children.append(child)
+                next_frontier.append(child)
+        if not next_frontier:
+            break
+        frontier = next_frontier
+    return children
+
+
+def _direct_child_pids(pid: int) -> list[int]:
+    if os.name == "nt":
+        try:
+            result = subprocess.run(
+                ["powershell", "-NoProfile", "-Command", f"Get-CimInstance Win32_Process -Filter 'ParentProcessId={pid}' | Select-Object -ExpandProperty ProcessId"],
+                text=True,
+                capture_output=True,
+                timeout=5,
+                check=False,
+            )
+            return [int(line.strip()) for line in result.stdout.splitlines() if line.strip().isdigit()]
+        except Exception:
+            return []
+    try:
+        result = subprocess.run(["pgrep", "-P", str(pid)], text=True, capture_output=True, timeout=5, check=False)
+    except Exception:
+        return []
+    children: list[int] = []
+    for line in result.stdout.splitlines():
+        try:
+            children.append(int(line.strip()))
+        except ValueError:
+            pass
+    return children
 
 
 def _process_command_line(pid: int) -> str:
@@ -685,6 +833,7 @@ __all__ = [
     "get_generated_app_service_status",
     "generate_local_app",
     "make_run_id",
+    "reset_generated_app_services",
     "safe_run_paths",
     "start_generated_app_service",
     "stop_generated_app_service",

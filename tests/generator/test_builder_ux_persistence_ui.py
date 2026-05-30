@@ -95,7 +95,9 @@ def test_reset_session_button_present_and_wired():
     reset_start = script.find("function resetBuilderSession")
     assert reset_start >= 0
     # Search a generous window after the signature for the storage clear call.
-    assert "safeClearSession()" in script[reset_start:reset_start + 800]
+    assert "safeClearSession()" in script[reset_start:reset_start + 1200]
+    assert "resetLocalRunServicesForSessionReset" in script
+    assert 'local-run/reset-session' in script
 
 
 def test_beforeunload_flushes_session_to_storage():
