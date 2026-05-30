@@ -143,10 +143,31 @@ def _metadata(pack: DomainPack, model: ModelDrivenApp) -> dict[str, Any]:
 
 
 def _frontend_metadata(meta: dict[str, Any]) -> dict[str, Any]:
-    """Keep read-only planning metadata out of generated React until consumed."""
+    """Return the safe metadata subset embedded in generated React."""
     frontend_meta = dict(meta)
-    frontend_meta.pop("experience", None)
+    frontend_meta["experience"] = _frontend_experience_metadata(meta.get("experience"))
     return frontend_meta
+
+
+def _frontend_experience_metadata(experience: Any) -> dict[str, Any]:
+    """Keep frontend experience metadata deterministic and free of secrets."""
+    if not isinstance(experience, dict):
+        return {}
+    primitive = experience.get("primitive")
+    primitive_payload: dict[str, Any] = {}
+    if isinstance(primitive, dict):
+        primitive_payload = {
+            "primitive_id": str(primitive.get("primitive_id") or ""),
+            "display_name": str(primitive.get("display_name") or ""),
+            "fallback_behavior": str(primitive.get("fallback_behavior") or ""),
+        }
+    return {
+        "experience_id": str(experience.get("experience_id") or ""),
+        "primitive_id": str(experience.get("primitive_id") or ""),
+        "display_name": str(experience.get("display_name") or ""),
+        "fallback_behavior": str(experience.get("fallback_behavior") or ""),
+        "primitive": primitive_payload,
+    }
 
 
 def _backend_database() -> str:
@@ -1575,7 +1596,9 @@ type ImportPreview = {{ import_id: string; entity: string; format: string; total
 type ImportCommit = {{ import_id: string; status: string; total_rows: number; valid_rows: number; invalid_rows: number; created_count: number; updated_count: number; skipped_count: number; error_count: number; errors: {{ row: number; errors: string[] }}[]; run_id: number; provider_id?: string }};
 type ProviderConfig = {{ id: string; label: string; type: string; mode: string; targetImport: string; env: {{ token?: string; repo?: string; url?: string }}; source: {{ state?: string; labels?: string[]; records_path?: string; auth?: string }} }};
 type ProviderStatus = {{ id: string; label: string; type: string; mode: string; target_import: string; target_entity: string; env_status: {{ configured: boolean; missing: string[]; required: string[] }}; source: {{ state?: string; labels?: string[] }} }};
-type AppModel = {{ app: {{ name: string; displayName: string; description: string }}; recipe?: Record<string, unknown>; entities: Entity[]; actions: Action[]; pages?: unknown[]; seedData?: unknown; imports: ImportConfig[]; providers: ProviderConfig[]; ui: {{ composition: 'standard' | 'board_workspace' | 'register_table'; recipe: 'standard' | 'workspace_board' | 'executive_register' | 'ops_console'; style: {{ accent: string; density: string; layout: string }}; focus: Focus; dashboard: {{ title: string; headline?: string; summary?: string; primary_entity?: string; cards: Card[] }}; entities?: unknown }} }};
+type ExperiencePrimitiveMetadata = {{ primitive_id?: string; display_name?: string; fallback_behavior?: string }};
+type ExperienceMetadata = {{ experience_id?: string; primitive_id?: string; display_name?: string; fallback_behavior?: string; primitive?: ExperiencePrimitiveMetadata }};
+type AppModel = {{ app: {{ name: string; displayName: string; description: string }}; recipe?: Record<string, unknown>; experience?: ExperienceMetadata; entities: Entity[]; actions: Action[]; pages?: unknown[]; seedData?: unknown; imports: ImportConfig[]; providers: ProviderConfig[]; ui: {{ composition: 'standard' | 'board_workspace' | 'register_table'; recipe: 'standard' | 'workspace_board' | 'executive_register' | 'ops_console'; style: {{ accent: string; density: string; layout: string }}; focus: Focus; dashboard: {{ title: string; headline?: string; summary?: string; primary_entity?: string; cards: Card[] }}; entities?: unknown }} }};
 type Row = Record<string, string | number | boolean | null> & {{ id?: number }};
 type RowMap = Record<string, Row[]>;
 const model: AppModel = {meta_json};
@@ -1595,10 +1618,15 @@ const uniqueById = (rows: Row[]): Row[] => {{ const seen = new Set<number>(); co
 const asRows = (value: unknown): Row[] => (Array.isArray(value) ? (value as Row[]) : []);
 const appName = (): string => model.app.displayName || model.app.name || 'AgentForge App';
 const recipeId = (): string => String(model.recipe?.recipe_id || '');
+const experienceId = (): string => String(model.experience?.experience_id || '');
+const primitiveId = (): string => String(model.experience?.primitive_id || model.experience?.primitive?.primitive_id || '');
+const hasExperienceMetadata = (): boolean => Boolean(experienceId() || primitiveId());
+const isClientWorkspaceExperience = (): boolean => experienceId() === 'client_workspace' || primitiveId() === 'client_workspace';
+const useClientWorkspace = (): boolean => isClientWorkspaceExperience() || (!hasExperienceMetadata() && recipeId() === 'client_session_manager');
 const clientWorkHeroHeadline = (): string => {{ const text = `${{model.app.displayName}} ${{model.app.description}} ${{model.entities.map((entity) => entity.name).join(' ')}}`.toLowerCase(); if (/freelance|designer|project|invoice|work history/.test(text)) return 'Manage clients, work, and payments'; if (/tutor|student|lesson|homework|math/.test(text)) return 'Manage students, sessions, and payments'; if (/coach|goal|training/.test(text)) return 'Manage clients, sessions, and goals'; return 'Manage clients, work, and payments'; }};
-const heroHeadline = (): string => {{ const recipe = recipeId(); if (recipe === 'client_session_manager') return clientWorkHeroHeadline(); if (model.ui.dashboard.headline) return model.ui.dashboard.headline; if (recipe === 'pipeline_kanban') return 'Move work through stages'; if (recipe === 'approval_review_queue') return 'Review the queue and record decisions'; if (recipe === 'inventory_asset_tracker') return 'Track assets, stock, and upkeep'; return appName(); }};
-const heroSummary = (): string => {{ const recipe = recipeId(); if (recipe === 'client_session_manager') return 'Open a client, review related work or sessions, and keep payment status visible without leaving the workspace.'; if (model.ui.dashboard.summary) return model.ui.dashboard.summary; if (recipe === 'pipeline_kanban') return 'Track active cards across stages, spot next follow-ups, and keep applications or deals moving.'; if (recipe === 'approval_review_queue') return 'Triage items needing review, use claim/approve/reject actions, and keep decision history visible.'; if (recipe === 'inventory_asset_tracker') return 'Monitor assets or inventory by status, quantity, location, vendor, and maintenance or reorder needs.'; return model.app.description || ''; }};
-const emptyForList = (entity: Entity): string => {{ const singular = (entity.labelSingular || 'record').toLowerCase(); const plural = (entity.labelPlural || `${{singular}}s`).toLowerCase(); const recipe = recipeId(); if (recipe === 'client_session_manager' && ['client','session','payment'].includes(entity.name)) return `No ${{plural}} yet — load seed data or create the first ${{singular}} to start the session workflow.`; if (recipe === 'approval_review_queue' && ['item','decision','reviewer'].includes(entity.name)) return `No ${{plural}} yet — load seed data or create a review item to start the queue.`; if (recipe === 'inventory_asset_tracker' && ['asset','category','location','vendor','maintenance_task'].includes(entity.name)) return `No ${{plural}} yet — load seed data or create the first ${{singular}} to start tracking assets, stock, and maintenance.`; return `No ${{plural}} yet — load seed data or create your first ${{singular}}.`; }};
+const heroHeadline = (): string => {{ const recipe = recipeId(); if (useClientWorkspace()) return clientWorkHeroHeadline(); if (model.ui.dashboard.headline) return model.ui.dashboard.headline; if (recipe === 'pipeline_kanban') return 'Move work through stages'; if (recipe === 'approval_review_queue') return 'Review the queue and record decisions'; if (recipe === 'inventory_asset_tracker') return 'Track assets, stock, and upkeep'; return appName(); }};
+const heroSummary = (): string => {{ const recipe = recipeId(); if (useClientWorkspace()) return 'Open a client, review related work or sessions, and keep payment status visible without leaving the workspace.'; if (model.ui.dashboard.summary) return model.ui.dashboard.summary; if (recipe === 'pipeline_kanban') return 'Track active cards across stages, spot next follow-ups, and keep applications or deals moving.'; if (recipe === 'approval_review_queue') return 'Triage items needing review, use claim/approve/reject actions, and keep decision history visible.'; if (recipe === 'inventory_asset_tracker') return 'Monitor assets or inventory by status, quantity, location, vendor, and maintenance or reorder needs.'; return model.app.description || ''; }};
+const emptyForList = (entity: Entity): string => {{ const singular = (entity.labelSingular || 'record').toLowerCase(); const plural = (entity.labelPlural || `${{singular}}s`).toLowerCase(); const recipe = recipeId(); if (useClientWorkspace() && ['client','session','payment'].includes(entity.name)) return `No ${{plural}} yet — load seed data or create the first ${{singular}} to start the session workflow.`; if (recipe === 'approval_review_queue' && ['item','decision','reviewer'].includes(entity.name)) return `No ${{plural}} yet — load seed data or create a review item to start the queue.`; if (recipe === 'inventory_asset_tracker' && ['asset','category','location','vendor','maintenance_task'].includes(entity.name)) return `No ${{plural}} yet — load seed data or create the first ${{singular}} to start tracking assets, stock, and maintenance.`; return `No ${{plural}} yet — load seed data or create your first ${{singular}}.`; }};
 const emptyForRelated = (entity: Entity, parent?: Entity): string => {{ const plural = (entity.labelPlural || 'records').toLowerCase(); if (parent && parent.labelSingular) return `No ${{plural}} yet — add one after you create a ${{parent.labelSingular.toLowerCase()}}.`; return `No ${{plural}} yet — they'll appear here once you add some.`; }};
 const emptyForLane = (entity: Entity): string => {{ const singular = (entity.labelSingular || 'record').toLowerCase(); if (recipeId() === 'pipeline_kanban') return `No ${{singular}}s in this stage yet — move work through stages by creating or editing a ${{singular}}.`; if (recipeId() === 'approval_review_queue') return `No ${{singular}}s in this queue state yet.`; if (recipeId() === 'inventory_asset_tracker') return `No ${{singular}}s in this asset status yet — add stock, equipment, or maintenance records to see the workspace fill in.`; return `No ${{singular}}s in this lane yet.`; }};
 
@@ -1624,7 +1652,7 @@ export default function App() {{
   const providersMode = active === '__providers__';
   return <main className={{shellClass}} data-composition={{model.ui.composition}} data-recipe={{model.ui.recipe}} data-active-entity={{active}} data-primary-active={{isPrimaryActive ? 'true' : 'false'}} data-imports-active={{importsMode ? 'true' : 'false'}} data-providers-active={{providersMode ? 'true' : 'false'}}>
     <Sidebar active={{active}} setActive={{setActive}} seed={{seed}} />
-    {{providersMode ? <ProviderPanel reload={{loadAll}} /> : importsMode ? <ImportPanel reload={{loadAll}} /> : model.ui.composition === 'standard' ? <StandardLayout {{...context}} /> : isPrimaryActive && recipeId() === 'client_session_manager' ? <ClientWorkWorkspace {{...context}} /> : isPrimaryActive && model.ui.composition === 'board_workspace' ? <BoardWorkspace {{...context}} /> : isPrimaryActive && model.ui.composition === 'register_table' ? <RegisterTable {{...context}} /> : <FocusedSurface {{...context}} />}}
+    {{providersMode ? <ProviderPanel reload={{loadAll}} /> : importsMode ? <ImportPanel reload={{loadAll}} /> : model.ui.composition === 'standard' ? <StandardLayout {{...context}} /> : isPrimaryActive && useClientWorkspace() ? <ClientWorkWorkspace {{...context}} /> : isPrimaryActive && model.ui.composition === 'board_workspace' ? <BoardWorkspace {{...context}} /> : isPrimaryActive && model.ui.composition === 'register_table' ? <RegisterTable {{...context}} /> : <FocusedSurface {{...context}} />}}
   </main>;
 }}
 
@@ -1704,7 +1732,7 @@ function recipeHighlightCards(rowsByEntity: RowMap): JSX.Element[] {{
     const withDue = cards.filter((row) => String(row.due_on ?? '').trim()).length;
     return [<article className="stat-card recipe-highlight" data-ui-surface="recipe-highlight" key="pipeline-stages"><p>Pipeline stages</p><strong>{{stages.length}}</strong><small>Move work through stages</small></article>, <article className="stat-card recipe-highlight" data-ui-surface="recipe-highlight" key="pipeline-active"><p>Active cards</p><strong>{{cards.length}}</strong><small>Applications, deals, jobs, or tickets</small></article>, <article className="stat-card recipe-highlight" data-ui-surface="recipe-highlight" key="pipeline-followups"><p>Next follow-ups</p><strong>{{withDue}}</strong><small>Cards with due dates</small></article>];
   }}
-  if (recipe === 'client_session_manager') {{
+  if (useClientWorkspace()) {{
     const vocabulary = clientWorkVocabulary();
     const clientEntity = model.entities.find((entity) => ['client','student','customer'].includes(entity.name));
     const workEntity = model.entities.find((entity) => ['session','lesson_session','project','work_history'].includes(entity.name)) || findEntity(model.ui.focus.primary_entity);

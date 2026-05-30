@@ -13,15 +13,23 @@ from agentforge.pack import DomainPack
 from agentforge.planner.assistant import BuilderAssistant
 
 
-def _generate_from_prompt(tmp_path: Path, prompt: str) -> tuple[dict, str]:
+def _blueprint_from_prompt(prompt: str) -> dict:
     result = BuilderAssistant().start(prompt)
     assert result["status"] == "proposed", result
-    pack = DomainPack.model_validate(result["proposal"]["blueprint"])
+    return result["proposal"]["blueprint"]
+
+
+def _generate_blueprint(tmp_path: Path, blueprint: dict) -> tuple[dict, str]:
+    pack = DomainPack.model_validate(blueprint)
     out = tmp_path / pack.name
     generate(pack, out)
     app_model = json.loads((out / "app-model.json").read_text(encoding="utf-8"))
     app_tsx = (out / "frontend/src/App.tsx").read_text(encoding="utf-8")
     return app_model, app_tsx
+
+
+def _generate_from_prompt(tmp_path: Path, prompt: str) -> tuple[dict, str]:
+    return _generate_blueprint(tmp_path, _blueprint_from_prompt(prompt))
 
 
 def test_pipeline_recipe_surface_emphasizes_board_workflow(tmp_path: Path) -> None:
@@ -35,7 +43,7 @@ def test_pipeline_recipe_surface_emphasizes_board_workflow(tmp_path: Path) -> No
     assert "Pipeline stages" in app_tsx
     assert "data-ui-layout=\"board_by_relation\"" in app_tsx
     assert "asRows(rowsByEntity[targetEntity.name])" in app_tsx
-    assert "\"experience\"" not in app_tsx
+    assert '"experience_id": "pipeline_board"' in app_tsx
 
 
 def test_client_session_recipe_surface_has_sessions_clients_payments_copy(tmp_path: Path) -> None:
@@ -45,6 +53,11 @@ def test_client_session_recipe_surface_has_sessions_clients_payments_copy(tmp_pa
     )
     assert app_model["recipe"]["recipe_id"] == "client_session_manager"
     assert app_model["experience"]["experience_id"] == "client_workspace"
+    assert app_model["experience"]["primitive_id"] == "client_workspace"
+    assert '"experience_id": "client_workspace"' in app_tsx
+    assert '"primitive_id": "client_workspace"' in app_tsx
+    assert "isClientWorkspaceExperience()" in app_tsx
+    assert "recipeId() === 'client_session_manager'" in app_tsx
     assert [entity["name"] for entity in app_model["entities"]][:3] == ["client", "session", "payment"]
     assert "Manage students, sessions, and payments" in app_tsx
     assert "client-workspace" in app_tsx
@@ -79,6 +92,41 @@ def test_client_session_recipe_surface_keeps_non_array_guards(tmp_path: Path) ->
     assert "Array.isArray(value)" in app_tsx
     assert "asRows(rowsByEntity[field.targetEntity])" in app_tsx
     assert "asRows(ctx.rowsByEntity[clientEntity.name])" in app_tsx
+
+
+def test_client_workspace_surface_uses_experience_metadata_without_recipe_id(tmp_path: Path) -> None:
+    blueprint = _blueprint_from_prompt(
+        "i am a tutor scheduling student sessions and logging payments",
+    )
+    experience = blueprint["future_extensions"]["experience"]
+    blueprint["future_extensions"] = {
+        "features": ["assistant_refinement", "provider_imports"],
+        "experience": experience,
+    }
+    app_model, app_tsx = _generate_blueprint(tmp_path, blueprint)
+
+    assert app_model["recipe"] == {}
+    assert app_model["experience"]["experience_id"] == "client_workspace"
+    assert app_model["experience"]["primitive_id"] == "client_workspace"
+    assert '"experience_id": "client_workspace"' in app_tsx
+    assert "const recipeId = (): string => String(model.recipe?.recipe_id || '')" in app_tsx
+    assert "isPrimaryActive && useClientWorkspace() ? <ClientWorkWorkspace" in app_tsx
+    assert "if (useClientWorkspace()) return clientWorkHeroHeadline()" in app_tsx
+
+
+def test_client_workspace_surface_keeps_no_experience_recipe_fallback(tmp_path: Path) -> None:
+    blueprint = _blueprint_from_prompt(
+        "i am a tutor scheduling student sessions and logging payments",
+    )
+    blueprint["future_extensions"].pop("experience", None)
+    app_model, app_tsx = _generate_blueprint(tmp_path, blueprint)
+
+    assert app_model["recipe"]["recipe_id"] == "client_session_manager"
+    assert app_model["experience"] == {}
+    assert '"experience": {' in app_tsx
+    assert '"experience_id": "client_workspace"' not in app_tsx
+    assert "const useClientWorkspace = (): boolean => isClientWorkspaceExperience() || (!hasExperienceMetadata() && recipeId() === 'client_session_manager')" in app_tsx
+    assert "Manage students, sessions, and payments" in app_tsx
 
 
 def test_approval_review_recipe_surface_has_queue_decision_copy(tmp_path: Path) -> None:
@@ -116,5 +164,8 @@ def test_generic_dashboard_surface_stays_generic_and_safe(tmp_path: Path) -> Non
     assert app_model.get("experience") == {}
     assert app_model["ui"]["composition"] == "standard"
     assert "const heroHeadline" in app_tsx
+    assert '"experience": {' in app_tsx
+    assert '"experience_id": "client_workspace"' not in app_tsx
+    assert "const useClientWorkspace = (): boolean => isClientWorkspaceExperience() || (!hasExperienceMetadata() && recipeId() === 'client_session_manager')" in app_tsx
     assert "recipeHighlightCards" in app_tsx
     assert "Example item" not in app_tsx
