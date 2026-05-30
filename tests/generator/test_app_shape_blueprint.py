@@ -27,6 +27,7 @@ from agentforge.recipes import (
     APPROVAL_REVIEW_QUEUE,
     CLIENT_SESSION_MANAGER,
     GENERIC_DASHBOARD,
+    INVENTORY_ASSET_TRACKER,
     PIPELINE_KANBAN,
     AppRecipe,
 )
@@ -147,6 +148,33 @@ def test_approval_review_queue_ui_groups_item_by_status():
     assert ui["focus"]["group_by"] == "status"
 
 
+# --- inventory_asset_tracker -------------------------------------------------
+
+
+def test_inventory_asset_tracker_compiles_operational_entities():
+    spec = _spec(INVENTORY_ASSET_TRACKER, "I need to track equipment, vendors, and maintenance")
+    assert spec["primary"] == "asset"
+    assert _entity_names(spec) == {"asset", "category", "location", "vendor", "maintenance_task"}
+
+
+def test_inventory_asset_tracker_maps_status_workflows_to_actions():
+    spec = _spec(INVENTORY_ASSET_TRACKER)
+    actions = _action_names(spec)
+    assert {"flag_reorder_needed", "send_to_maintenance", "mark_asset_active", "complete_maintenance_task"}.issubset(actions)
+    by_name = {action["name"]: action for action in spec["model"]["actions"]}
+    assert by_name["flag_reorder_needed"]["entity"] == "asset"
+    assert by_name["flag_reorder_needed"]["value"] == "low_stock"
+    assert by_name["complete_maintenance_task"]["entity"] == "maintenance_task"
+
+
+def test_inventory_asset_tracker_ui_groups_asset_by_status():
+    spec = _spec(INVENTORY_ASSET_TRACKER)
+    ui = spec["model"]["ui"]
+    assert ui["composition"] == "board_workspace"
+    assert ui["focus"]["primary_entity"] == "asset"
+    assert ui["focus"]["group_by"] == "status"
+
+
 # --- generic_dashboard fallback ----------------------------------------------
 
 
@@ -216,17 +244,29 @@ def test_seed_data_populates_required_integer_fields():
     assert [row["order"] for row in stage_rows] == [1, 2, 3]
 
 
+def test_seed_data_links_inventory_required_relations_and_names():
+    spec = _spec(INVENTORY_ASSET_TRACKER, "I need to track equipment, vendors, and maintenance")
+    seed = spec["model"]["seed_data"]
+    assert len(seed["asset"]) == 6
+    assert [row["category"] for row in seed["asset"]] == [1, 2, 3, 1, 2, 3]
+    assert [row["location"] for row in seed["asset"]] == [1, 2, 3, 1, 2, 3]
+    assert all("vendor" not in row for row in seed["asset"])
+    assert [row["asset"] for row in seed["maintenance_task"]] == [1, 2, 3]
+    assert seed["asset"][0]["name"] == "Forklift battery"
+    assert seed["location"][0]["name"] == "Main warehouse"
+
+
 # --- determinism + JSON roundtrip --------------------------------------------
 
 
-@pytest.mark.parametrize("recipe", [CLIENT_SESSION_MANAGER, PIPELINE_KANBAN, APPROVAL_REVIEW_QUEUE, GENERIC_DASHBOARD])
+@pytest.mark.parametrize("recipe", [CLIENT_SESSION_MANAGER, PIPELINE_KANBAN, APPROVAL_REVIEW_QUEUE, INVENTORY_ASSET_TRACKER, GENERIC_DASHBOARD])
 def test_compile_blueprint_spec_is_deterministic(recipe):
     a = _spec(recipe)
     b = _spec(recipe)
     assert json.dumps(a, sort_keys=True) == json.dumps(b, sort_keys=True)
 
 
-@pytest.mark.parametrize("recipe", [CLIENT_SESSION_MANAGER, PIPELINE_KANBAN, APPROVAL_REVIEW_QUEUE, GENERIC_DASHBOARD])
+@pytest.mark.parametrize("recipe", [CLIENT_SESSION_MANAGER, PIPELINE_KANBAN, APPROVAL_REVIEW_QUEUE, INVENTORY_ASSET_TRACKER, GENERIC_DASHBOARD])
 def test_compile_blueprint_spec_pages_include_dashboard_and_per_entity_list(recipe):
     spec = _spec(recipe)
     page_types = [page["type"] for page in spec["model"]["pages"]]
@@ -235,7 +275,7 @@ def test_compile_blueprint_spec_pages_include_dashboard_and_per_entity_list(reci
     assert entity_lists == _entity_names(spec)
 
 
-@pytest.mark.parametrize("recipe", [CLIENT_SESSION_MANAGER, PIPELINE_KANBAN, APPROVAL_REVIEW_QUEUE, GENERIC_DASHBOARD])
+@pytest.mark.parametrize("recipe", [CLIENT_SESSION_MANAGER, PIPELINE_KANBAN, APPROVAL_REVIEW_QUEUE, INVENTORY_ASSET_TRACKER, GENERIC_DASHBOARD])
 def test_compile_blueprint_spec_no_unsupported_pack_field_types(recipe):
     valid_types = {"string", "text", "integer", "boolean", "date", "enum", "relation"}
     spec = _spec(recipe)

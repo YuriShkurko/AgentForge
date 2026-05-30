@@ -699,7 +699,7 @@ def _infer_model_spec(text: str) -> dict[str, Any]:
         return _designer_model()
     if any(word in compact for word in ["client", "onboarding", "onboard"]):
         return _client_onboarding_model()
-    if any(word in compact for word in ["vendor", "risk", "finding"]):
+    if "risk" in compact or "finding" in compact or ("vendor" in compact and "review" in compact):
         return _vendor_risk_model()
     if any(word in compact for word in ["issue", "ticket", "support"]):
         return _ticket_model()

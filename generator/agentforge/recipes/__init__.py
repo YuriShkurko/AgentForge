@@ -23,6 +23,7 @@ from agentforge.recipes._base import (
 from agentforge.recipes.approval_review_queue import APPROVAL_REVIEW_QUEUE
 from agentforge.recipes.client_session_manager import CLIENT_SESSION_MANAGER
 from agentforge.recipes.generic_dashboard import GENERIC_DASHBOARD
+from agentforge.recipes.inventory_asset_tracker import INVENTORY_ASSET_TRACKER
 from agentforge.recipes.pipeline_kanban import PIPELINE_KANBAN
 
 
@@ -30,6 +31,7 @@ ALL_RECIPES: tuple[AppRecipe, ...] = (
     CLIENT_SESSION_MANAGER,
     PIPELINE_KANBAN,
     APPROVAL_REVIEW_QUEUE,
+    INVENTORY_ASSET_TRACKER,
     GENERIC_DASHBOARD,
 )
 
@@ -57,6 +59,7 @@ __all__ = [
     "FALLBACK_RECIPE",
     "FieldTemplate",
     "GENERIC_DASHBOARD",
+    "INVENTORY_ASSET_TRACKER",
     "PIPELINE_KANBAN",
     "SampleDataStyle",
     "SelectionSignals",

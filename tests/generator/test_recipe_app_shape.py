@@ -60,6 +60,12 @@ def test_app_shape_home_surface_matches_recipe():
     )
     assert shape_queue.home_surface == "queue"
 
+    shape_inventory = compile_app_shape(
+        extract_intent("I need to track equipment, vendors, and maintenance"),
+        get_recipe("inventory_asset_tracker"),
+    )
+    assert shape_inventory.home_surface == "table"
+
 
 def test_app_shape_purpose_uses_jtbd_when_available():
     shape = _shape_for(
@@ -81,6 +87,17 @@ def test_app_shape_demo_moment_is_non_empty():
     shape = _shape_for("I am a basketball coach tracking clients and lessons")
     assert shape.demo_moment
     assert len(shape.demo_moment) > 10
+
+
+def test_inventory_app_shape_has_asset_operational_entities():
+    shape = _shape_for("I need to track equipment, vendors, and maintenance")
+    assert shape.recipe_id == "inventory_asset_tracker"
+    assert {entity.name for entity in shape.entities} == {"Asset", "Category", "Location", "Vendor", "MaintenanceTask"}
+    assert shape.primary_workflow is not None
+    assert shape.primary_workflow.target_entity == "Asset"
+    counts = dict(shape.sample_data_plan.per_entity_counts)
+    assert counts["Asset"] == 6
+    assert counts["MaintenanceTask"] == 3
 
 
 def test_app_shape_records_fallback_note():

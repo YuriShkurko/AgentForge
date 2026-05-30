@@ -59,6 +59,19 @@ def test_approval_review_recipe_surface_has_queue_decision_copy(tmp_path: Path) 
     assert "create a review item to start the queue" in app_tsx
 
 
+def test_inventory_asset_recipe_surface_has_asset_stock_maintenance_copy(tmp_path: Path) -> None:
+    app_model, app_tsx = _generate_from_prompt(tmp_path, "I need to track equipment, vendors, and maintenance")
+    assert app_model["recipe"]["recipe_id"] == "inventory_asset_tracker"
+    assert app_model["ui"]["composition"] == "board_workspace"
+    assert [entity["name"] for entity in app_model["entities"]][:5] == ["asset", "category", "location", "vendor", "maintenance_task"]
+    assert "Track assets, stock, and upkeep" in app_tsx
+    assert "Tracked assets / stock" in app_tsx
+    assert "Maintenance or reorder" in app_tsx
+    assert "Locations / vendors" in app_tsx
+    assert "start tracking assets, stock, and maintenance" in app_tsx
+    assert "Example item" not in app_tsx
+
+
 def test_generic_dashboard_surface_stays_generic_and_safe(tmp_path: Path) -> None:
     blueprint = create_starter_blueprint("generic-surface", archetype="model_driven_app")
     pack = DomainPack.model_validate(blueprint)

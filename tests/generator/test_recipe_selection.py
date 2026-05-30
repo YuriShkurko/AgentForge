@@ -22,9 +22,9 @@ def _select(prompt: str) -> RecipeSelection:
     return select_recipe(extract_intent(prompt))
 
 
-def test_registry_contains_four_anchor_recipes():
+def test_registry_contains_anchor_recipes():
     ids = {r.id for r in ALL_RECIPES}
-    assert {"client_session_manager", "pipeline_kanban", "approval_review_queue", "generic_dashboard"}.issubset(ids)
+    assert {"client_session_manager", "pipeline_kanban", "approval_review_queue", "inventory_asset_tracker", "generic_dashboard"}.issubset(ids)
 
 
 def test_registry_has_exactly_one_fallback():
@@ -67,14 +67,40 @@ def test_unrelated_prompt_falls_back_to_generic_dashboard():
     assert selection.verdict == "fallback"
 
 
+@pytest.mark.parametrize("prompt", [
+    "I want a website to control my assets, houses and cash",
+    "I manage livestock on a farm",
+    "I need to track equipment, vendors, and maintenance",
+    "I manage office inventory and reorder supplies",
+])
+def test_inventory_asset_prompts_select_inventory_asset_tracker(prompt):
+    selection = _select(prompt)
+    assert selection.picked.id == "inventory_asset_tracker"
+    assert selection.verdict in {"confident", "ambiguous"}
+    assert selection.picked_score.score >= FALLBACK_THRESHOLD
+
+
+def test_repair_shop_jobs_customer_updates_is_pipeline_or_ambiguous():
+    selection = _select("repair shop tracking jobs and customer updates")
+    assert selection.picked.id == "pipeline_kanban" or selection.verdict == "ambiguous"
+    if selection.verdict == "ambiguous":
+        assert "pipeline_kanban" in {candidate.recipe_id for candidate in selection.candidates}
+
+
+def test_repair_shop_parts_stock_reorder_selects_inventory():
+    selection = _select("repair shop tracking parts, stock, inventory, reorder supplies")
+    assert selection.picked.id == "inventory_asset_tracker"
+    assert selection.verdict == "confident"
+
+
+def test_repair_shop_jobs_parts_customer_updates_stays_ambiguous():
+    selection = _select("I run a repair shop and need to track jobs, parts, and customer updates")
+    assert selection.verdict == "ambiguous"
+    assert {"inventory_asset_tracker", "pipeline_kanban"}.issubset({candidate.recipe_id for candidate in selection.candidates})
+
+
 def test_ambiguous_prompt_returns_multiple_candidates():
-    # The repair-shop prompt straddles inventory + case + checklist territory.
-    selection = _select(
-        "I run a small repair shop and need to track jobs, parts, and customer updates"
-    )
-    # Either a confident pick (if one recipe dominates) or 2-4 ambiguous candidates.
-    # With our four anchor recipes today, this prompt should not strongly map and
-    # should yield either an ambiguous selection or fallback.
+    selection = _select("track jobs and customer updates")
     if selection.verdict == "ambiguous":
         assert 2 <= len(selection.candidates) <= 4
 
@@ -118,6 +144,7 @@ def test_selection_is_deterministic():
     "I am a basketball coach, want to track clients, lessons, payments, and court vendors",
     "I need to review vendor risk findings",
     "I want to manage job applications in a hiring pipeline",
+    "I need to track equipment, vendors, and maintenance",
     "simple dashboard for random items",
 ])
 def test_selection_always_picks_a_recipe(prompt):

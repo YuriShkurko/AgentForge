@@ -246,6 +246,20 @@ def _sample_relation_id(field: dict[str, Any], index: int, counts: dict[str, int
     return (index % target_count) + 1
 
 
+def _recipe_sample_name(entity_name: str, index: int) -> str:
+    pools: dict[str, list[str]] = {
+        "asset": ["Forklift battery", "Spare pump", "Office paper stock", "North barn feed", "Delivery van", "Backup generator"],
+        "category": ["Equipment", "Supplies", "Livestock"],
+        "location": ["Main warehouse", "Office closet", "North barn"],
+        "vendor": ["Acme Supply", "Reliable Maintenance"],
+        "maintenance_task": ["Inspect forklift", "Restock feed", "Service generator"],
+    }
+    pool = pools.get(entity_name)
+    if not pool:
+        return ""
+    return pool[index % len(pool)]
+
+
 def _sample_value(entity: dict[str, Any], field: dict[str, Any], index: int, count: int) -> Any:
     semantic = field.get("semantic")
     name = field["name"]
@@ -256,6 +270,9 @@ def _sample_value(entity: dict[str, Any], field: dict[str, Any], index: int, cou
         return values[index % len(values)]
     if field["type"] == "string":
         if semantic == "title" or name in {"title", "name"}:
+            recipe_name = _recipe_sample_name(entity["name"], index)
+            if recipe_name:
+                return recipe_name
             label = entity["label_singular"]
             return f"Sample {label.lower()} {index + 1}" if count > 1 else f"Sample {label.lower()}"
         return ""

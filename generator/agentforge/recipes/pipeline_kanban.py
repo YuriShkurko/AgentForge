@@ -17,8 +17,8 @@ PIPELINE_KANBAN = AppRecipe(
     display_name="Pipeline / Kanban",
     summary="Move cards through ordered stages. For sales pipelines, hiring funnels, ticket triage.",
     selection_signals=SelectionSignals(
-        keywords=("pipeline", "kanban", "stage", "stages", "board", "column", "columns", "card", "cards", "funnel"),
-        strong_keywords=("sales pipeline", "deal", "deals", "lead", "leads", "opportunity", "opportunities", "candidate", "candidates", "applicant", "applicants", "job application", "job applications", "hiring", "recruiting", "ats"),
+        keywords=("pipeline", "kanban", "stage", "stages", "board", "column", "columns", "card", "cards", "funnel", "job", "customer update", "customer updates"),
+        strong_keywords=("sales pipeline", "deal", "deals", "lead", "leads", "opportunity", "opportunities", "candidate", "candidates", "applicant", "applicants", "job application", "job applications", "repair job", "repair jobs", "hiring", "recruiting", "ats"),
         role_hints=(
             "i manage a sales pipeline",
             "i run a sales pipeline",
@@ -30,7 +30,7 @@ PIPELINE_KANBAN = AppRecipe(
         anti_signals=("approve", "approval queue", "review queue", "vendor risk", "lesson", "session", "checklist"),
         workflow_tags=("kanban_pipeline",),
         domains=("sales_crm", "hiring_recruiting", "engineering_ops"),
-        entity_tags=("lead", "deal", "opportunity", "candidate", "application", "applicant", "card", "stage", "column"),
+        entity_tags=("lead", "deal", "opportunity", "candidate", "application", "applicant", "card", "stage", "column", "job", "customer"),
     ),
     typical_entities=(
         EntityTemplate(
