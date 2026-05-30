@@ -42,11 +42,38 @@ def test_client_session_recipe_surface_has_sessions_clients_payments_copy(tmp_pa
     )
     assert app_model["recipe"]["recipe_id"] == "client_session_manager"
     assert [entity["name"] for entity in app_model["entities"]][:3] == ["client", "session", "payment"]
-    assert "Run sessions, clients, and payments" in app_tsx
-    assert "Upcoming sessions" in app_tsx
-    assert "Clients / students" in app_tsx
-    assert "Payments logged" in app_tsx
+    assert "Manage students, sessions, and payments" in app_tsx
+    assert "client-workspace" in app_tsx
+    assert "Session and payment timeline" in app_tsx
+    assert "Upcoming / recent sessions" in app_tsx
+    assert "Unpaid / pending payments" in app_tsx
     assert "start the session workflow" in app_tsx
+
+
+def test_client_session_recipe_surface_has_freelance_work_payment_workspace(tmp_path: Path) -> None:
+    app_model, app_tsx = _generate_from_prompt(
+        tmp_path,
+        "I am a freelance web designer and I want help managing clients, work history, payments and more",
+    )
+    assert app_model["recipe"]["recipe_id"] == "client_session_manager"
+    assert [entity["name"] for entity in app_model["entities"]][:3] == ["client", "project", "invoice"]
+    assert "Manage clients, work, and payments" in app_tsx
+    assert "client-workspace" in app_tsx
+    assert "Work and payment timeline" in app_tsx
+    assert "Recent work" in app_tsx
+    assert "Unpaid / pending payments" in app_tsx
+    assert "Inspect the client, completed work, open projects, and invoice/payment status" in app_tsx
+
+
+def test_client_session_recipe_surface_keeps_non_array_guards(tmp_path: Path) -> None:
+    _app_model, app_tsx = _generate_from_prompt(
+        tmp_path,
+        "I am a freelance web designer and I want help managing clients, work history, payments and more",
+    )
+    assert "const asRows = (value: unknown): Row[] =>" in app_tsx
+    assert "Array.isArray(value)" in app_tsx
+    assert "asRows(rowsByEntity[field.targetEntity])" in app_tsx
+    assert "asRows(ctx.rowsByEntity[clientEntity.name])" in app_tsx
 
 
 def test_approval_review_recipe_surface_has_queue_decision_copy(tmp_path: Path) -> None:

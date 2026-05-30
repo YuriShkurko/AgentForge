@@ -429,6 +429,7 @@ def _wait_for_service_ready(managed: ManagedProcess, spec: dict[str, str], timeo
                     return False
             return True
         time.sleep(0.25)
+    managed.readiness_error = f"{managed.service} did not become reachable at {spec['health_url']} within {timeout_seconds:.0f}s"
     return False
 
 
@@ -442,15 +443,15 @@ def _stop_other_run_processes_locked(paths: LocalRunPaths, service: str) -> None
 
 
 def _fixed_port_preflight_error(service: str, spec: dict[str, str]) -> str | None:
-    if service != "frontend":
-        return None
     parsed = urllib.parse.urlparse(spec["url"])
     host = parsed.hostname or "127.0.0.1"
     port = parsed.port
-    if not port or _tcp_port_available(host, port):
+    if not port:
         return None
     listening_pids = _listening_pids(port)
-    if listening_pids and all(_is_builder_run_process(pid) for pid in listening_pids):
+    if not listening_pids and _tcp_port_available(host, port):
+        return None
+    if service == "frontend" and listening_pids and all(_is_builder_run_process(pid) for pid in listening_pids):
         _cleanup_builder_service_port(service, spec)
         deadline = time.time() + 5.0
         while time.time() < deadline:
@@ -458,12 +459,11 @@ def _fixed_port_preflight_error(service: str, spec: dict[str, str]) -> str | Non
                 return None
             time.sleep(0.1)
         return f"Frontend port {port} is still held by a previous Builder-started generated app. Stop it or restart serve-builder."
-    return f"Frontend port {port} is already in use by another process. Stop it or restart serve-builder."
+    label = "Backend" if service == "backend" else "Frontend"
+    return f"{label} port {port} is already in use by another process. Stop it or restart serve-builder."
 
 
 def _cleanup_builder_service_port(service: str, spec: dict[str, str]) -> None:
-    if service != "frontend":
-        return
     parsed = urllib.parse.urlparse(spec["url"])
     port = parsed.port
     if not port:

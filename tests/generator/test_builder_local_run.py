@@ -165,6 +165,7 @@ def test_duplicate_start_returns_existing_status_without_new_process(tmp_path, m
 
     monkeypatch.setattr(local_run, "_popen_allowlisted_service", fake_popen)
     monkeypatch.setattr(local_run, "_url_available", lambda url, timeout: True)
+    monkeypatch.setattr(local_run, "_tcp_port_available", lambda host, port: True)
 
     first = local_run.start_generated_app_service("run-dupe123", "backend", repo_root=tmp_path)
     second = local_run.start_generated_app_service("run-dupe123", "backend", repo_root=tmp_path)
@@ -184,7 +185,8 @@ def test_stop_frontend_cleans_builder_vite_child_on_fixed_port(tmp_path, monkeyp
     monkeypatch.setattr(local_run, "_popen_allowlisted_service", lambda command, cwd: FakeProc(pid=7100))
     monkeypatch.setattr(local_run, "_url_available", lambda url, timeout: True)
     monkeypatch.setattr(local_run, "_frontend_render_check", lambda app_dir, url, timeout: (True, ""))
-    monkeypatch.setattr(local_run, "_listening_pids", lambda port: {7200})
+    listening = iter([set(), {7200}])
+    monkeypatch.setattr(local_run, "_listening_pids", lambda port: next(listening))
     monkeypatch.setattr(local_run, "_is_builder_run_process", lambda pid: True)
     monkeypatch.setattr(local_run, "_terminate_pid_tree", lambda pid: terminated.append(pid))
 
@@ -210,6 +212,7 @@ def test_starting_new_run_stops_previous_builder_started_service(tmp_path, monke
 
     monkeypatch.setattr(local_run, "_popen_allowlisted_service", fake_popen)
     monkeypatch.setattr(local_run, "_url_available", lambda url, timeout: True)
+    monkeypatch.setattr(local_run, "_tcp_port_available", lambda host, port: True)
     monkeypatch.setattr(local_run, "_terminate_process_tree", lambda proc: (stopped.append(proc.pid), setattr(proc, "returncode", -15)))
 
     first = local_run.start_generated_app_service("run-stop111", "backend", repo_root=tmp_path)
@@ -220,6 +223,20 @@ def test_starting_new_run_stops_previous_builder_started_service(tmp_path, monke
     assert stopped == [7000]
     assert local_run.get_generated_app_service_status("run-stop111", "backend", repo_root=tmp_path)["status"] == "stopped"
     assert local_run.get_generated_app_service_status("run-stop222", "backend", repo_root=tmp_path)["status"] == "running"
+
+
+def test_backend_port_occupied_returns_clear_failure(tmp_path, monkeypatch):
+    paths = local_run.safe_run_paths("run-backport", repo_root=tmp_path)
+    paths.app_dir.mkdir(parents=True)
+    (paths.app_dir / "Makefile").write_text("run-backend:\n\t@echo backend\n", encoding="utf-8")
+    monkeypatch.setattr(local_run, "_tcp_port_available", lambda host, port: False)
+    monkeypatch.setattr(local_run, "_listening_pids", lambda port: {12345})
+
+    result = local_run.start_generated_app_service("run-backport", "backend", repo_root=tmp_path)
+
+    assert result["ok"] is False
+    assert result["status"] == "error"
+    assert "Backend port 8000 is already in use by another process" in result["stderr"]
 
 
 def test_frontend_port_occupied_by_non_builder_process_returns_clear_failure(tmp_path, monkeypatch):
@@ -308,6 +325,7 @@ def test_start_service_reports_starting_until_health_url_is_reachable(tmp_path, 
     monkeypatch.setattr(local_run, "_popen_allowlisted_service", lambda command, cwd: FakeProc(pid=6100))
     monkeypatch.setattr(local_run, "_wait_for_service_ready", lambda managed, spec: False)
     monkeypatch.setattr(local_run, "_url_available", lambda url, timeout: False)
+    monkeypatch.setattr(local_run, "_tcp_port_available", lambda host, port: True)
 
     result = local_run.start_generated_app_service("run-starting", "backend", repo_root=tmp_path)
 

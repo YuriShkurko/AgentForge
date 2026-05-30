@@ -930,7 +930,16 @@ def _coach_booking_model() -> dict[str, Any]:
             ],
             "pages": [{"name": "dashboard", "type": "dashboard", "title": "Dashboard"}, {"name": "clients", "type": "entity_list", "entity": "client", "title": "Clients"}, {"name": "court_vendors", "type": "entity_list", "entity": "court_vendor", "title": "Court Vendors"}, {"name": "sessions", "type": "entity_list", "entity": "lesson_session", "title": "Lesson Sessions"}, {"name": "payments", "type": "entity_list", "entity": "payment", "title": "Payments"}],
             "actions": [{"name": "complete_session", "label": "Complete session", "type": "update_status", "entity": "lesson_session", "field": "status", "value": "completed"}],
-            "seed_data": {"client": [{"name": "Jordan Lee", "email": "jordan@example.com"}], "court_vendor": [{"name": "Downtown Courts", "location": "Court 2"}], "lesson_session": [{"title": "Shooting lesson with Jordan", "status": "scheduled", "session_date": "2026-06-01"}], "payment": [{"description": "Jordan lesson payment", "amount": 75, "status": "expected"}]},
+            "seed_data": {
+                "client": [{"name": "Jordan Lee", "email": "jordan@example.test"}, {"name": "Maya Cohen", "email": "maya@example.test"}, {"name": "Alex Rivera", "email": "alex@example.test"}],
+                "court_vendor": [{"name": "Downtown Courts", "location": "Court 2"}],
+                "lesson_session": [
+                    {"title": "Shooting lesson with Jordan", "status": "scheduled", "session_date": "2026-06-01", "client_id": 1, "court_vendor_id": 1},
+                    {"title": "Footwork review with Maya", "status": "completed", "session_date": "2026-05-29", "client_id": 2, "court_vendor_id": 1},
+                    {"title": "Goal check-in with Alex", "status": "scheduled", "session_date": "2026-06-05", "client_id": 3},
+                ],
+                "payment": [{"description": "Jordan lesson payment", "amount": 75, "status": "expected", "client_id": 1, "lesson_session_id": 1}, {"description": "Maya lesson payment", "amount": 90, "status": "received", "client_id": 2, "lesson_session_id": 2}],
+            },
             "ui": _board_ui("lesson_session", secondary_entity="client", group_by="status", title_field="title", badge_field="session_date"),
         },
     }
@@ -965,7 +974,11 @@ def _designer_model() -> dict[str, Any]:
             ],
             "pages": [{"name": "dashboard", "type": "dashboard", "title": "Dashboard"}, {"name": "clients", "type": "entity_list", "entity": "client", "title": "Clients"}, {"name": "projects", "type": "entity_list", "entity": "project", "title": "Projects"}, {"name": "invoices", "type": "entity_list", "entity": "invoice", "title": "Invoices"}],
             "actions": [{"name": "deliver_project", "label": "Deliver project", "type": "update_status", "entity": "project", "field": "status", "value": "delivered"}],
-            "seed_data": {"client": [{"name": "Acme Studio", "email": "hello@acme.example"}], "project": [{"title": "Brand refresh", "status": "active"}], "invoice": [{"number": "INV-1001", "status": "sent", "amount": 1200}]},
+            "seed_data": {
+                "client": [{"name": "Maya Cohen", "email": "maya@example.test"}, {"name": "Northline Studio", "email": "hello@northline.example"}, {"name": "Alex Rivera", "email": "alex@example.test"}],
+                "project": [{"title": "Landing page redesign", "status": "active", "client_id": 1}, {"title": "Brand refresh", "status": "delivered", "client_id": 2}, {"title": "Portfolio tune-up", "status": "lead", "client_id": 3}],
+                "invoice": [{"number": "INV-1001", "status": "sent", "amount": 1200, "project_id": 1, "client_id": 1}, {"number": "INV-1002", "status": "paid", "amount": 2400, "project_id": 2, "client_id": 2}, {"number": "INV-1003", "status": "draft", "amount": 650, "project_id": 3, "client_id": 3}],
+            },
             "ui": _board_ui("project", secondary_entity="client", group_by="status", title_field="title", badge_field="status"),
         },
     }

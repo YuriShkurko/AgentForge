@@ -227,7 +227,7 @@ def _seed_row(entity: dict[str, Any], index: int, count: int, counts: dict[str, 
     row: dict[str, Any] = {}
     for field in entity["fields"]:
         if field["type"] == "relation":
-            value = _sample_relation_id(field, index, counts)
+            value = _sample_relation_id(entity, field, index, counts)
         else:
             value = _sample_value(entity, field, index, count)
         if value is None:
@@ -236,18 +236,26 @@ def _seed_row(entity: dict[str, Any], index: int, count: int, counts: dict[str, 
     return row
 
 
-def _sample_relation_id(field: dict[str, Any], index: int, counts: dict[str, int]) -> int | None:
-    if not field.get("required"):
-        return None
+def _sample_relation_id(entity: dict[str, Any], field: dict[str, Any], index: int, counts: dict[str, int]) -> int | None:
     target = field.get("target_entity") or ""
     target_count = counts.get(target, 0)
     if target_count <= 0:
         return None
-    return (index % target_count) + 1
+    if field.get("required"):
+        return (index % target_count) + 1
+    # Client/work/payment apps feel broken when seeded payments are not tied
+    # back to the work/session they came from. Keep optional FKs conservative:
+    # only link obvious payment/invoice -> work/session relations.
+    if entity["name"] in {"payment", "invoice", "earning"} and target in {"session", "lesson_session", "project"}:
+        return (index % target_count) + 1
+    return None
 
 
 def _recipe_sample_name(entity_name: str, index: int) -> str:
     pools: dict[str, list[str]] = {
+        "client": ["Maya Cohen", "Northline Studio", "Alex Rivera"],
+        "session": ["Algebra tutoring session", "Portfolio review", "Goal check-in", "Geometry homework review", "Practice plan review"],
+        "payment": ["Maya session payment", "Northline design deposit", "Alex coaching package"],
         "asset": ["Forklift battery", "Spare pump", "Office paper stock", "North barn feed", "Delivery van", "Backup generator"],
         "category": ["Equipment", "Supplies", "Livestock"],
         "location": ["Main warehouse", "Office closet", "North barn"],
@@ -267,6 +275,9 @@ def _sample_value(entity: dict[str, Any], field: dict[str, Any], index: int, cou
         values = list(field.get("enum_values") or [])
         if not values:
             return None
+        if entity["name"] == "session" and name == "status":
+            sequence = ["scheduled", "completed", "scheduled", "completed", "cancelled"]
+            return next((value for value in [sequence[index % len(sequence)]] if value in values), values[index % len(values)])
         return values[index % len(values)]
     if field["type"] == "string":
         if semantic == "title" or name in {"title", "name"}:
@@ -275,17 +286,27 @@ def _sample_value(entity: dict[str, Any], field: dict[str, Any], index: int, cou
                 return recipe_name
             label = entity["label_singular"]
             return f"Sample {label.lower()} {index + 1}" if count > 1 else f"Sample {label.lower()}"
+        if name in {"contact", "email"}:
+            return ["maya@example.test", "hello@northline.example", "alex@example.test"][index % 3]
+        if name == "location":
+            return ["Online", "Studio", "Client site"][index % 3]
         return ""
     if field["type"] == "text":
+        if entity["name"] == "client":
+            return ["Prefers Tuesday afternoons.", "Monthly retainer client.", "Working toward spring goals."][index % 3]
         return f"Notes for {entity['label_singular'].lower()} {index + 1}."
     if field["type"] == "integer":
+        if name in {"amount", "fee"}:
+            return [120, 850, 75, 1400, 95][index % 5]
+        if name == "duration_minutes":
+            return [60, 90, 45, 60, 75][index % 5]
         if field.get("required"):
             return index + 1
         return None
     if field["type"] == "date":
-        if field.get("required"):
-            day = (index % 28) + 1
-            return f"2026-01-{day:02d}"
+        dated = ["2026-06-01", "2026-06-03", "2026-05-28", "2026-06-08", "2026-05-20"]
+        if field.get("required") or entity["name"] in {"session", "payment"}:
+            return dated[index % len(dated)]
         return None
     if field["type"] == "boolean":
         return None

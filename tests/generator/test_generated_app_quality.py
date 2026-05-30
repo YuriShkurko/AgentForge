@@ -98,6 +98,36 @@ def test_generated_app_has_natural_hero_and_no_placeholder_text(tmp_path: Path) 
     assert "No records yet — load seed data or create one." not in app_tsx
 
 
+def test_client_work_payment_seed_data_is_realistic_and_linked(tmp_path: Path) -> None:
+    blueprint = _start_assistant(
+        "I am a freelance web designer and I want help managing clients, work history, payments and more"
+    )
+    pack = DomainPack.model_validate(blueprint)
+    seed = pack.model.seed_data if pack.model else {}
+
+    assert {row["name"] for row in seed["client"]} == {"Maya Cohen", "Northline Studio", "Alex Rivera"}
+    assert "Example Name" not in json.dumps(seed)
+    assert "Example Email" not in json.dumps(seed)
+    assert "Example Phone" not in json.dumps(seed)
+    assert [row["client_id"] for row in seed["project"]] == [1, 2, 3]
+    assert [row["project_id"] for row in seed["invoice"]] == [1, 2, 3]
+    assert [row["client_id"] for row in seed["invoice"]] == [1, 2, 3]
+    assert {row["status"] for row in seed["invoice"]} == {"sent", "paid", "draft"}
+
+
+def test_tutor_client_session_seed_data_is_realistic_and_linked(tmp_path: Path) -> None:
+    blueprint = _start_assistant("I am a tutor scheduling student sessions and logging payments")
+    pack = DomainPack.model_validate(blueprint)
+    seed = pack.model.seed_data if pack.model else {}
+
+    assert len(seed["client"]) == 3
+    assert seed["client"][0]["name"] == "Maya Cohen"
+    assert "Example Name" not in json.dumps(seed)
+    assert [row["client"] for row in seed["session"]] == [1, 2, 3, 1, 2]
+    assert [row["session"] for row in seed["payment"]] == [1, 2]
+    assert {row["status"] for row in seed["session"]} >= {"scheduled", "completed"}
+
+
 def test_entity_empty_states_are_domain_aware(tmp_path: Path) -> None:
     blueprint = _model_blueprint_from_text(
         "client onboarding workflow with clients and onboarding tasks to track status"
