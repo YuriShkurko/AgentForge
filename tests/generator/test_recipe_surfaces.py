@@ -179,14 +179,71 @@ def test_inventory_asset_recipe_surface_has_asset_stock_maintenance_copy(tmp_pat
     app_model, app_tsx = _generate_from_prompt(tmp_path, "I need to track equipment, vendors, and maintenance")
     assert app_model["recipe"]["recipe_id"] == "inventory_asset_tracker"
     assert app_model["experience"]["experience_id"] == "inventory_ops"
+    assert app_model["experience"]["primitive_id"] == "inventory_ops"
     assert app_model["ui"]["composition"] == "board_workspace"
     assert [entity["name"] for entity in app_model["entities"]][:5] == ["asset", "category", "location", "vendor", "maintenance_task"]
+    assert '"experience_id": "inventory_ops"' in app_tsx
+    assert '"primitive_id": "inventory_ops"' in app_tsx
+    assert '"expected_roles"' not in app_tsx
+    assert '"primary_actions"' not in app_tsx
+    assert "isInventoryOpsExperience()" in app_tsx
+    assert "useInventoryOps()" in app_tsx
     assert "Track assets, stock, and upkeep" in app_tsx
     assert "Tracked assets / stock" in app_tsx
     assert "Maintenance or reorder" in app_tsx
     assert "Locations / vendors" in app_tsx
     assert "start tracking assets, stock, and maintenance" in app_tsx
     assert "Example item" not in app_tsx
+
+
+def test_inventory_surface_uses_experience_metadata_without_recipe_id(tmp_path: Path) -> None:
+    blueprint = _blueprint_from_prompt("I need to track equipment, vendors, and maintenance")
+    experience = blueprint["future_extensions"]["experience"]
+    blueprint["future_extensions"] = {
+        "features": ["assistant_refinement", "provider_imports"],
+        "experience": experience,
+    }
+    app_model, app_tsx = _generate_blueprint(tmp_path, blueprint)
+
+    assert app_model["recipe"] == {}
+    assert app_model["experience"]["experience_id"] == "inventory_ops"
+    assert app_model["experience"]["primitive_id"] == "inventory_ops"
+    assert '"experience_id": "inventory_ops"' in app_tsx
+    assert "if (useInventoryOps()) return 'Track assets, stock, and upkeep'" in app_tsx
+    assert "if (useInventoryOps()) return 'Monitor assets or inventory by status" in app_tsx
+    assert "Tracked assets / stock" in app_tsx
+    assert "start tracking assets, stock, and maintenance" in app_tsx
+
+
+def test_inventory_surface_uses_primitive_metadata_without_experience_id(tmp_path: Path) -> None:
+    blueprint = _blueprint_from_prompt("I manage office inventory and reorder supplies")
+    experience = dict(blueprint["future_extensions"]["experience"])
+    experience["experience_id"] = ""
+    blueprint["future_extensions"] = {
+        "features": ["assistant_refinement", "provider_imports"],
+        "experience": experience,
+    }
+    app_model, app_tsx = _generate_blueprint(tmp_path, blueprint)
+
+    assert app_model["recipe"] == {}
+    assert app_model["experience"]["experience_id"] == ""
+    assert app_model["experience"]["primitive_id"] == "inventory_ops"
+    assert '"primitive_id": "inventory_ops"' in app_tsx
+    assert "const isInventoryOpsExperience = (): boolean => experienceId() === 'inventory_ops' || primitiveId() === 'inventory_ops'" in app_tsx
+    assert "Tracked assets / stock" in app_tsx
+
+
+def test_inventory_surface_keeps_no_experience_recipe_fallback(tmp_path: Path) -> None:
+    blueprint = _blueprint_from_prompt("I need to track equipment, vendors, and maintenance")
+    blueprint["future_extensions"].pop("experience", None)
+    app_model, app_tsx = _generate_blueprint(tmp_path, blueprint)
+
+    assert app_model["recipe"]["recipe_id"] == "inventory_asset_tracker"
+    assert app_model["experience"] == {}
+    assert '"experience_id": "inventory_ops"' not in app_tsx
+    assert "const useInventoryOps = (): boolean => isInventoryOpsExperience() || (!hasExperienceMetadata() && (recipeId() === 'inventory_asset_tracker' || hasInventorySurfaceMetadata()))" in app_tsx
+    assert "Track assets, stock, and upkeep" in app_tsx
+    assert "Tracked assets / stock" in app_tsx
 
 
 def test_generic_dashboard_surface_stays_generic_and_safe(tmp_path: Path) -> None:
@@ -205,5 +262,8 @@ def test_generic_dashboard_surface_stays_generic_and_safe(tmp_path: Path) -> Non
     assert "const useClientWorkspace = (): boolean => isClientWorkspaceExperience() || (!hasExperienceMetadata() && recipeId() === 'client_session_manager')" in app_tsx
     assert '"experience_id": "pipeline_board"' not in app_tsx
     assert "if (usePipelineBoard()) return 'Move work through stages'" in app_tsx
+    assert '"experience_id": "inventory_ops"' not in app_tsx
+    assert "const hasInventorySurfaceMetadata = (): boolean => Boolean(model.entities.find((entity) => ['asset','inventory_item'].includes(entity.name)) && model.entities.some((entity) => ['category','location','vendor','supplier','maintenance_task','warehouse'].includes(entity.name)))" in app_tsx
+    assert [entity["name"] for entity in app_model["entities"]] == ["item"]
     assert "recipeHighlightCards" in app_tsx
     assert "Example item" not in app_tsx
