@@ -20,10 +20,14 @@ from agentforge.naming import (
 )
 from agentforge.planner import validate_blueprint_result
 from agentforge.planner.live_llm import LiveAssistantProvider, LiveLLMResponseError
+from agentforge.app_intent import extract_intent
+from agentforge.recipe_select import RecipeSelection, select_recipe
 from agentforge.planner.recipe_planner import (
     is_recipe_confident,
     recipe_aware_spec,
+    recipe_aware_spec_for_recipe,
     recipe_metadata,
+    recipe_metadata_for_recipe,
 )
 from agentforge.planner.validation_guidance import summarize_validation_errors
 
@@ -139,6 +143,29 @@ QUESTION_CATALOG: dict[str, dict[str, Any]] = {
         "chips": [],
         "template": None,
     },
+    "recipe_direction": {
+        "id": "recipe_direction",
+        "prompt": "This could become a few kinds of app. Which direction should AgentForge build first?",
+        "helper": "Pick the workflow shape that matters most. AgentForge will draft that direction next; Apply is still required before anything changes.",
+        "examples": [],
+        "chips": [],
+        "template": None,
+    },
+}
+
+_RECIPE_DIRECTION_LABELS: dict[str, str] = {
+    "pipeline_kanban": "Repair job pipeline",
+    "inventory_asset_tracker": "Parts and inventory tracker",
+    "client_session_manager": "Client/session manager",
+    "approval_review_queue": "Review queue",
+    "generic_dashboard": "Generic dashboard",
+}
+
+_RECIPE_DIRECTION_HELPERS: dict[str, str] = {
+    "pipeline_kanban": "Track jobs or applications through stages and customer follow-ups.",
+    "inventory_asset_tracker": "Track parts, stock, assets, locations, vendors, maintenance, and reorder needs.",
+    "client_session_manager": "Schedule sessions, manage clients, and track payments.",
+    "approval_review_queue": "Claim, approve, reject, and record decisions for items needing review.",
 }
 
 
@@ -168,6 +195,61 @@ def _build_questions_payload(ids: list[str]) -> tuple[list[str], list[dict[str, 
             "template": entry["template"],
         })
     return prompts, details
+
+
+def _recipe_selection_for(text: str) -> RecipeSelection | None:
+    if not (text or "").strip():
+        return None
+    return select_recipe(extract_intent(text))
+
+
+def _viable_recipe_candidates(selection: RecipeSelection) -> tuple[Any, ...]:
+    return tuple(score for score in selection.candidates if score.score >= 3 and not score.recipe.is_fallback)
+
+
+def _should_ask_recipe_direction(selection: RecipeSelection | None) -> bool:
+    return bool(selection and selection.verdict == "ambiguous" and len(_viable_recipe_candidates(selection)) >= 2)
+
+
+def _recipe_direction_detail(selection: RecipeSelection) -> dict[str, Any]:
+    entry = QUESTION_CATALOG["recipe_direction"]
+    chips: list[dict[str, Any]] = []
+    examples: list[str] = []
+    for score in _viable_recipe_candidates(selection):
+        recipe = score.recipe
+        label = _RECIPE_DIRECTION_LABELS.get(recipe.id, recipe.display_name)
+        helper = _RECIPE_DIRECTION_HELPERS.get(recipe.id, recipe.summary)
+        chips.append({
+            "label": label,
+            "value": f"recipe:{recipe.id}",
+            "recipe_id": recipe.id,
+            "helper": helper,
+        })
+        examples.append(f"{label}: {helper}")
+    return {
+        "id": entry["id"],
+        "prompt": entry["prompt"],
+        "helper": entry["helper"],
+        "examples": examples,
+        "chips": chips,
+        "template": entry["template"],
+    }
+
+
+def _selected_recipe_id(text: str, selection: RecipeSelection | None = None) -> str:
+    compact = str(text or "").strip().lower()
+    if not compact:
+        return ""
+    match = re.search(r"\brecipe:([a-z0-9_\-]+)\b", compact)
+    if match:
+        return match.group(1).replace("-", "_")
+    candidates = selection.candidates if selection else ()
+    for score in candidates:
+        recipe = score.recipe
+        label = _RECIPE_DIRECTION_LABELS.get(recipe.id, recipe.display_name).lower()
+        if recipe.id in compact or label in compact or recipe.display_name.lower() in compact:
+            return recipe.id
+    return ""
 
 
 @dataclass
@@ -324,6 +406,35 @@ class BuilderAssistant:
         scripted_gate = bool(missing_ids) and len(state.answers) < 2
         live_gate = "idea_seed" in missing_ids and len(state.answers) < 2
         gate = live_gate if self._live_provider is not None else scripted_gate
+        forced_recipe_id = ""
+        if "recipe_direction" in state.pending_question_ids:
+            selection = _recipe_selection_for(state.idea)
+            forced_recipe_id = _selected_recipe_id(state.answers[-1] if state.answers else "", selection)
+            if not forced_recipe_id:
+                state.status = "needs_clarification"
+                detail = _recipe_direction_detail(selection) if selection else QUESTION_CATALOG["recipe_direction"]
+                state.questions = [detail["prompt"]]
+                state.pending_question_ids = ["recipe_direction"]
+                return self._response(
+                    state,
+                    messages=["Please choose one of the app directions before I draft the Blueprint."],
+                    question_details=[detail],
+                )
+            combined = state.idea
+            gate = False
+        else:
+            selection = _recipe_selection_for(combined)
+            if _should_ask_recipe_direction(selection):
+                detail = _recipe_direction_detail(selection)
+                state.status = "needs_clarification"
+                state.questions = [detail["prompt"]]
+                state.pending_question_ids = ["recipe_direction"]
+                return self._response(
+                    state,
+                    messages=[_summary_message(combined), detail["prompt"]],
+                    question_details=[detail],
+                )
+
         if gate:
             state.status = "needs_clarification"
             prompts, details = _build_questions_payload(missing_ids)
@@ -335,7 +446,7 @@ class BuilderAssistant:
                 question_details=details,
             )
 
-        proposal = self._build_proposal(combined, current_blueprint=current_blueprint)
+        proposal = self._build_proposal(combined, current_blueprint=current_blueprint, forced_recipe_id=forced_recipe_id or None)
         state.status = proposal["status"]
         state.questions = []
         state.pending_question_ids = []
@@ -374,11 +485,16 @@ class BuilderAssistant:
             fallback_reason=fallback_reason,
         )
 
-    def _build_proposal(self, text: str, current_blueprint: dict[str, Any] | None) -> dict[str, Any]:
+    def _build_proposal(self, text: str, current_blueprint: dict[str, Any] | None, forced_recipe_id: str | None = None) -> dict[str, Any]:
         turn_mode = "scripted"
         fallback_reason: str | None = None
         blueprint: dict[str, Any] | None = None
-        if self._live_provider is not None:
+        if forced_recipe_id:
+            spec = recipe_aware_spec_for_recipe(text, forced_recipe_id)
+            metadata = recipe_metadata_for_recipe(text, forced_recipe_id)
+            if spec is not None:
+                blueprint = _model_blueprint_from_spec(text, spec, recipe_metadata_override=metadata)
+        elif self._live_provider is not None:
             live_spec: dict[str, Any] | None = None
             try:
                 live_spec = self._live_provider.propose_model_spec(text)
@@ -428,7 +544,7 @@ class BuilderAssistant:
                 "turn_mode": turn_mode,
                 "fallback_reason": fallback_reason,
             }
-        quality_guidance = _model_quality_guidance(text, blueprint)
+        quality_guidance = [] if forced_recipe_id else _model_quality_guidance(text, blueprint)
         if quality_guidance:
             return {
                 "status": "quality_error",
@@ -520,7 +636,7 @@ def _model_blueprint_from_text(text: str) -> dict[str, Any]:
     return _model_blueprint_from_spec(text, _infer_model_spec(text))
 
 
-def _model_blueprint_from_spec(text: str, spec: dict[str, Any]) -> dict[str, Any]:
+def _model_blueprint_from_spec(text: str, spec: dict[str, Any], recipe_metadata_override: dict[str, Any] | None = None) -> dict[str, Any]:
     spec = deepcopy(spec)
     _attach_imports_and_providers(spec, text)
     primary = spec.get("primary") or ""
@@ -551,7 +667,7 @@ def _model_blueprint_from_spec(text: str, spec: dict[str, Any]) -> dict[str, Any
     _apply_dashboard_copy(blueprint["model"], display, summary)
     blueprint["compatibility_gaps"] = []
     blueprint["future_extensions"] = {"features": ["assistant_refinement", "provider_imports"]}
-    metadata = recipe_metadata(text)
+    metadata = recipe_metadata_override or recipe_metadata(text)
     if metadata:
         blueprint["future_extensions"]["recipe"] = metadata
     return blueprint

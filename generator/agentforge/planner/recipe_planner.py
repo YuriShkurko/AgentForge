@@ -15,7 +15,7 @@ from agentforge.app_intent import extract_intent
 from agentforge.app_shape import compile_app_shape
 from agentforge.app_shape_blueprint import compile_blueprint_spec
 from agentforge.recipe_select import RecipeSelection, select_recipe
-from agentforge.recipes import AppRecipe
+from agentforge.recipes import AppRecipe, get_recipe
 
 
 def is_recipe_confident(text: str) -> bool:
@@ -42,9 +42,38 @@ def recipe_aware_spec(text: str) -> dict[str, Any] | None:
     recipe = selection.picked
     if recipe.is_fallback:
         return None
+    return recipe_aware_spec_for_recipe(text, recipe.id)
+
+
+def recipe_aware_spec_for_recipe(text: str, recipe_id: str) -> dict[str, Any] | None:
+    """Compile a model-driven spec for an explicit user-selected recipe."""
+    try:
+        recipe = get_recipe(recipe_id)
+    except KeyError:
+        return None
+    if recipe.is_fallback:
+        return None
     intent = extract_intent(text)
     shape = compile_app_shape(intent, recipe)
     return compile_blueprint_spec(shape, recipe)
+
+
+def recipe_metadata_for_recipe(text: str, recipe_id: str, selection: RecipeSelection | None = None) -> dict[str, Any] | None:
+    """Return metadata for an explicit recipe choice."""
+    try:
+        recipe = get_recipe(recipe_id)
+    except KeyError:
+        return None
+    intent = extract_intent(text)
+    shape = compile_app_shape(intent, recipe)
+    if selection is None:
+        selection = RecipeSelection(
+            picked=recipe,
+            candidates=(),
+            verdict="selected",
+            all_scores=(),
+        )
+    return _metadata_payload(selection, shape.home_surface, shape.primary_workflow, shape.demo_moment, picked_override=recipe)
 
 
 def recipe_metadata(text: str) -> dict[str, Any] | None:
@@ -74,8 +103,10 @@ def _metadata_payload(
     home_surface: str,
     primary_workflow: Any,
     demo_moment: str,
+    *,
+    picked_override: AppRecipe | None = None,
 ) -> dict[str, Any]:
-    picked: AppRecipe = selection.picked
+    picked: AppRecipe = picked_override or selection.picked
     return {
         "recipe_id": picked.id,
         "recipe_version": picked.version,
@@ -84,9 +115,9 @@ def _metadata_payload(
         "home_surface": home_surface,
         "primary_workflow": primary_workflow.label if primary_workflow else None,
         "demo_moment": demo_moment,
-        "candidate_recipe_ids": [score.recipe_id for score in selection.candidates],
+        "candidate_recipe_ids": [score.recipe_id for score in selection.candidates] or [picked.id],
         "is_fallback": picked.is_fallback,
     }
 
 
-__all__ = ["is_recipe_confident", "recipe_aware_spec", "recipe_metadata"]
+__all__ = ["is_recipe_confident", "recipe_aware_spec", "recipe_aware_spec_for_recipe", "recipe_metadata", "recipe_metadata_for_recipe"]

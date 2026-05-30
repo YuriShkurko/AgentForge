@@ -2123,6 +2123,7 @@ function setAssistantThinking(thinking) {
 const CANVAS_STATE_COPY = {
   empty: { label: "Ready", detail: "Describe an app idea to begin." },
   thinking: { label: "Working", detail: "Drafting your app plan…" },
+  clarifying: { label: "Question", detail: "Answer the assistant's guided question to continue." },
   "plan-ready": { label: "Plan ready", detail: "Review the proposed plan in the main canvas." },
   "plan-applied": { label: "Plan applied", detail: "Validate the Blueprint to continue." },
   validating: { label: "Working", detail: "Validating Blueprint…" },
@@ -2137,6 +2138,7 @@ const CANVAS_STATE_COPY = {
 const CANVAS_STATE_REGION = {
   empty: "start",
   thinking: null,
+  clarifying: "new-app",
   "plan-ready": "new-app",
   "plan-applied": "review",
   validating: "review",
@@ -2161,6 +2163,8 @@ function computeCanvasState() {
   if (!plannerAvailable) return "static";
   const pendingProposal = Boolean(assistantSessionState?.proposal && assistantSessionState.proposal.blueprint);
   if (pendingProposal) return "plan-ready";
+  const pendingQuestion = assistantSessionState?.status === "needs_clarification" && Array.isArray(assistantSessionState.questions) && assistantSessionState.questions.length > 0;
+  if (pendingQuestion) return "clarifying";
   if (!plannerBlueprint) return "empty";
   if (localRunBusy) {
     const opState = buildOpToState(activeBuildOp);

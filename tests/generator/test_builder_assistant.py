@@ -33,6 +33,63 @@ def test_assistant_start_with_vague_idea_asks_clarifying_questions():
     assert result["state"]["pending_question_ids"] == ["idea_seed"]
 
 
+def test_assistant_ambiguous_recipe_prompt_asks_direction_question():
+    result = BuilderAssistant().start(
+        "I run a repair shop and need to track jobs, parts, and customer updates"
+    )
+
+    assert result["status"] == "needs_clarification"
+    assert result["proposal"] is None
+    assert result["state"]["pending_question_ids"] == ["recipe_direction"]
+    detail = result["question_details"][0]
+    assert detail["id"] == "recipe_direction"
+    assert "Which direction" in detail["prompt"]
+    chips = detail["chips"]
+    values = {chip["value"] for chip in chips}
+    recipe_ids = {chip["recipe_id"] for chip in chips}
+    assert "recipe:pipeline_kanban" in values
+    assert "recipe:inventory_asset_tracker" in values
+    assert {"pipeline_kanban", "inventory_asset_tracker"}.issubset(recipe_ids)
+    assert any(chip["label"] == "Repair job pipeline" for chip in chips)
+    assert any(chip["label"] == "Parts and inventory tracker" for chip in chips)
+
+
+def test_assistant_recipe_direction_choice_pipeline_produces_pipeline_proposal():
+    assistant = BuilderAssistant()
+    first = assistant.start("I run a repair shop and need to track jobs, parts, and customer updates")
+
+    result = assistant.message(first["state"], "recipe:pipeline_kanban")
+
+    assert result["status"] == "proposed"
+    recipe = result["proposal"]["blueprint"]["future_extensions"]["recipe"]
+    assert recipe["recipe_id"] == "pipeline_kanban"
+    names = _entity_names(result)
+    assert {"stage", "card", "owner"}.issubset(names)
+
+
+def test_assistant_recipe_direction_choice_inventory_produces_inventory_proposal():
+    assistant = BuilderAssistant()
+    first = assistant.start("I run a repair shop and need to track jobs, parts, and customer updates")
+
+    result = assistant.message(first["state"], "recipe:inventory_asset_tracker")
+
+    assert result["status"] == "proposed"
+    recipe = result["proposal"]["blueprint"]["future_extensions"]["recipe"]
+    assert recipe["recipe_id"] == "inventory_asset_tracker"
+    names = _entity_names(result)
+    assert {"asset", "category", "location", "vendor", "maintenance_task"}.issubset(names)
+
+
+def test_assistant_direction_question_reject_does_not_apply_anything():
+    result = BuilderAssistant().start(
+        "I run a repair shop and need to track jobs, parts, and customer updates"
+    )
+
+    assert result["status"] == "needs_clarification"
+    assert result["proposal"] is None
+    assert result["state"].get("proposal") is None
+
+
 def test_assistant_message_advances_from_clarification_to_valid_proposal():
     assistant = BuilderAssistant()
     first = assistant.start("app")
